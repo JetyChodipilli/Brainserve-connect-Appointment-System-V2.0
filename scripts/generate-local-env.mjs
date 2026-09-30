@@ -1,8 +1,10 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const target = resolve("backend", ".env");
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const target = resolve(repositoryRoot, "backend", ".env");
 if (existsSync(target)) {
   console.error("backend/.env already exists. Keep it, or rename it only if you intentionally want a new local secret set.");
   process.exit(1);
@@ -109,4 +111,5 @@ writeFileSync(target, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
 console.log("Created backend/.env with private local secrets.");
 console.log(`Initial System Admin password: ${adminPassword}`);
 console.log("Keep this password private. It is shown once and is also present in backend/.env.");
+
 

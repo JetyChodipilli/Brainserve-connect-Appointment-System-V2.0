@@ -349,8 +349,8 @@ services:
   frontend:
     profiles: ["full-stack"]
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: "${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080/api/v1}"
     environment:
@@ -372,3 +372,4 @@ volumes:
   clamav_data:
   postgres_backups:
   postgres_wal_archive:
+

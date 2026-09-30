@@ -64,3 +64,15 @@ next-env.d.ts
 # Local archives and logs
 *.zip
 *.log
+
+
+# V2 independent frontend project
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.next/
+/frontend/.wrangler/
+/frontend/.sites-runtime/
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/coverage/
+!/frontend/.env.local.example

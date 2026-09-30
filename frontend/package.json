@@ -1,0 +1,78 @@
+{
+  "name": "brainserve-appointment-service",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "install:ci": "bash scripts/install-ci.sh",
+    "dev": "cross-env WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
+    "start": "cross-env WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
+    "dev:locked": "cross-env BRAINSERVE_LOCAL_BACKEND=1 VITE_BRAINSERVE_LOCKED=1 NEXT_PUBLIC_API_BASE_URL= vite",
+    "dev:backend": "cross-env BRAINSERVE_LOCAL_BACKEND=1 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1 vite --host localhost --port 5173 --force",
+    "build": "npm run typecheck && vinext build",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:e2e": "playwright test -c playwright.config.ts && playwright test -c playwright.backend.config.ts",
+    "env:init": "node ../scripts/generate-local-env.mjs",
+    "verify:stack": "node ../scripts/verify-stack.mjs",
+    "validate:artifact": "bash scripts/validate-artifact.sh",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "docker:infra": "docker compose -f ../docker-compose.yml --env-file ../backend/.env up -d postgres redis kafka kafka-2 kafka-3 kafka-init mailpit minio minio-init clamav",
+    "docker:retention": "docker compose -f ../docker-compose.yml --env-file ../backend/.env up -d postgres-backup",
+    "docker:full": "docker compose -f ../docker-compose.yml --env-file ../backend/.env --profile full-stack up --build -d",
+    "docker:status": "docker compose -f ../docker-compose.yml --env-file ../backend/.env ps -a",
+    "verify:infra": "node ../scripts/verify-stack.mjs --infra-only",
+    "test:regression": "node --test --test-isolation=none tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/vite-plugin": "1.54.9",
+    "@fontsource-variable/manrope": "5.3.0",
+    "@fontsource-variable/newsreader": "5.3.0",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.34",
+    "cross-env": "^7.0.3",
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^0.468.0",
+    "next": "16.3.5",
+    "qrcode": "^1.5.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-server-dom-webpack": "19.2.8",
+    "vinext": "1.0.0-beta.8",
+    "vite": "8.2.2",
+    "wrangler": "4.131.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260828.1",
+    "@playwright/test": "1.55.1",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "26.5.1",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
+  },
+  "type": "module",
+  "displayName": "BrainServe Connect",
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    },
+    "browserslist": "4.28.7",
+    "fast-uri": "3.1.8",
+    "fflate": "0.7.5",
+    "js-yaml": "4.3.2",
+    "postcss": "8.5.23",
+    "sharp": "0.35.4",
+    "brace-expansion@<=1.1.20": "1.1.21",
+    "brace-expansion@>=4.0.0 <5.0.12": "5.0.12",
+    "undici": "7.29.1"
+  }
+}

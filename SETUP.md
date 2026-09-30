@@ -20,8 +20,9 @@ mvn spring-boot:run
 Start the frontend in another terminal:
 
 ```powershell
-cd D:\Brainserve-connect-Appointment-System
-npm run dev
+cd D:\Brainserve-connect-Appointment-System-V2.0\frontend
+npm ci
+npm run dev:backend
 ```
 
 Routes remain unchanged at `http://localhost:8080/api/v1/...`.
@@ -50,8 +51,9 @@ Verify Git ignores local secrets:
 
 ```powershell
 git check-ignore -v backend/.env
-git check-ignore -v .env.local
+git check-ignore -v frontend/.env.local
 git status --short
 ```
 
 Credentials previously committed to Git remain in history. Rotate them before reuse.
+

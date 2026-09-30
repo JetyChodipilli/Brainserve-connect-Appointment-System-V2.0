@@ -1,0 +1,11 @@
+node_modules
+dist
+.next
+.wrangler
+.sites-runtime
+.git
+backend/target
+upload
+tmp
+.env*
+!.env.example

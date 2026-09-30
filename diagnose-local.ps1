@@ -22,7 +22,7 @@ function Test-TcpPort {
 
 $root = (Resolve-Path $ProjectRoot).Path
 $backendEnv = Join-Path $root "backend\.env"
-$frontendEnv = Join-Path $root ".env.local"
+$frontendEnv = Join-Path $root "frontend\.env.local"
 
 Write-Host "BrainServe local service diagnosis"
 Write-Host "Project: $root"

@@ -2,7 +2,7 @@
 
 Production-oriented workplace operations platform for BrainServe Connect. The repository contains:
 
-- A responsive React/TypeScript frontend using Next.js-compatible APIs through Vinext/Vite, with red-and-white glassmorphism.
+- An independent project in `frontend/`, with a responsive React/TypeScript frontend using Next.js-compatible APIs through Vinext/Vite, with red-and-white glassmorphism.
 - A Java 21 Spring Boot backend under `backend/`.
 - PostgreSQL migrations, Redis OTP state, a transactional email outbox, audit logging, Docker images and local orchestration.
 - Encrypted cold archives, dataset-specific retention, legal holds, immutable
@@ -11,9 +11,19 @@ Production-oriented workplace operations platform for BrainServe Connect. The re
 
 [Technology stack](#technology-stack) · [System architecture](#system-architecture) · [Local setup](#run-locally-with-your-installed-services) · [Docker setup](#run-the-complete-stack-with-docker) · [Windows troubleshooting](#windows-dependency-troubleshooting)
 
+## Working with V2.0
+
+Run npm commands from `frontend/` and Maven from `backend/`. Start with the [frontend architecture and feature editing guide](docs/FRONTEND_ARCHITECTURE.md).
+
+```sh
+cd frontend
+npm ci
+npm run dev:backend
+```
+
 ## Technology stack
 
-Versions below describe the corrected source snapshot reviewed on 16 September 2026. `package-lock.json`, `backend/pom.xml` and `docker-compose.yml` remain authoritative for installation.
+Versions below describe the corrected source snapshot reviewed on 16 September 2026. `frontend/package-lock.json`, `backend/pom.xml` and `docker-compose.yml` remain authoritative for installation.
 
 | Layer | Technology | How BrainServe uses it |
 | --- | --- | --- |
@@ -71,7 +81,7 @@ flowchart TD
 
 The frontend host delivers the interface; authentication and business decisions happen in Java. Email dispatch and Kafka delivery run outside the business request's database transaction after durable work is available. Report exports run on the backend's asynchronous executor. No separate report microservice is required.
 
-**Source:** [`vite.config.ts`](vite.config.ts), [`app/lib/api.ts`](app/lib/api.ts), [`SecurityConfiguration.java`](backend/src/main/java/com/brainserve/appointment/iam/config/SecurityConfiguration.java), [`docker-compose.yml`](docker-compose.yml).
+**Source:** [`frontend/vite.config.ts`](frontend/vite.config.ts), [`frontend/services/brainserve-api.ts`](frontend/services/brainserve-api.ts), [`SecurityConfiguration.java`](backend/src/main/java/com/brainserve/appointment/iam/config/SecurityConfiguration.java), [`docker-compose.yml`](docker-compose.yml).
 
 ### Login, authorization and reconnecting
 
@@ -109,11 +119,11 @@ sequenceDiagram
 
 On a page reload, session restoration verifies the stored session before opening a workspace. Temporary restoration failures retain credentials for retry. Missing backend configuration fails closed. The initial authenticated workspace also shows recovery when both core appointment and summary loads fail transiently; later refresh failures retain previously loaded content. The recovery page supports pause/resume and reduced motion and cannot grant roles or bypass authentication.
 
-**Source:** [`app/application/brainserve-root.tsx`](app/application/brainserve-root.tsx), [`app/workspace/hooks/use-workspace-data.ts`](app/workspace/hooks/use-workspace-data.ts), [`app/connection-recovery.tsx`](app/connection-recovery.tsx), [`app/lib/api.ts`](app/lib/api.ts), [`iam`](backend/src/main/java/com/brainserve/appointment/iam).
+**Source:** [`frontend/features/workspace/brainserve-root.tsx`](frontend/features/workspace/brainserve-root.tsx), [`frontend/hooks/workspace/use-workspace-data.ts`](frontend/hooks/workspace/use-workspace-data.ts), [`frontend/components/shared/connection-recovery.tsx`](frontend/components/shared/connection-recovery.tsx), [`frontend/services/brainserve-api.ts`](frontend/services/brainserve-api.ts), [`iam`](backend/src/main/java/com/brainserve/appointment/iam).
 
 ### Frontend modules for V2.0
 
-The frontend is organized by feature. `app/brainserve-app.tsx` is a small entry point; `app/application/` owns session restoration and screen selection; `app/workspace/` owns the layout and coordination hooks; `app/features/` contains the feature screens and action handlers. Shared UI, domain types, and utilities live in `app/shared/`, and browser preview data lives in `app/preview/`.
+The independent `frontend/` project follows the Client Onboarding layout: thin `app/` route files, business features in `features/`, shared components, hooks, libraries, and types. Workboard has its own pages, state/action hook, API, contracts, utilities, and screen registration in [`frontend/features/workboard/`](frontend/features/workboard/). See its [editing guide](frontend/features/workboard/README.md).
 
 See [Frontend architecture and editing guide](docs/FRONTEND_ARCHITECTURE.md) for the folder map, dependency rules, and validation results.
 
@@ -212,7 +222,7 @@ Web Locks and a storage-lease fallback coordinate the leader. The SSE message is
 
 `RealtimeUpdateHub` holds emitters in one JVM. This snapshot does not implement a distributed SSE fan-out between backend replicas; a multi-instance deployment needs that topology considered separately. Kafka's three-broker durability does not turn the Java application into microservices or provide cross-instance SSE delivery automatically.
 
-**Source:** [`notification`](backend/src/main/java/com/brainserve/appointment/notification), [`realtime`](backend/src/main/java/com/brainserve/appointment/realtime), [`subscribeToWorkspaceUpdates`](app/lib/api.ts).
+**Source:** [`notification`](backend/src/main/java/com/brainserve/appointment/notification), [`realtime`](backend/src/main/java/com/brainserve/appointment/realtime), [`subscribeToWorkspaceUpdates`](frontend/services/brainserve-api.ts).
 
 ### Reports, history and exports
 
@@ -247,7 +257,7 @@ A separate API-request usage meter is not implemented in this source snapshot. T
 
 For employee uploads, the document service validates ownership/type/size, scans bytes with ClamAV, stores accepted content privately in S3/MinIO and persists file metadata and SHA-256 in PostgreSQL. Download access is authorized before an expiring link is issued. Database and object-storage writes are distinct operations, not a distributed ACID transaction.
 
-**Source:** [`app/reports-overview.tsx`](app/reports-overview.tsx), [`reporting/application`](backend/src/main/java/com/brainserve/appointment/reporting/application), [`DocumentService.java`](backend/src/main/java/com/brainserve/appointment/document/application/DocumentService.java).
+**Source:** [`frontend/components/shared/reports-overview.tsx`](frontend/components/shared/reports-overview.tsx), [`reporting/application`](backend/src/main/java/com/brainserve/appointment/reporting/application), [`DocumentService.java`](backend/src/main/java/com/brainserve/appointment/document/application/DocumentService.java).
 
 ### Backend module map
 
@@ -301,10 +311,10 @@ The workflow currently implements **CI validation**. It contains no automatic pr
 
 ### Connection recovery visual
 
-The unavailable and restoring session guards share `app/connection-recovery.tsx`.
+The unavailable and restoring session guards share `frontend/components/shared/connection-recovery.tsx`.
 The selected Modular Bridge concept is implemented with the supplied photographic
-source at `public/connection-recovery/modular-bridge-source.png` and an object-free
-room backplate at `public/connection-recovery/modular-bridge-room.png`. The blocks
+source at `frontend/public/connection-recovery/modular-bridge-source.png` and an object-free
+room backplate at `frontend/public/connection-recovery/modular-bridge-room.png`. The blocks
 are cropped from the source image and move as three coordinated groups, while the
 left copy panel uses translucent fill, `backdrop-filter: blur(22px) saturate(125%)`,
 an edge highlight and a fallback background for browsers without backdrop blur.
@@ -312,13 +322,13 @@ The motion control pauses all groups; `prefers-reduced-motion` disables the
 animation automatically. See `design-qa.md` for the visual review record and
 browser verification details.
 
-Hosted authentication fails closed unless a deployed Java backend is explicitly connected. There is no browser-local account, role, password or OTP fallback in the hosted interface. `app/lib/api.ts` is the centralized production API client. Set `NEXT_PUBLIC_API_BASE_URL` **while building the frontend** to the HTTPS base URL of the deployed backend; Docker Compose passes its local backend URL as a build argument.
+Hosted authentication fails closed unless a deployed Java backend is explicitly connected. There is no browser-local account, role, password or OTP fallback in the hosted interface. Feature API endpoints live in `frontend/features/*/api/`; `frontend/lib/api-client.ts` owns the shared production request/session transport. Set `NEXT_PUBLIC_API_BASE_URL` **while building the frontend** to the HTTPS base URL of the deployed backend; Docker Compose passes its local backend URL as a build argument.
 
 ## Run locally with your installed services
 
 Requirements: Java 21, Maven 3.9+, Node.js ≥22.13 (Node 24 in CI), PostgreSQL, Kafka and Redis. The backend defaults point to `localhost`, so Maven or IntelliJ can run it without Docker hostnames.
 
-1. Run `npm run env:init` once to generate private `backend/.env` values. Keep an existing file; the generator refuses to overwrite it.
+1. From `frontend/`, run `npm run env:init` once to generate private `backend/.env` values. Keep an existing file; the generator refuses to overwrite it.
 2. Edit `backend/.env` to match your PostgreSQL database/user, Redis, Kafka, SMTP and object storage. The backend imports this file through `application.properties`.
 3. Confirm required JWT, PII-encryption, archive-encryption, QR-signing and bootstrap secrets. Never commit real credentials.
 4. Start the backend:
@@ -328,9 +338,10 @@ Requirements: Java 21, Maven 3.9+, Node.js ≥22.13 (Node 24 in CI), PostgreSQL,
    mvn clean spring-boot:run
    ```
 
-5. In a second terminal at the repository root, install and start the frontend:
+5. In a second terminal, install and start the frontend from its project directory:
 
    ```bash
+   cd frontend
    npm ci --include=dev --include=optional
    npm run dev:backend
    ```
@@ -350,6 +361,7 @@ For developer-only credentials, create `backend/src/main/resources/application-l
 Docker Compose provides PostgreSQL, Redis, Kafka, Mailpit, MinIO and ClamAV in addition to the frontend and backend. Its service addresses override the laptop-oriented defaults automatically:
 
 ```bash
+cd frontend
 npm run env:init
 npm run docker:full
 npm run verify:stack
@@ -617,7 +629,7 @@ This package fixes the frontend and Team Lead authorization defects that caused:
 ### Earlier patch files
 
 ```text
-app/brainserve-app.tsx
+frontend/features/workspace/brainserve-app.tsx
 backend/src/main/java/com/brainserve/appointment/iam/domain/SystemRole.java
 ```
 
@@ -701,7 +713,7 @@ npm test
 ```
 
 The Windows binary is an optional, platform-specific dependency of Workerd.
-Preserve `package-lock.json`; a Linux installation does not supply Windows binaries.
+Preserve `frontend/package-lock.json`; a Linux installation does not supply Windows binaries.
 The Vite native-config-loader notices are separate warnings. They do not explain
 a missing Workerd executable.
 

@@ -1,0 +1,9 @@
+"use client";
+
+import type { WorkTask } from "../types/workboard";
+import { workTaskStatusLabel } from "../utils/work-utils";
+
+export function WorkTaskPill({ status, label }: { status: WorkTask["status"]; label?: string }) {
+    return <span className={`work-task-status work-task-${status.toLowerCase().replaceAll("_", "-")}`}><i />{label ?? workTaskStatusLabel(status)}</span>;
+}
+

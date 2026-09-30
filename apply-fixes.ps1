@@ -5,6 +5,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if (Test-Path (Join-Path $ProjectRoot "frontend\features")) {
+    throw "This legacy V1 patch is incompatible with the V2 feature structure. Edit frontend/features instead."
+}
+
 $packageRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRootPath = (Resolve-Path $ProjectRoot).Path
 

@@ -1,5 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { createConnection } from "node:net";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const infraOnly = process.argv.includes("--infra-only");
 const compose = ["compose", "--env-file", "backend/.env"];
@@ -33,7 +37,7 @@ const commandFailure = (reason) => finalLine(reason?.stderr || "")
     || "Check failed";
 
 const execute = (command, args, timeout = 20_000) => execFileSync(command, args, {
-    cwd: process.cwd(),
+    cwd: repositoryRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout,
@@ -285,3 +289,4 @@ if (failures.length) {
         ? "BrainServe Connect infrastructure is ready for IntelliJ and Vite."
         : "BrainServe Connect full stack is ready.");
 }
+
