@@ -40,7 +40,6 @@ export function Overview({ role, appointments, metrics, onNavigate, onRegister, 
                                 ? { title: "Your workday, clearly organized", detail: "Start assigned work, submit completion evidence and acknowledge Team Lead decisions." }
                                 : { title: "Your appointment workspace", detail: "Review requests, manage your time and prepare for today’s visitors." };
     const pending = appointments.filter((item) => needsAppointmentAction(role, item));
-    const allPending = appointments.filter((item) => ["Pending", "Awaiting Security", "Awaiting Reception", "Awaiting HR", "Awaiting Team Lead", "Awaiting Manager", "Awaiting CEO"].includes(item.status));
     const queueTitle = role === "Security" ? "Security intake queue" : role === "Reception" ? "Reception verification queue"
         : role === "Manager" ? "CEO visitor approval queue" : role === "CEO" ? "CEO approval queue"
             : role === "Team Lead" ? "Department approval queue" : "HR approval queue";
@@ -55,7 +54,7 @@ export function Overview({ role, appointments, metrics, onNavigate, onRegister, 
                    </button>} />
         <section className="metric-grid">
             <article className="metric-card glass-panel"><div><span>Active visits</span><strong>{metrics.activeVisits}</strong><small>Approved or currently in progress</small></div><span className="metric-icon"><CalendarDays size={22} /></span></article>
-            <article className="metric-card glass-panel"><div><span>In workflow</span><strong>{metrics.awaitingApproval || allPending.length}</strong><small>{pending.length} require your action</small></div><span className="metric-icon"><Clock3 size={22} /></span></article>
+            <article className="metric-card glass-panel"><div><span>In workflow</span><strong>{metrics.awaitingApproval}</strong><small>{pending.length} require your action</small></div><span className="metric-icon"><Clock3 size={22} /></span></article>
             <article className="metric-card glass-panel"><div><span>Currently inside</span><strong>{metrics.visitorsInside}</strong><small>Live access records</small></div><span className="metric-icon"><DoorOpen size={22} /></span></article>
             <article className="metric-card glass-panel"><div><span>Active employees</span><strong>{metrics.activeEmployees}</strong><small>{metrics.totalEmployees} total profiles</small></div><span className="metric-icon"><Users size={22} /></span></article>
             <article className="metric-card glass-panel"><div><span>Arrived today</span><strong>{metrics.arrivedVisits}</strong><small>Security intake recorded</small></div><span className="metric-icon"><LogIn size={22} /></span></article>
@@ -77,4 +76,3 @@ export function Overview({ role, appointments, metrics, onNavigate, onRegister, 
         </section>
     </>;
 }
-

@@ -19,7 +19,7 @@ while true; do
   mkdir -p "${destination}"
   if pg_basebackup --host="${PGHOST}" --port="${PGPORT}" --username="${PGUSER}" \
       --pgdata="${destination}" --format=tar --gzip --wal-method=stream --checkpoint=fast; then
-    sha256sum "${destination}"/*.tar.gz > "${destination}/SHA256SUMS"
+    (cd "${destination}" && sha256sum ./*.tar.gz > SHA256SUMS)
     find /backups -mindepth 1 -maxdepth 1 -type d -name 'base-*' \
       -mtime "+${POSTGRES_BACKUP_RETENTION_DAYS}" -exec rm -rf -- {} +
     find /var/lib/postgresql/wal-archive -maxdepth 1 -type f \

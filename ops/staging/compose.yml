@@ -1,0 +1,38 @@
+# Layer on docker-compose.yml; infrastructure remains bound to loopback.
+services:
+  backend:
+    image: "brainserve-backend:${RELEASE_ID:?Set RELEASE_ID to the checked-out commit}"
+    environment:
+      SYSTEM_ADMIN_BOOTSTRAP_ENABLED: "false"
+      CEO_BOOTSTRAP_ENABLED: "false"
+      FORWARD_HEADERS_STRATEGY: framework
+      FRONTEND_PUBLIC_URL: "https://${STAGING_DOMAIN:?Set STAGING_DOMAIN}"
+      BRAIN_SERVE_ALLOWED_ORIGINS: "https://${STAGING_DOMAIN:?Set STAGING_DOMAIN}"
+  frontend:
+    image: "brainserve-frontend:${RELEASE_ID:?Set RELEASE_ID to the checked-out commit}"
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
+  proxy:
+    image: caddy:2.10.2-alpine
+    profiles: [full-stack]
+    environment:
+      STAGING_DOMAIN: "${STAGING_DOMAIN:?Set STAGING_DOMAIN}"
+      STAGING_TLS: "${STAGING_TLS:-internal}"
+    ports:
+      - "${STAGING_BIND_IP:-127.0.0.1}:8443:443"
+    volumes:
+      - ./ops/staging/Caddyfile:/etc/caddy/Caddyfile:ro
+      - staging_tls:/data
+      - staging_caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+volumes:
+  staging_tls:
+  staging_caddy_config:

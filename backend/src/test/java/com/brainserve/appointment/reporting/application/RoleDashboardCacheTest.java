@@ -37,16 +37,16 @@ class RoleDashboardCacheTest {
         when(redis.opsForValue()).thenReturn(values);
     }
     String key(UUID dept) {
-        return "reporting:dashboard:v3:" + actor + ":ROLE_MANAGER:" + dept + ":" + employee + ":" + date + ":" + date;
+        return "reporting:dashboard:v4:" + actor + ":ROLE_MANAGER:" + dept + ":" + employee + ":" + date + ":" + date;
     }
     RoleDashboardQueryService.DashboardSummary summary() {
         return new RoleDashboardQueryService.DashboardSummary(1, 2, 0, 4, 4, 5, 2, 1, 0, 0,
-                1, 1, 1, 1, 20, "ROLE_MANAGER", "DEPARTMENT", department, date, date, Instant.parse("2026-09-15T10:00:00Z"));
+                1, 1, 1, 1, 20L, "ROLE_MANAGER", "DEPARTMENT", department, date, date, Instant.parse("2026-09-15T10:00:00Z"));
     }
     void emptyDatabase() {
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class))).thenReturn(List.of());
         when(jdbc.getJdbcTemplate()).thenReturn(plainJdbc);
-        when(plainJdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(0L);
+        when(jdbc.queryForObject(anyString(), any(MapSqlParameterSource.class), eq(Long.class))).thenReturn(0L);
     }
     RoleDashboardQueryService.DashboardSummary load() {
         return service.summary(actor, RoleDashboardQueryService.PeriodPreset.CUSTOM, date, date);

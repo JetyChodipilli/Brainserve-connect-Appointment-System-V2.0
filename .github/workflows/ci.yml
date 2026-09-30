@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: brainserve-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     name: Frontend
@@ -95,3 +99,48 @@ jobs:
           QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
         run: mvn --batch-mode --no-transfer-progress clean verify
 
+      - name: Require real PostgreSQL integration coverage
+        working-directory: .
+        run: node scripts/assert-database-tests.mjs
+
+      - name: Upload backend failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-failures
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  staging:
+    name: Staging & recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_ID: ${{ github.sha }}
+      STAGING_DOMAIN: localhost
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Verify operational rejection paths
+        run: node --test --test-isolation=none scripts/tests/*.test.mjs
+      - name: Generate disposable secrets without logging them
+        run: node scripts/generate-local-env.mjs > /dev/null
+      - name: Install staging, restore database, and reapply pinned images
+        run: bash ops/staging/verify.sh
+      - name: Upload non-sensitive staging evidence
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-recovery-evidence
+          path: |
+            /tmp/brainserve-staging-evidence/result.txt
+            /tmp/brainserve-staging-evidence/*-schema.txt
+          retention-days: 7
+      - name: Clean disposable stack
+        if: always()
+        run: docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack down --volumes
