@@ -15,6 +15,8 @@ Production-oriented workplace operations platform for BrainServe Connect. The re
 
 Run npm commands from `frontend/` and Maven from `backend/`. Start with the [frontend architecture and feature editing guide](docs/FRONTEND_ARCHITECTURE.md).
 
+The [reliability audit](docs/V2_AUDIT.md), [product roadmap and sprint estimates](docs/PRODUCT_ROADMAP.md), and [requirements and release gates](docs/V2_REQUIREMENTS.md) distinguish completed fixes from planned commercial, enterprise and SaaS work.
+
 ```sh
 cd frontend
 npm ci
@@ -716,4 +718,3 @@ The Windows binary is an optional, platform-specific dependency of Workerd.
 Preserve `frontend/package-lock.json`; a Linux installation does not supply Windows binaries.
 The Vite native-config-loader notices are separate warnings. They do not explain
 a missing Workerd executable.
-

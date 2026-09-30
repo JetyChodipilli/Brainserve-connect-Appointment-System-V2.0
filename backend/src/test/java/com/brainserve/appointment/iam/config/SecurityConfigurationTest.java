@@ -11,6 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.hamcrest.Matchers.containsString;
 
 @WebMvcTest(controllers = NoopController.class, properties = {
         "brainserve.security.jwt-secret=test-only-secret-key-that-is-at-least-thirty-two-bytes",
@@ -25,6 +27,17 @@ class SecurityConfigurationTest {
     @Test
     void protectedEndpointRejectsAnonymousRequest() throws Exception {
         mockMvc.perform(get("/test/protected")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void trustedFrontendCanReadRetryHintsButUntrustedOriginsAreRejected() throws Exception {
+        mockMvc.perform(get("/test/protected").header("Origin", "http://localhost:3000"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Expose-Headers", containsString("Retry-After")));
+        mockMvc.perform(get("/test/protected").header("Origin", "https://untrusted.invalid"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
     }
 }
 

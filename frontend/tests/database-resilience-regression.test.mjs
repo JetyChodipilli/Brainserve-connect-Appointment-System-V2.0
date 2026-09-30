@@ -48,9 +48,8 @@ test("directory and work-board reads use bulk database queries", () => {
 test("frontend coalesces duplicate GETs and avoids data-heavy remount storms", () => {
     assert.match(api, /const inFlightGetRequests = new Map/);
     assert.match(api, /method !== "GET" \|\| init\.signal/);
-    assert.match(api, /inFlightGetRequests\.get\(path\)/);
+    assert.match(api, /inFlightGetRequests\.get\(requestKey\)/);
     assert.match(app, /const minimumRefreshInterval = 15_000/);
     assert.doesNotMatch(app, /key=\{`work:\$\{workspaceRevision\}`\}/);
     assert.doesNotMatch(app, /key=\{`notifications:\$\{workspaceRevision\}`\}/);
 });
-

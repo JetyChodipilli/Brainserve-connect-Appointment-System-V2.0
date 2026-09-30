@@ -5,7 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.MediaType;
@@ -31,18 +31,24 @@ public class RateLimitFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         Rule rule = rule(request);
         if (rule == null) { chain.doFilter(request, response); return; }
+        String key = "rate:" + request.getRemoteAddr() + ":" + rule.key();
+        Long count;
         try {
-            String key = "rate:" + request.getRemoteAddr() + ":" + rule.key();
-            Long count = redis.execute(SCRIPT, List.of(key), Integer.toString(rule.windowSeconds()));
-            if (count != null && count > rule.limit()) {
-                response.setHeader("Retry-After", Integer.toString(rule.windowSeconds()));
-                writeProblem(response, 429, "RATE_LIMIT_EXCEEDED", "Too many requests. Please try again later.");
-                return;
-            }
-            chain.doFilter(request, response);
-        } catch (RedisConnectionFailureException ex) {
+            count = redis.execute(SCRIPT, List.of(key), Integer.toString(rule.windowSeconds()));
+        } catch (DataAccessException ex) {
             writeProblem(response, 503, "SECURITY_STATE_UNAVAILABLE", "The request cannot be verified at this time");
+            return;
         }
+        if (count == null) {
+            writeProblem(response, 503, "SECURITY_STATE_UNAVAILABLE", "The request cannot be verified at this time");
+            return;
+        }
+        if (count > rule.limit()) {
+            response.setHeader("Retry-After", Integer.toString(rule.windowSeconds()));
+            writeProblem(response, 429, "RATE_LIMIT_EXCEEDED", "Too many requests. Please try again later.");
+            return;
+        }
+        chain.doFilter(request, response);
     }
 
     private Rule rule(HttpServletRequest request) {

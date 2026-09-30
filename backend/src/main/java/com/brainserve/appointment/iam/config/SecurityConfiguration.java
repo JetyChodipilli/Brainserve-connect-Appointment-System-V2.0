@@ -104,7 +104,7 @@ public class SecurityConfiguration {
         config.setAllowedOrigins(Arrays.stream(origins.split(",")).map(String::trim).toList());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID", "If-Match"));
-        config.setExposedHeaders(List.of("X-Correlation-ID", "ETag"));
+        config.setExposedHeaders(List.of("X-Correlation-ID", "ETag", "Retry-After"));
         config.setAllowCredentials(false);
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -30,7 +30,23 @@ let refreshToken: string | null = sessionValue(REFRESH_TOKEN_KEY);
 
 let refreshPromise: Promise<boolean> | null = null;
 
+// Login/logout changes invalidate pending work; token renewal keeps the same session.
+let authSessionGeneration = 0;
+
+function invalidatePendingSessionWork() {
+  authSessionGeneration += 1;
+  inFlightGetRequests.clear();
+  refreshPromise = null;
+}
+
+function requireCurrentSession(generation: number) {
+  if (generation !== authSessionGeneration) {
+    throw new Error("The active session changed. Please retry in the current workspace.");
+  }
+}
+
 export function setAccessToken(token: string | null) {
+  if (token !== accessToken || (token === null && refreshToken !== null)) invalidatePendingSessionWork();
   accessToken = token;
   if (typeof window !== "undefined") {
     if (token) window.sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
@@ -43,6 +59,11 @@ export function setAccessToken(token: string | null) {
 }
 
 export function setAuthTokens(access: string, refresh: string) {
+  if (access !== accessToken || refresh !== refreshToken) invalidatePendingSessionWork();
+  storeAuthTokens(access, refresh);
+}
+
+function storeAuthTokens(access: string, refresh: string) {
   accessToken = access;
   refreshToken = refresh;
   if (typeof window !== "undefined") {
@@ -71,25 +92,32 @@ async function refreshAccessToken() {
   if (!refreshToken) return false;
   if (!refreshPromise) {
     const token = refreshToken;
+    const generation = authSessionGeneration;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
-    refreshPromise = fetch(`${API_BASE_URL}/auth/refresh`, {
+    const request: Promise<boolean> = fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ refreshToken: token }), credentials: "omit", signal: controller.signal,
     }).then(async (response) => {
+      requireCurrentSession(generation);
       if (!response.ok) {
         if (response.status === 400 || response.status === 401 || response.status === 403) {
           expireAuthSession();
-          return false;
+          throw new ApiError(401, { detail: "Your session expired or was revoked. Please sign in again." });
         }
         // Surface a temporary refresh failure, not the original expired-access-token 401.
         // Session restoration can then retry without discarding the refresh credential.
         throw new ApiError(response.status, { detail: "Session verification is temporarily unavailable. Please retry." });
       }
       const tokens = await response.json() as { accessToken: string; refreshToken: string };
-      setAuthTokens(tokens.accessToken, tokens.refreshToken);
+      requireCurrentSession(generation);
+      storeAuthTokens(tokens.accessToken, tokens.refreshToken);
       return true;
-    }).finally(() => { clearTimeout(timeout); refreshPromise = null; });
+    }).finally(() => {
+      clearTimeout(timeout);
+      if (refreshPromise === request) refreshPromise = null;
+    });
+    refreshPromise = request;
   }
   return refreshPromise;
 }
@@ -98,19 +126,21 @@ export function apiRequest<T>(path: string, init: RequestInit = {}, retry = true
   const method = (init.method ?? "GET").toUpperCase();
   if (method !== "GET" || init.signal) return performApiRequest<T>(path, init, retry);
 
-  const existing = inFlightGetRequests.get(path);
+  const requestKey = `${authSessionGeneration}:${path}`;
+  const existing = inFlightGetRequests.get(requestKey);
   if (existing) return existing as Promise<T>;
 
   const request = performApiRequest<T>(path, init, retry);
-  inFlightGetRequests.set(path, request);
+  inFlightGetRequests.set(requestKey, request);
   const clearRequest = () => {
-    if (inFlightGetRequests.get(path) === request) inFlightGetRequests.delete(path);
+    if (inFlightGetRequests.get(requestKey) === request) inFlightGetRequests.delete(requestKey);
   };
   void request.then(clearRequest, clearRequest);
   return request;
 }
 
 async function performApiRequest<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const generation = authSessionGeneration;
   if (!API_BASE_URL) {
     throw new Error("BrainServe Connect is not connected to its secure backend.");
   }
@@ -128,16 +158,23 @@ async function performApiRequest<T>(path: string, init: RequestInit = {}, retry 
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...init, headers, credentials: "omit", signal: controller.signal,
     });
+    requireCurrentSession(generation);
     if (response.status === 401 && retry && refreshToken && !path.endsWith("/auth/refresh") && !path.endsWith("/auth/login")) {
-      if (await refreshAccessToken()) return performApiRequest<T>(path, init, false);
+      if (await refreshAccessToken()) {
+        requireCurrentSession(generation);
+        return performApiRequest<T>(path, init, false);
+      }
     }
     if (!response.ok) {
       const problem = (await response.json().catch(() => ({}))) as ProblemResponse;
+      requireCurrentSession(generation);
       throw new ApiError(response.status, problem);
     }
     const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
     if (response.status === 204 || !contentType.includes("json")) return undefined as T;
-    return response.json() as Promise<T>;
+    const value = await response.json() as T;
+    requireCurrentSession(generation);
+    return value;
   } catch (reason) {
     if (timedOut) throw new Error("The BrainServe Connect service did not respond within 20 seconds. Please try again.");
     throw reason;
@@ -170,6 +207,7 @@ export async function requestSpringPage<T>(path: string, init: RequestInit = {})
 }
 
 export async function allSpringPageContent<T>(path: string, pageSize = 200): Promise<{ content: T[] }> {
+  const generation = authSessionGeneration;
   const separator = path.includes("?") ? "&" : "?";
   const content: T[] = [];
   let page = 0;
@@ -178,6 +216,7 @@ export async function allSpringPageContent<T>(path: string, pageSize = 200): Pro
         `${path}${separator}page=${page}&size=${pageSize}`,
         { cache: "no-store" },
     );
+    requireCurrentSession(generation);
     content.push(...result.content);
     const isLast = result.last ?? (result.totalPages !== undefined
         ? page + 1 >= result.totalPages
