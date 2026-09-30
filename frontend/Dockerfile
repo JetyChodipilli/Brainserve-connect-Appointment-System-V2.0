@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM dependencies AS build
+ENV BRAINSERVE_LOCAL_BACKEND=1
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY . .
@@ -15,6 +16,7 @@ RUN npm prune --omit=dev
 FROM node:22.14-alpine
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
+ENV BRAINSERVE_LOCAL_BACKEND=1
 RUN addgroup -S brainserve && adduser -S -G brainserve brainserve \
     && mkdir -p /app/.wrangler && chown brainserve:brainserve /app/.wrangler
 COPY --chown=brainserve:brainserve --from=build /app/package.json /app/package-lock.json ./

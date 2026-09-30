@@ -53,7 +53,7 @@ public class RoleDashboardQueryService {
             throw new BusinessException("HISTORY_SCOPE_DENIED", "Your reporting department is not assigned", HttpStatus.FORBIDDEN);
         }
         DateRange range = range(preset, customFrom, customTo);
-        String key = "reporting:dashboard:v3:" + actorUserId + ":" + scope.role() + ":" + scope.departmentId() + ":" + scope.employeeId() + ":" + range.from() + ":" + range.to();
+        String key = "reporting:dashboard:v4:" + actorUserId + ":" + scope.role() + ":" + scope.departmentId() + ":" + scope.employeeId() + ":" + range.from() + ":" + range.to();
         DashboardSummary cached = readCache(key);
         if (cached != null) return cached;
 
@@ -84,25 +84,27 @@ public class RoleDashboardQueryService {
                        COALESCE(sum(completed_visits), 0) completed_visits,
                        COALESCE(sum(cancelled_visits), 0) cancelled_visits,
                        COALESCE(sum(rejected_visits), 0) rejected_visits,
-                       COALESCE(max(total_employees), 0) total_employees,
-                       COALESCE(max(active_employees), 0) active_employees,
+                       COALESCE((array_agg(total_employees ORDER BY summary_date DESC))[1], 0) total_employees,
+                       COALESCE((array_agg(active_employees ORDER BY summary_date DESC))[1], 0) active_employees,
                        COALESCE(sum(assigned_work), 0) assigned_work,
                        COALESCE(sum(in_progress_work), 0) in_progress_work,
                        COALESCE(sum(completed_work), 0) completed_work,
                        COALESCE(sum(approved_work), 0) approved_work,
-                       COALESCE(avg(NULLIF(average_wait_seconds, 0)), 0)::bigint average_wait_seconds
+                       CASE WHEN count(wait_sample_count) = count(*)
+                            THEN round(sum(wait_seconds_total) / NULLIF(sum(wait_sample_count), 0))::bigint
+                            ELSE NULL END average_wait_seconds
                   FROM daily_operational_summary
                  WHERE summary_date >= :from AND summary_date < :to
                    AND scope_type = :scopeType AND scope_key = :scopeKey
                 """, parameters, (result, row) -> new DashboardSummary(
-                result.getLong("awaiting_approval"), result.getLong("active_visits"), visitorsInside(),
+                result.getLong("awaiting_approval"), result.getLong("active_visits"), visitorsInside(scope.departmentId()),
                 hideWorkforce(scope) ? 0 : result.getLong("total_employees"),
                 hideWorkforce(scope) ? 0 : result.getLong("active_employees"),
                 result.getLong("scheduled_visits"), result.getLong("arrived_visits"),
                 result.getLong("completed_visits"), result.getLong("cancelled_visits"),
-                result.getLong("rejected_visits"), result.getLong("assigned_work"),
-                result.getLong("in_progress_work"), result.getLong("completed_work"),
-                result.getLong("approved_work"), result.getLong("average_wait_seconds"),
+                result.getLong("rejected_visits"), hideWorkforce(scope) ? 0 : result.getLong("assigned_work"),
+                hideWorkforce(scope) ? 0 : result.getLong("in_progress_work"), hideWorkforce(scope) ? 0 : result.getLong("completed_work"),
+                hideWorkforce(scope) ? 0 : result.getLong("approved_work"), result.getObject("average_wait_seconds", Long.class),
                 scope.role(), scopeType, departmentId, range.from(), range.to(), Instant.now()));
         return rows.isEmpty() ? empty(scope, range) : rows.getFirst();
     }
@@ -114,18 +116,19 @@ public class RoleDashboardQueryService {
                 .addValue("scopeType", scopeType).addValue("scopeKey", scopeKey);
         List<DashboardSummary> rows = jdbc.query("""
                 SELECT scheduled_visits, arrived_visits, waiting_visits, approved_visits,
-                       completed_visits, cancelled_visits, rejected_visits, average_wait_seconds,
+                       completed_visits, cancelled_visits, rejected_visits,
+                       round(wait_seconds_total / NULLIF(wait_sample_count, 0))::bigint average_wait_seconds,
                        joined_employees, relieved_employees, assigned_work, completed_work, approved_work
                   FROM monthly_operational_summary
                  WHERE summary_month = :month AND scope_type = :scopeType AND scope_key = :scopeKey
                 """, parameters, (result, row) -> new DashboardSummary(
                 result.getLong("waiting_visits"), result.getLong("approved_visits"), 0,
-                workforceAtMonthEnd, workforceAtMonthEnd,
+                hideWorkforce(scope) ? 0 : workforceAtMonthEnd, hideWorkforce(scope) ? 0 : workforceAtMonthEnd,
                 result.getLong("scheduled_visits"), result.getLong("arrived_visits"),
                 result.getLong("completed_visits"), result.getLong("cancelled_visits"),
-                result.getLong("rejected_visits"), result.getLong("assigned_work"), 0,
-                result.getLong("completed_work"), result.getLong("approved_work"),
-                result.getLong("average_wait_seconds"), scope.role(), scopeType, scope.departmentId(),
+                result.getLong("rejected_visits"), hideWorkforce(scope) ? 0 : result.getLong("assigned_work"), 0,
+                hideWorkforce(scope) ? 0 : result.getLong("completed_work"), hideWorkforce(scope) ? 0 : result.getLong("approved_work"),
+                result.getObject("average_wait_seconds", Long.class), scope.role(), scopeType, scope.departmentId(),
                 range.from(), range.to(), Instant.now()));
         return rows.isEmpty() ? empty(scope, range) : rows.getFirst();
     }
@@ -170,15 +173,19 @@ public class RoleDashboardQueryService {
                 """, parameters, (result, row) -> new DashboardSummary(
                 result.getLong("awaiting_approval"), result.getLong("active_visits"), 0, 1, 1,
                 result.getLong("scheduled_visits"), result.getLong("arrived_visits"),
-                result.getLong("completed_visits"), 0, 0, result.getLong("assigned_work"),
-                result.getLong("in_progress_work"), result.getLong("completed_work"),
-                result.getLong("approved_work"), 0, scope.role(), "PERSONAL", scope.departmentId(),
+                result.getLong("completed_visits"), 0, 0, hideWorkforce(scope) ? 0 : result.getLong("assigned_work"),
+                hideWorkforce(scope) ? 0 : result.getLong("in_progress_work"), hideWorkforce(scope) ? 0 : result.getLong("completed_work"),
+                hideWorkforce(scope) ? 0 : result.getLong("approved_work"), null, scope.role(), "PERSONAL", scope.departmentId(),
                 range.from(), range.to(), Instant.now()));
     }
 
-    private long visitorsInside() {
-        Long value = jdbc.getJdbcTemplate().queryForObject(
-                "select count(*) from visit_access_record where checked_out_at is null", Long.class);
+    private long visitorsInside(UUID departmentId) {
+        Long value = jdbc.queryForObject("""
+                select count(*) from visit_access_record access
+                  join appointment on appointment.id = access.appointment_id
+                 where access.checked_out_at is null
+                   and (CAST(:departmentId AS uuid) is null or appointment.routing_department_id = :departmentId)
+                """, new MapSqlParameterSource("departmentId", departmentId), Long.class);
         return value == null ? 0 : value;
     }
 
@@ -187,8 +194,8 @@ public class RoleDashboardQueryService {
     }
 
     private DashboardSummary empty(RoleDataScopeService.RoleDataScope scope, DateRange range) {
-        return new DashboardSummary(0, 0, visitorsInside(), 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, scope.role(), scope.departmentId() == null ? "COMPANY" : "DEPARTMENT",
+        return new DashboardSummary(0, 0, visitorsInside(scope.departmentId()), 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, null, scope.role(), scope.departmentId() == null ? "COMPANY" : "DEPARTMENT",
                 scope.departmentId(), range.from(), range.to(), Instant.now());
     }
 
@@ -238,7 +245,7 @@ public class RoleDashboardQueryService {
                                    long totalEmployees, long activeEmployees, long scheduledVisits,
                                    long arrivedVisits, long completedVisits, long cancelledVisits,
                                    long rejectedVisits, long assignedWork, long inProgressWork,
-                                   long completedWork, long approvedWork, long averageWaitSeconds,
+                                   long completedWork, long approvedWork, Long averageWaitSeconds,
                                    String role, String scope, UUID departmentId,
                                    LocalDate from, LocalDate to, Instant generatedAt) {}
 }

@@ -44,6 +44,24 @@ async function fixture(page: Page, role = "ROLE_CEO") {
 }
 const nav = (page: Page) => page.getByRole("navigation", { name: "Role workspace" });
 
+test("Overview preserves a reported zero while a pending request remains visible", async ({ page }) => {
+    await fixture(page, "ROLE_HR_ADMIN");
+    await page.route("http://backend.invalid/api/v1/dashboard/summary*", route => route.fulfill({ json: {
+        awaitingApproval: 0, activeVisits: 0, visitorsInside: 0, totalEmployees: 1, activeEmployees: 1, arrivedVisits: 0,
+    } }));
+    await page.route("http://backend.invalid/api/v1/appointments?*", route => route.fulfill({ json: paged([{
+        id: "pending-zero-fixture", referenceNumber: "KPI-0", visitorName: "Pending Fixture",
+        visitorEmail: "visitor@example.invalid", visitorPhone: "0000000000", purpose: "KPI fixture",
+        type: "EMPLOYEE_VISIT", status: "PENDING_HR_APPROVAL", hostEmployeeId: "44444444-4444-4444-8444-444444444444",
+        slotStart: new Date().toISOString(), slotEnd: new Date(Date.now() + 3_600_000).toISOString(),
+    }]) }));
+    await page.goto("/");
+    await expect(page.getByText("Pending Fixture").first()).toBeVisible();
+    const workflow = page.locator(".metric-card").filter({ hasText: "In workflow" });
+    await expect(workflow.locator("strong")).toHaveText("0");
+    await expect(workflow.locator("small")).toHaveText("1 require your action");
+});
+
 for (const role of ["ROLE_CEO", "ROLE_HR_ADMIN", "ROLE_SYSTEM_ADMIN"]) {
     test(`${role}: Reports totals and chart coexist with history and CSV export`, async ({ page }) => {
         const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));

@@ -5,6 +5,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      react-runtime:
+        patterns:
+          - react
+          - react-dom
+          - react-server-dom-webpack
+      vinext-runtime:
+        patterns:
+          - vinext
+          - "@vitejs/plugin-rsc"
   - package-ecosystem: maven
     directory: /backend
     schedule:
@@ -15,4 +25,3 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-

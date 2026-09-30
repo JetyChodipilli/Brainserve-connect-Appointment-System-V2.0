@@ -8,7 +8,7 @@ dashboard(range?: { from: string; to: string }) {
     return apiRequest<{ awaitingApproval: number; activeVisits: number; visitorsInside: number;
       totalEmployees: number; activeEmployees: number; scheduledVisits: number; arrivedVisits: number;
       completedVisits: number; cancelledVisits: number; rejectedVisits: number; assignedWork: number;
-      inProgressWork: number; completedWork: number; approvedWork: number; averageWaitSeconds: number;
+      inProgressWork: number; completedWork: number; approvedWork: number; averageWaitSeconds: number | null;
       role: string; scope: string; departmentId: string | null; from: string; to: string; generatedAt: string }>(`/dashboard/summary${range ? `?${new URLSearchParams({ period: "CUSTOM", ...range })}` : ""}`);
   },
 };
