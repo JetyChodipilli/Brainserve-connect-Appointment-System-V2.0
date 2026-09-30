@@ -40,7 +40,7 @@
     "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-server-dom-webpack": "19.2.8",
+    "react-server-dom-webpack": "19.3.0",
     "vinext": "1.0.0-beta.8",
     "vite": "8.2.2",
     "wrangler": "4.131.2"
