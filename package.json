@@ -27,7 +27,7 @@
     "verify:infra": "node scripts/verify-stack.mjs --infra-only"
   },
   "dependencies": {
-    "@cloudflare/vite-plugin": "1.54.9",
+    "@cloudflare/vite-plugin": "1.60.2",
     "@fontsource-variable/manrope": "5.3.0",
     "@fontsource-variable/newsreader": "5.3.0",
     "@vitejs/plugin-react": "6.0.2",
