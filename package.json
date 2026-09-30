@@ -42,7 +42,7 @@
     "react-server-dom-webpack": "19.2.8",
     "vinext": "1.0.0-beta.8",
     "vite": "8.2.2",
-    "wrangler": "4.131.2"
+    "wrangler": "4.141.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260828.1",
