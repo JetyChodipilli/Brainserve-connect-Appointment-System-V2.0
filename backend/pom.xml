@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <spring-modulith.version>1.4.7</spring-modulith.version>
+        <spring-modulith.version>2.1.1</spring-modulith.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <testcontainers.version>1.20.4</testcontainers.version>
         <aws.sdk.version>2.29.51</aws.sdk.version>
