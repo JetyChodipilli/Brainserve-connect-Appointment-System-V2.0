@@ -1,0 +1,7 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+brainserve:
+  security:
+    jwt-secret: test-only-secret-key-that-is-at-least-thirty-two-bytes

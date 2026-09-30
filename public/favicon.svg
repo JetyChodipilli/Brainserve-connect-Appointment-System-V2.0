@@ -1,0 +1,69 @@
+<svg
+        width="16"
+        height="16"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 16 16"
+        fill="none"
+        preserveAspectRatio="xMidYMid meet"
+        shape-rendering="geometricPrecision"
+>
+    <title>BrainServe</title>
+
+    <defs>
+        <linearGradient id="favicon-red" x1="4" y1="2" x2="12" y2="7.5">
+            <stop offset="0" stop-color="#FF4549"/>
+            <stop offset="1" stop-color="#D91F27"/>
+        </linearGradient>
+
+        <linearGradient id="favicon-black" x1="4" y1="8" x2="12" y2="13">
+            <stop offset="0" stop-color="#454B4A"/>
+            <stop offset="0.55" stop-color="#292E2D"/>
+            <stop offset="1" stop-color="#101313"/>
+        </linearGradient>
+
+        <linearGradient id="red-highlight" x1="4" y1="3" x2="8" y2="7">
+            <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.38"/>
+            <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+        </linearGradient>
+
+        <linearGradient id="black-highlight" x1="3" y1="8" x2="8" y2="12">
+            <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.2"/>
+            <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+        </linearGradient>
+    </defs>
+
+    <!-- Red upper V -->
+    <path
+            d="M2.15 7.3L6.2 2.25H9.8L13.85 7.3H10.75L8 3.9L5.25 7.3H2.15Z"
+            fill="url(#favicon-red)"
+            stroke="#D91F27"
+            stroke-width="0.22"
+            stroke-linejoin="round"
+    />
+
+    <!-- Black lower V -->
+    <path
+            d="M2.15 7.7L6.2 12.75H9.8L13.85 7.7H10.75L8 11.1L5.25 7.7H2.15Z"
+            fill="url(#favicon-black)"
+            stroke="#101313"
+            stroke-width="0.22"
+            stroke-linejoin="round"
+    />
+
+    <!-- Red glass highlight -->
+    <path
+            d="M4.05 6.55L6.7 3.25H8.85"
+            stroke="url(#red-highlight)"
+            stroke-width="0.32"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+    />
+
+    <!-- Black glass highlight -->
+    <path
+            d="M3.25 8.15L6.35 12.05"
+            stroke="url(#black-highlight)"
+            stroke-width="0.3"
+            stroke-linecap="round"
+    />
+</svg>

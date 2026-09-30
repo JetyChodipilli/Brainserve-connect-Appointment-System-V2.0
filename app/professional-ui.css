@@ -1,0 +1,908 @@
+/*
+ * BrainServe Connect professional interaction layer.
+ *
+ * globals.css remains the owner of colors, surfaces and shadows.
+ * This file improves typography, spacing, containment,
+ * responsiveness, focus treatment and motion.
+ */
+
+:root {
+    --font-ui: "Manrope Variable", Manrope, ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-display: "Newsreader Variable", Newsreader, "Iowan Old Style",
+    Baskerville, Georgia, serif;
+    --ease-standard: cubic-bezier(.2, .8, .2, 1);
+    --ease-spring: cubic-bezier(.16, 1, .3, 1);
+}
+
+html {
+    min-width: 320px;
+    color-scheme: light;
+    scroll-behavior: smooth;
+}
+
+body {
+    min-width: 320px;
+    font-family: var(--font-ui);
+    font-optical-sizing: auto;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--red-700);
+    outline-offset: 3px;
+}
+
+.skip-link {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 210;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: var(--white);
+    background: var(--red-900);
+    font-size: 12px;
+    font-weight: 750;
+    text-decoration: none;
+    transform: translateY(-160%);
+    transition: transform 160ms var(--ease-standard);
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
+/* Typography */
+
+.welcome-hero h1,
+.login-brand h1,
+.page-title h1,
+.panel-heading h2,
+.task-sheet-summary h2,
+.employee-visitor-card h2,
+.metric-card strong,
+.performance-rate,
+.notification-attention strong,
+.modal header h2,
+.backend-required-card h1 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+}
+
+.page-title h1,
+.panel-heading h2,
+.task-sheet-summary h2,
+.backend-required-card h1 {
+    text-wrap: balance;
+}
+
+p,
+small {
+    text-wrap: pretty;
+}
+
+code,
+time,
+.mono-text,
+.task-sheet-card > header small,
+.table-pagination > span,
+.metric-card strong,
+.employee-summary > div strong,
+.work-metrics strong {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Workspace structure */
+
+.app-shell {
+    min-height: 100dvh;
+    grid-template-columns: 248px minmax(0, 1fr);
+}
+
+.app-main {
+    min-width: 0;
+    outline: none;
+}
+
+.sidebar {
+    width: 248px;
+    padding: 22px 14px 16px;
+}
+
+.sidebar-top {
+    min-height: 64px;
+    padding: 0 9px 20px;
+}
+
+.sidebar .brand-mark {
+    border-radius: 10px;
+}
+
+.sidebar .brand-lockup strong {
+    font-size: 16px;
+    font-weight: 750;
+    letter-spacing: -.025em;
+}
+
+.sidebar .brand-lockup small {
+    font-size: 8px;
+    letter-spacing: .14em;
+}
+
+.workspace-label {
+    margin: 20px 12px 8px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .16em;
+}
+
+.sidebar nav {
+    gap: 3px;
+}
+
+.sidebar nav button {
+    min-height: 43px;
+    padding: 0 12px;
+    overflow: hidden;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 650;
+    transition: transform 180ms var(--ease-standard);
+}
+
+.sidebar nav button svg {
+    flex: none;
+    stroke-width: 1.8;
+    transition: transform 220ms var(--ease-spring);
+}
+
+.sidebar nav button:hover {
+    transform: translateX(2px);
+}
+
+.sidebar nav button:hover svg {
+    transform: translateX(1px) scale(1.04);
+}
+
+.sidebar nav button b {
+    min-width: 21px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 6px;
+    font-size: 9px;
+}
+
+.sidebar-bottom > button,
+.user-block {
+    border-radius: 11px;
+    transition: transform 180ms var(--ease-standard);
+}
+
+.sidebar-bottom > button:hover,
+.user-block:hover {
+    transform: translateY(-1px);
+}
+
+.app-header {
+    height: 68px;
+    padding: 0 clamp(18px, 2.3vw, 36px);
+}
+
+.app-header > div:first-child {
+    width: min(540px, 55%);
+}
+
+.global-search {
+    min-width: 0;
+    height: 42px;
+    padding: 0 12px;
+    border-radius: 12px;
+    transition:
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+}
+
+.global-search input {
+    width: 100%;
+    min-width: 0;
+    font-size: 13px;
+}
+
+.global-search-results {
+    top: 54px;
+    left: 0;
+    border-radius: 14px;
+    animation: ui-popover-enter 180ms var(--ease-spring) both;
+}
+
+.header-actions {
+    flex: none;
+}
+
+.live-status {
+    min-height: 34px;
+    border-radius: 10px;
+    font-size: 9px;
+    transition:
+            transform 180ms var(--ease-standard),
+            box-shadow 180ms ease;
+}
+
+.live-status:hover {
+    transform: translateY(-1px);
+}
+
+.app-content {
+    width: min(100%, 1500px);
+    padding:
+            clamp(22px, 2.5vw, 38px)
+            clamp(18px, 2.6vw, 40px)
+            56px;
+}
+
+.app-content > * {
+    animation: ui-view-enter 280ms var(--ease-standard) both;
+}
+
+/* Controls and forms */
+
+.button,
+.icon-button,
+.text-button {
+    transition:
+            color 180ms ease,
+            background-color 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease,
+            transform 180ms var(--ease-standard);
+}
+
+.button {
+    min-height: 39px;
+    border-radius: 10px;
+    padding-inline: 15px;
+    font-size: 12px;
+    font-weight: 720;
+}
+
+.button:hover {
+    transform: translateY(-1px);
+}
+
+.button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.text-button:active:not(:disabled) {
+    transform: translateY(1px) scale(.985);
+}
+
+.icon-button {
+    border-radius: 10px;
+}
+
+input,
+select,
+textarea {
+    max-width: 100%;
+    transition:
+            border-color 180ms ease,
+            box-shadow 180ms ease,
+            background-color 180ms ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--red-500);
+}
+
+/* Page hierarchy */
+
+.page-title {
+    align-items: end;
+    margin-bottom: 24px;
+}
+
+.page-title h1 {
+    max-width: 22ch;
+    margin: 6px 0;
+    font-size: clamp(32px, 3vw, 44px);
+    font-weight: 540;
+    line-height: 1.02;
+    letter-spacing: -.045em;
+}
+
+.page-title p {
+    max-width: 68ch;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.eyebrow,
+.page-title > div > span,
+.panel-heading > div > span {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .13em;
+}
+
+.panel {
+    padding: 20px;
+    border-radius: 17px;
+}
+
+.panel-heading h2 {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 540;
+    letter-spacing: -.022em;
+}
+
+.panel-heading p {
+    max-width: 65ch;
+    font-size: 10px;
+    line-height: 1.55;
+}
+
+.metric-grid {
+    gap: 12px;
+}
+
+.metric-card {
+    min-width: 0;
+    padding: 18px 19px 20px;
+    border-radius: 15px;
+    transition:
+            transform 200ms var(--ease-standard),
+            box-shadow 200ms ease,
+            border-color 200ms ease;
+}
+
+.metric-card strong {
+    font-size: 32px;
+    line-height: .95;
+}
+
+.metric-card > div > span {
+    font-size: 10px;
+}
+
+.toolbar {
+    min-width: 0;
+    border-radius: 14px;
+}
+
+.toolbar > *,
+.work-toolbar > *,
+.task-sheet-grid > *,
+.dashboard-grid > *,
+.quick-grid > *,
+.org-grid > *,
+.settings-grid > *,
+.notification-workspace > * {
+    min-width: 0;
+}
+
+/* Table containment */
+
+.data-table,
+.records-table-wrap,
+.work-task-table,
+.performance-table,
+.lifecycle-table,
+.history-table {
+    max-width: 100%;
+}
+
+.records-table-wrap {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+}
+
+.table-head,
+.table-row {
+    column-gap: clamp(8px, 1vw, 16px);
+}
+
+/* Work Board */
+
+.work-board-page,
+.team-lead-performance-page {
+    gap: 14px;
+}
+
+.work-notification-note {
+    border-radius: 0 12px 12px 0;
+}
+
+.work-period-panel,
+.work-toolbar {
+    border-radius: 14px;
+}
+
+.work-period-tabs button {
+    border-radius: 9px;
+    transition:
+            color 180ms ease,
+            border-color 180ms ease,
+            background-color 180ms ease,
+            transform 180ms var(--ease-standard);
+}
+
+.work-period-tabs button:hover {
+    transform: translateY(-1px);
+}
+
+.task-sheet-grid {
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(100%, 350px), 1fr));
+    gap: 14px;
+    align-items: start;
+}
+
+.task-sheet-card {
+    min-height: 250px;
+    padding: 14px;
+    border-radius: 16px;
+    isolation: isolate;
+}
+
+.task-sheet-card.is-expanded {
+    min-height: 0;
+}
+
+.task-sheet-card > header {
+    min-width: 0;
+    padding-bottom: 9px;
+}
+
+.task-sheet-label {
+    font-size: 10px;
+    letter-spacing: .09em;
+}
+
+.task-sheet-summary {
+    min-width: 0;
+    flex: 1 1 auto;
+    grid-template-rows: auto auto auto minmax(27px, auto);
+    gap: 9px;
+    padding-top: 10px;
+}
+
+.task-sheet-summary-main {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+}
+
+.task-sheet-summary-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+}
+
+.task-sheet-summary h2 {
+    max-width: 100%;
+    font-size: 19px;
+    font-weight: 540;
+    letter-spacing: -.018em;
+}
+
+.task-sheet-summary-main p,
+.task-sheet-brief p,
+.task-sheet-responses p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.task-sheet-summary-meta {
+    gap: 9px;
+}
+
+.task-sheet-summary-meta > span {
+    min-height: 51px;
+    padding: 7px 9px;
+    border-radius: 9px;
+}
+
+.task-sheet-summary-meta strong {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.task-sheet-summary-alert-slot {
+    min-width: 0;
+}
+
+.task-sheet-rework-flag {
+    border-radius: 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.task-sheet-card > footer {
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+}
+
+.task-sheet-card > footer .button {
+    flex: 0 1 auto;
+}
+
+.task-sheet-details-toggle {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+}
+
+.task-flow {
+    max-width: 100%;
+    border-radius: 10px;
+}
+
+.task-flow > span {
+    flex-basis: auto;
+    overflow: hidden;
+}
+
+/* Dialog motion */
+
+.modal-backdrop {
+    -webkit-backdrop-filter: blur(10px) saturate(90%);
+    backdrop-filter: blur(10px) saturate(90%);
+    animation: ui-backdrop-enter 180ms ease-out both;
+}
+
+.modal {
+    animation: ui-modal-enter 260ms var(--ease-spring) both;
+}
+
+.modal header h2 {
+    font-size: 30px;
+    letter-spacing: -.03em;
+}
+
+.status-pill,
+.work-task-status,
+.work-category,
+.closure-status {
+    border-radius: 7px;
+    font-weight: 750;
+}
+
+/* Cross-browser containment */
+
+img,
+svg {
+    max-width: 100%;
+}
+
+.app-shell :is(h1, h2, h3, p, strong, small, span, code) {
+    overflow-wrap: anywhere;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .metric-card:hover,
+    .org-card:hover,
+    .employee-visitor-card:hover,
+    .task-sheet-card:hover {
+        transform: translateY(-2px);
+    }
+}
+
+@media (max-width: 1180px) {
+    .app-shell {
+        grid-template-columns: 224px minmax(0, 1fr);
+    }
+
+    .sidebar {
+        width: 224px;
+    }
+
+    .sidebar nav button {
+        padding-inline: 10px;
+    }
+
+    .app-content {
+        padding-inline: 24px;
+    }
+
+    .task-sheet-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 980px) {
+    .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-grid,
+    .quick-grid,
+    .notification-workspace,
+    .settings-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .task-sheet-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .task-sheet-card {
+        min-height: 0;
+    }
+}
+
+@media (max-width: 800px) {
+    .app-shell {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sidebar {
+        left: 0;
+        width: min(292px, 86vw);
+        transform: translateX(-105%);
+        transition: transform 260ms var(--ease-spring);
+    }
+
+    .sidebar.open {
+        left: 0;
+        transform: translateX(0);
+    }
+
+    .sidebar-scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 15;
+        display: block;
+        border: 0;
+        background: rgba(34, 23, 26, .42);
+        -webkit-backdrop-filter: blur(3px);
+        backdrop-filter: blur(3px);
+        animation: ui-backdrop-enter 180ms ease both;
+    }
+
+    .app-header {
+        padding-inline: 12px;
+    }
+
+    .app-header > div:first-child {
+        width: min(100%, 520px);
+    }
+
+    .global-search {
+        padding-inline: 6px;
+    }
+
+    .app-content {
+        padding: 22px 17px 42px;
+    }
+
+    .page-title {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 14px;
+    }
+}
+
+@media (min-width: 801px) {
+    .sidebar-scrim {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .app-header {
+        height: 62px;
+    }
+
+    .global-search {
+        height: 38px;
+    }
+
+    .global-search > svg {
+        display: none;
+    }
+
+    .global-search input {
+        font-size: 12px;
+    }
+
+    .global-search input::placeholder {
+        font-size: 11px;
+    }
+
+    .live-status {
+        width: 34px;
+        padding: 0;
+        justify-content: center;
+        font-size: 0;
+    }
+
+    .live-status > span {
+        width: 8px;
+        height: 8px;
+    }
+
+    .live-status svg {
+        display: none;
+    }
+
+    .page-title h1 {
+        font-size: 34px;
+    }
+
+    .metric-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .panel {
+        padding: 16px;
+    }
+
+    .toolbar {
+        align-items: stretch;
+    }
+
+    .toolbar > *,
+    .toolbar select,
+    .toolbar > input {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .task-sheet-summary-meta {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .task-sheet-card > footer {
+        align-items: stretch;
+        flex-wrap: wrap;
+    }
+
+    .task-sheet-card > footer .button {
+        flex: 1 1 auto;
+    }
+
+    .task-sheet-details-toggle {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .modal-backdrop {
+        padding: 10px;
+    }
+
+    .modal {
+        width: 100%;
+        max-height: calc(100dvh - 20px);
+        border-radius: 18px;
+    }
+
+    .modal header {
+        padding: 20px 18px 15px;
+    }
+
+    .modal form {
+        padding: 18px;
+    }
+
+    .modal-actions {
+        padding-inline: 18px;
+    }
+}
+
+@media (max-width: 380px) {
+    .app-content {
+        padding-inline: 12px;
+    }
+
+    .page-title h1 {
+        font-size: 30px;
+    }
+
+    .task-sheet-card {
+        padding: 12px;
+        border-radius: 14px;
+    }
+
+    .task-sheet-card > header {
+        align-items: flex-start;
+    }
+
+    .task-sheet-card > header .work-task-status {
+        max-width: 44%;
+    }
+}
+
+@keyframes ui-view-enter {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes ui-popover-enter {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scale(.99);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes ui-backdrop-enter {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes ui-modal-enter {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}
+
+@media (forced-colors: active) {
+    .live-status > span,
+    .work-task-status i {
+        forced-color-adjust: none;
+    }
+}

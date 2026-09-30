@@ -1,0 +1,94 @@
+<svg
+        width="16"
+        height="16"
+        fill="none"
+        viewBox="0 0 16 16"
+        xmlns="http://www.w3.org/2000/svg"
+        preserveAspectRatio="xMidYMid meet"
+        shape-rendering="geometricPrecision"
+        focusable="false"
+>
+    <defs>
+        <linearGradient id="document-body" x1="2" y1="1" x2="14" y2="15">
+            <stop offset="0" stop-color="#FF7485"/>
+            <stop offset="0.4" stop-color="#C60C35"/>
+            <stop offset="1" stop-color="#700016"/>
+        </linearGradient>
+
+        <linearGradient id="document-fold" x1="9" y1="1" x2="14" y2="6">
+            <stop offset="0" stop-color="#FF9AA6"/>
+            <stop offset="1" stop-color="#FF536B"/>
+        </linearGradient>
+
+        <linearGradient id="document-highlight" x1="2.5" y1="1.5" x2="9" y2="7">
+            <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9"/>
+            <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+        </linearGradient>
+    </defs>
+
+    <!-- Glass document body -->
+    <path
+            d="M2.05 0.7H9.1L14.3 5.9V13.25C14.3 14.38 13.38 15.3 12.25 15.3H4.1C2.97 15.3 2.05 14.38 2.05 13.25V0.7Z"
+            fill="url(#document-body)"
+            stroke="#700016"
+            stroke-width="0.7"
+            stroke-linejoin="round"
+    />
+
+    <!-- Inner glass edge -->
+    <path
+            d="M2.75 1.4H8.55L13.6 6.45V13.05C13.6 13.9 12.9 14.6 12.05 14.6H4.3C3.45 14.6 2.75 13.9 2.75 13.05V1.4Z"
+            stroke="#FFFFFF"
+            stroke-opacity="0.5"
+            stroke-width="0.48"
+            stroke-linejoin="round"
+    />
+
+    <!-- Folded corner -->
+    <path
+            d="M9.1 0.7V4.85C9.1 5.43 9.57 5.9 10.15 5.9H14.3L9.1 0.7Z"
+            fill="url(#document-fold)"
+            stroke="#FFFFFF"
+            stroke-opacity="0.9"
+            stroke-width="0.6"
+            stroke-linejoin="round"
+    />
+
+    <!-- Document content -->
+    <g
+            stroke="#FFFFFF"
+            stroke-linecap="round"
+    >
+        <path
+                d="M4.25 5.25H7.05"
+                stroke-opacity="0.72"
+                stroke-width="0.7"
+        />
+
+        <path
+                d="M4.25 8H11.8"
+                stroke-opacity="0.92"
+                stroke-width="0.78"
+        />
+
+        <path
+                d="M4.25 10.45H11.8"
+                stroke-opacity="0.82"
+                stroke-width="0.72"
+        />
+
+        <path
+                d="M4.25 12.85H9.6"
+                stroke-opacity="0.68"
+                stroke-width="0.68"
+        />
+    </g>
+
+    <!-- Minimal liquid-glass reflection -->
+    <path
+            d="M3.05 1.8H7.65"
+            stroke="url(#document-highlight)"
+            stroke-width="0.75"
+            stroke-linecap="round"
+    />
+</svg>

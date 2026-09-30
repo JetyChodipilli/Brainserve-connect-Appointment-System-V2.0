@@ -1,0 +1,21 @@
+.overview { display: grid; gap: 18px; }
+.overview header h1 { font: 400 32px/1.2 Georgia, serif; margin: 8px 0; }
+.overview header span { color: #8d0a20; font-size: 11px; font-weight: 700; letter-spacing: .1em; }
+.overview p { color: #665b60; font-size: 13px; }
+.filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.filters label { display: grid; gap: 6px; font-size: 12px; }
+.filters input { min-height: 42px; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; }
+.metrics article { display: grid; gap: 12px; padding: 18px; }
+.metrics span { font-size: 12px; }
+.metrics strong { font-size: 26px; }
+.mix { padding: 22px; }
+.mix h2 { margin: 0 0 16px; }
+.chartRow { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+.chartRow svg { width: 200px; max-width: 100%; flex-shrink: 0; }
+.chartRow text { fill: #28202a; font-size: 17px; }
+.chartRow .totalLabel { font-size: 9px; }
+.chartRow ul { flex: 1; min-width: min(100%, 230px); padding: 0; margin: 0; list-style: none; }
+.chartRow li { display: flex; align-items: center; gap: 9px; padding: 9px 0; font-size: 12px; }
+.chartRow li span { text-transform: capitalize; flex: 1; }
+.chartRow li i { width: 10px; height: 10px; border-radius: 50%; }

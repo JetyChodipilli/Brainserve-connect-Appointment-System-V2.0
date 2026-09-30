@@ -1,0 +1,35 @@
+import { type View } from "../shared/types/workspace";
+import {
+    Archive,
+    BriefcaseBusiness,
+    Building2,
+    CalendarDays,
+    FileClock,
+    FileText,
+    IdCard,
+    LayoutDashboard,
+    MessageSquare,
+    Settings,
+    Sparkles,
+    UserCog,
+    Users,
+} from "lucide-react";
+
+export const navItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "appointments", label: "Appointments", icon: CalendarDays },
+    { id: "work", label: "Work board", icon: BriefcaseBusiness },
+    { id: "performance", label: "Team Lead performance", icon: Sparkles },
+    { id: "insights", label: "Insights", icon: FileClock },
+    { id: "employees", label: "Employees", icon: Users },
+    { id: "terminations", label: "Terminations", icon: UserCog },
+    { id: "account-lifecycle", label: "Account lifecycle", icon: Archive },
+    { id: "visitors", label: "Visitors", icon: IdCard },
+    { id: "notifications", label: "Notifications", icon: MessageSquare },
+    { id: "organization", label: "Organization", icon: Building2 },
+    { id: "reports", label: "Reports", icon: FileText },
+    { id: "audit", label: "Audit trail", icon: FileClock },
+    { id: "logs", label: "Logs", icon: FileText },
+    { id: "settings", label: "Settings", icon: Settings },
+];
+
