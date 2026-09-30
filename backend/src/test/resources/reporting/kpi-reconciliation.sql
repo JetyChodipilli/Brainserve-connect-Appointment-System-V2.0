@@ -8,8 +8,8 @@ SELECT ('20000000-0000-0000-0000-00000000000' || n)::uuid, 'KPI-' || n, 'Fixture
        'Fixture Employee ' || n, 'fixture' || n || '@brainserve.in',
        ('10000000-0000-0000-0000-00000000000' || n)::uuid, 'Fixture', '2020-01-01', 'ACTIVE',
        now(), 'fixture', now(), 'fixture' FROM generate_series(1, 2) n;
-INSERT INTO iam_user_account(id, email, password_hash, created_at, created_by, updated_at, updated_by)
-VALUES ('30000000-0000-0000-0000-000000000001', 'kpi-actor@brainserve.in', 'not-a-login', now(), 'fixture', now(), 'fixture');
+INSERT INTO iam_user_account(id, email, password_hash, full_name, account_status, created_at, created_by, updated_at, updated_by)
+VALUES ('30000000-0000-0000-0000-000000000001', 'kpi-actor@brainserve.in', 'not-a-login', 'Fixture Actor', 'ACTIVE', now(), 'fixture', now(), 'fixture');
 
 DO $$
 DECLARE

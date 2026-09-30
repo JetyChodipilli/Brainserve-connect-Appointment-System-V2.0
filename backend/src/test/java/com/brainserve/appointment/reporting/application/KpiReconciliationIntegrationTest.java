@@ -11,12 +11,12 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDate;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,8 +40,10 @@ class KpiReconciliationIntegrationTest {
         jdbc = new JdbcTemplate(ds);
         jdbc.update("insert into daily_operational_summary(summary_date, scope_type, scope_key, refreshed_at) values ('2020-01-01', 'COMPANY', 'GLOBAL', now())");
         flyway.target("latest").load().migrate();
-        try (var connection = ds.getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("reporting/kpi-reconciliation.sql"));
+        try (var connection = ds.getConnection(); var statement = connection.createStatement()) {
+            // PostgreSQL parses the dollar-quoted DO block; a generic semicolon
+            // splitter would split its PL/pgSQL body into invalid statements.
+            statement.execute(new ClassPathResource("reporting/kpi-reconciliation.sql").getContentAsString(StandardCharsets.UTF_8));
         }
     }
 
