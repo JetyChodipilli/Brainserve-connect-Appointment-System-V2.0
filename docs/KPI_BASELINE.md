@@ -29,7 +29,7 @@ totals remain available. Do not relabel a scheduled cohort as an event-arrival f
 
 The mean is rounded once, after combining unrounded numeric duration totals. Never
 average daily or department means or weight them by arrivals without check-ins.
-V38 stores `wait_seconds_total` and `wait_sample_count` for daily and monthly rows;
+V50 stores `wait_seconds_total` and `wait_sample_count` for daily and monthly rows;
 old rows default to null. A mixed known/unknown daily range returns null. Percentiles
 cannot be obtained by combining those totals or averaging daily percentiles.
 
@@ -65,8 +65,8 @@ events before publishing values. A missing source is **unavailable**, not zero.
 ## Reproducible reconciliation fixture
 
 `backend/src/test/resources/reporting/kpi-reconciliation.sql` is synthetic data,
-used only in isolated test databases. The integration test migrates V37 with an
-existing historical aggregate to V38, then verifies:
+used only in isolated test databases. The integration test migrates V49 with an
+existing historical aggregate to V50, then verifies:
 
 - Department A durations 0, 60, and 180 produce 80 seconds over unequal days.
 - Department B contributes one 900-second sample and ten arrivals without

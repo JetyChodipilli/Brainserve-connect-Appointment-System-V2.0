@@ -14,7 +14,7 @@ node scripts/generate-local-env.mjs
 export RELEASE_ID="$(git rev-parse HEAD)"
 export STAGING_DOMAIN=staging.example.internal
 docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack config --quiet
-docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack build backend frontend
+docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack build backend frontend minio minio-init
 docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack up -d --wait --wait-timeout 900
 ```
 
@@ -36,6 +36,14 @@ staff use; do not leave bootstrap credentials enabled.
 The proxy denies external actuator routes. Readiness stays accessible inside the
 backend container. Health probes establish startup readiness, not full workflow
 availability or authenticated business acceptance.
+
+The historical MinIO and mc Docker Hub repositories are unavailable. The stack
+builds the same release versions from exact upstream Git commits in
+`ops/minio/Dockerfile`, retains their license notices, and enables private bucket
+versioning. These community repositories are now archived/source-only; choose a
+maintained S3 provider for production and test private-object access and migration
+before customer rollout. Source builds restore staging reproducibility and do
+not constitute a maintenance guarantee for those releases.
 
 ## Disposable acceptance rehearsal
 
@@ -88,8 +96,8 @@ RPO/RTO remain unmeasured until a representative full restore is timed.
 
 1. Record the running verified commit and image IDs/digests for both applications,
    environment configuration, Flyway versions/checksums, and backup identifiers.
-2. Check migration compatibility. V38 is additive and retains the legacy columns
-   and refresh behavior; do not edit V1–V37 or use `flyway repair` to hide drift.
+2. Check migration compatibility. V50 is additive and retains the legacy columns
+   and refresh behavior; do not edit V1–V49 or use `flyway repair` to hide drift.
 3. Verify the new release in an isolated restore before changing a persistent host.
 4. Build the new commit-tagged images, preserve the previous verified images, and
    run the same Compose `up --no-build --wait` with the new `RELEASE_ID`.

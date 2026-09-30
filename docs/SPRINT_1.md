@@ -12,12 +12,12 @@ drawer, and quick filters belong to Sprint 5.
 | Reproducible staging | Existing stack plus `ops/staging/compose.yml`, commit-tagged application images, same-origin API, TLS proxy | `Staging & recovery` Actions job installs the complete stack on a disposable runner |
 | Recovery preparation | Private custom-format dump, checksum validation, separate restore database, no overwrite or live target | Operational rejection tests and a real PostgreSQL restore/application readiness check in CI |
 | Rollback preparation | Pinned image reapply and recorded schema checksums; additive migration | CI rehearses pinned reapply; the runbook specifies choosing a previously verified release and preserving volumes |
-| KPI reconciliation | Real V37 → V38 upgrade plus synthetic source fixtures | `KpiReconciliationIntegrationTest`, required without skips in CI |
+| KPI reconciliation | Real V49 → V50 upgrade plus synthetic source fixtures | `KpiReconciliationIntegrationTest`, required without skips in CI |
 | Correct baseline | Sample-weighted wait mean including zero; unavailable denominators return null; latest workforce snapshot; department-scoped inside counts | PostgreSQL reconciliation fixtures and existing cache/scope regressions |
 | Targeted UI accuracy | In-workflow card preserves a reported zero | Browser fixture contains a pending appointment while the metric stays zero |
 | Dependency CI | Group coupled React packages; test built Workers in their actual runtime | Existing regression suite and rendered production HTML test |
 
-No existing Flyway migration is edited. V38 adds nullable sample totals and counts,
+No existing Flyway migration is edited. V50 adds nullable sample totals and counts,
 preserves legacy metric columns, and wraps the existing refresh functions. Older
 aggregates retain an unknown denominator rather than receiving invented coverage.
 The live day and month are refreshed at installation. The dashboard cache version

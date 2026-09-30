@@ -10,7 +10,7 @@ evidence="${STAGING_EVIDENCE_DIR:-/tmp/brainserve-staging-evidence}"
 mkdir -p "${evidence}"
 chmod 700 "${evidence}"
 "${compose[@]}" config --quiet
-"${compose[@]}" build backend frontend
+"${compose[@]}" build backend frontend minio minio-init
 "${compose[@]}" up -d --wait --wait-timeout 900
 "${compose[@]}" cp proxy:/data/caddy/pki/authorities/local/root.crt "${evidence}/staging-ca.crt"
 smoke() {
@@ -37,7 +37,7 @@ for database in brainserve brainserve_restore_sprint1; do
     "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -Atc "select version || chr(58) || checksum from flyway_schema_history where success order by installed_rank"' sh "${database}" > "${evidence}/${database}-schema.txt"
 done
 cmp "${evidence}/brainserve-schema.txt" "${evidence}/brainserve_restore_sprint1-schema.txt"
-grep -q '^38:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^50:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 restored="$("${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select string_agg(id || chr(58) || evidence, chr(44) order by id) from sprint1_recovery_probe"')"
 [ "${restored}" = '1:zero-wait,2:scoped-access' ]
 cat > "${evidence}/restore-compose.yml" <<'YAML'
@@ -52,5 +52,5 @@ smoke
 # migration or volume deletion; this establishes the first verified fallback.
 "${compose[@]}" up -d --no-build --force-recreate --wait --wait-timeout 180 backend frontend
 smoke
-printf 'Release: %s\nTLS and API authorization: passed\nV38 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+printf 'Release: %s\nTLS and API authorization: passed\nV50 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

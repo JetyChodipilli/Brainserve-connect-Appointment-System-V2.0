@@ -33,9 +33,9 @@ class KpiReconciliationIntegrationTest {
     RoleDataScopeService scopes;
 
     @BeforeAll static void migrateAndSeed() throws Exception {
-        // Exercise an upgrade with existing V37 data as well as a clean install.
+        // Exercise an upgrade with existing V49 data as well as a clean install.
         var flyway = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-        flyway.target("37").load().migrate();
+        flyway.target("49").load().migrate();
         var ds = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(ds);
         jdbc.update("insert into daily_operational_summary(summary_date, scope_type, scope_key, refreshed_at) values ('2020-01-01', 'COMPANY', 'GLOBAL', now())");
