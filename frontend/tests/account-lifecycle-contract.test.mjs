@@ -25,7 +25,7 @@ test("permanent System Admin and employee termination routes cannot be bypassed"
   assert.match(termination, /archiveAfterEmployeeTermination/);
   assert.match(service, /sessions\.revokeAllForUser/);
   assert.match(service, /target\.archive/);
-  assert.match(activeFilter, /account\.isEnabled\(\) && !account\.isArchived\(\)/);
+  assert.match(activeFilter, /user\.isEnabled\(\) && !user\.isArchived\(\)/);
   assert.match(security, /addFilterAfter\(activeAccountFilter, BearerTokenAuthenticationFilter\.class\)/);
 });
 
@@ -143,4 +143,3 @@ test("recovery is a persistent in-workspace section and preserves only the froze
   assert.match(api, /recoverArchivedAccount/);
   assert.doesNotMatch(app, /PREVIEW_ARCHIVED_RECOVERY_PASSWORD_KEY/);
 });
-

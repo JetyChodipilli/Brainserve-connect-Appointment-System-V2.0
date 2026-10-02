@@ -17,7 +17,9 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -32,18 +34,21 @@ public class RoleDashboardQueryService {
     private final ObjectMapper objectMapper;
     private final ZoneId officeZone;
     private final Duration cacheTtl;
+    private final Duration freshnessWindow;
 
     public RoleDashboardQueryService(NamedParameterJdbcTemplate jdbc, RoleDataScopeService scopes,
                                      StringRedisTemplate redis,
                                      ObjectMapper objectMapper,
                                      @Value("${brainserve.appointment.office-zone:Asia/Kolkata}") String officeZone,
-                                     @Value("${brainserve.reporting.dashboard-cache-seconds:180}") long cacheSeconds) {
+                                     @Value("${brainserve.reporting.dashboard-cache-seconds:180}") long cacheSeconds,
+                                     @Value("${brainserve.reporting.dashboard-fresh-seconds:120}") long freshSeconds) {
         this.jdbc = jdbc;
         this.scopes = scopes;
         this.redis = redis;
         this.objectMapper = objectMapper;
         this.officeZone = ZoneId.of(officeZone);
         this.cacheTtl = Duration.ofSeconds(Math.max(60, Math.min(cacheSeconds, 300)));
+        this.freshnessWindow = Duration.ofSeconds(Math.max(30, Math.min(freshSeconds, 600)));
     }
 
     @Transactional(readOnly = true)
@@ -53,24 +58,85 @@ public class RoleDashboardQueryService {
             throw new BusinessException("HISTORY_SCOPE_DENIED", "Your reporting department is not assigned", HttpStatus.FORBIDDEN);
         }
         DateRange range = range(preset, customFrom, customTo);
-        String key = "reporting:dashboard:v4:" + actorUserId + ":" + scope.role() + ":" + scope.departmentId() + ":" + scope.employeeId() + ":" + range.from() + ":" + range.to();
-        DashboardSummary cached = readCache(key);
-        if (cached != null) return cached;
+        SourceState source = sourceState(scope, range);
+        boolean personal = scope.role().equals(EMPLOYEE);
+        String key = "reporting:dashboard:v5:" + actorUserId + ":" + scope.role() + ":" + scope.departmentId()
+                + ":" + scope.employeeId() + ":" + range.from() + ":" + range.to() + ":" + source.cacheVersion();
+        DashboardSummary cached = source.cacheable(personal, Instant.now(), freshnessWindow) ? readCache(key) : null;
+        if (cached != null && cacheMatches(cached, scope, range, source) && cached.freshUntil() != null
+                && Instant.now().isBefore(cached.freshUntil())) {
+            requireUnchangedScope(actorUserId, scope);
+            if (source.equals(sourceState(scope, range))) return cached;
+        }
 
-        DashboardSummary summary = scope.role().equals(EMPLOYEE)
-                ? personalSummary(scope, range) : aggregateSummary(scope, range);
-        writeCache(key, summary);
+        DashboardSummary summary = personal ? personalSummary(scope, range) : aggregateSummary(scope, range);
+        requireUnchangedScope(actorUserId, scope);
+        SourceState after = sourceState(scope, range);
+        boolean stable = source.equals(after);
+        Instant watermark = personal ? summary.sourceRefreshedAt() : source.oldestRefresh();
+        Long generation = personal ? source.currentGeneration() : source.sourceGeneration();
+        Instant freshUntil = watermark == null ? null : watermark.plus(freshnessWindow);
+        Freshness freshness = source.freshness(watermark, stable, Instant.now(), freshnessWindow);
+        summary = summary.withFreshness(watermark, generation, freshness, freshUntil, personal ? "LIVE" : "SUMMARY");
+        // A request racing a mutation or refresh must never place its old result
+        // under the new committed generation. Dirty/unknown read models bypass Redis.
+        if (stable && freshness == Freshness.FRESH) writeCache(key, summary);
         return summary;
+    }
+
+    private void requireUnchangedScope(UUID actorUserId, RoleDataScopeService.RoleDataScope expected) {
+        if (!expected.equals(scopes.resolve(actorUserId))) {
+            throw new BusinessException("HISTORY_SCOPE_CHANGED", "Your reporting scope changed. Reload your workspace.", HttpStatus.FORBIDDEN);
+        }
+    }
+
+    private boolean cacheMatches(DashboardSummary cached, RoleDataScopeService.RoleDataScope scope,
+                                 DateRange range, SourceState source) {
+        return scope.role().equals(cached.role()) && Objects.equals(scope.departmentId(), cached.departmentId())
+                && range.from().equals(cached.from()) && range.to().equals(cached.to())
+                && Objects.equals(source.currentGeneration(), cached.sourceGeneration())
+                && cached.freshness() == Freshness.FRESH;
+    }
+
+    private SourceState sourceState(RoleDataScopeService.RoleDataScope scope, DateRange range) {
+        if (scope.role().equals(EMPLOYEE)) {
+            Long generation = jdbc.queryForObject("select generation from reporting_source_revision where singleton",
+                    new MapSqlParameterSource(), Long.class);
+            return new SourceState(generation, generation, null, null, generation != null);
+        }
+        boolean month = usesMonthlySummary(range);
+        String table = month ? "monthly_operational_summary" : "daily_operational_summary";
+        String column = month ? "summary_month" : "summary_date";
+        var parameters = new MapSqlParameterSource().addValue("from", range.from()).addValue("to", range.to())
+                .addValue("scopeType", scope.departmentId() == null ? "COMPANY" : "DEPARTMENT")
+                .addValue("scopeKey", scope.departmentId() == null ? "GLOBAL" : scope.departmentId().toString())
+                .addValue("expected", month ? 1L : ChronoUnit.DAYS.between(range.from(), range.to()) + 1);
+        return jdbc.queryForObject("""
+                select revision.generation, snapshot.* from reporting_source_revision revision
+                cross join (select min(source_generation) source_generation, min(refreshed_at) oldest_refresh,
+                                   max(refreshed_at) newest_refresh,
+                                   count(*) = :expected and count(source_generation) = :expected complete
+                              from %s where %s >= :from and %s <= :to
+                               and scope_type = :scopeType and scope_key = :scopeKey) snapshot
+                where revision.singleton
+                """.formatted(table, column, column), parameters, (result, row) -> new SourceState(
+                result.getLong("generation"), result.getObject("source_generation", Long.class),
+                result.getTimestamp("oldest_refresh") == null ? null : result.getTimestamp("oldest_refresh").toInstant(),
+                result.getTimestamp("newest_refresh") == null ? null : result.getTimestamp("newest_refresh").toInstant(),
+                result.getBoolean("complete")));
+    }
+
+    private boolean usesMonthlySummary(DateRange range) {
+        return range.from().getDayOfMonth() == 1
+                && range.to().equals(range.from().with(TemporalAdjusters.lastDayOfMonth()))
+                && range.to().isBefore(LocalDate.now(officeZone).withDayOfMonth(1));
     }
 
     private DashboardSummary aggregateSummary(RoleDataScopeService.RoleDataScope scope, DateRange range) {
         UUID departmentId = scope.departmentId();
         String scopeType = departmentId == null ? "COMPANY" : "DEPARTMENT";
         String scopeKey = departmentId == null ? "GLOBAL" : departmentId.toString();
-        LocalDate today = LocalDate.now(officeZone);
-        if (range.from().getDayOfMonth() == 1
-                && range.to().equals(range.from().with(TemporalAdjusters.lastDayOfMonth()))
-                && range.to().isBefore(today.withDayOfMonth(1))) {
+        if (usesMonthlySummary(range)) {
             return aggregateMonth(scope, range, scopeType, scopeKey);
         }
         MapSqlParameterSource parameters = new MapSqlParameterSource()
@@ -105,7 +171,7 @@ public class RoleDashboardQueryService {
                 result.getLong("rejected_visits"), hideWorkforce(scope) ? 0 : result.getLong("assigned_work"),
                 hideWorkforce(scope) ? 0 : result.getLong("in_progress_work"), hideWorkforce(scope) ? 0 : result.getLong("completed_work"),
                 hideWorkforce(scope) ? 0 : result.getLong("approved_work"), result.getObject("average_wait_seconds", Long.class),
-                scope.role(), scopeType, departmentId, range.from(), range.to(), Instant.now()));
+                scope.role(), scopeType, departmentId, range.from(), range.to(), Instant.now(), null, null, null, null, null));
         return rows.isEmpty() ? empty(scope, range) : rows.getFirst();
     }
 
@@ -129,7 +195,7 @@ public class RoleDashboardQueryService {
                 result.getLong("rejected_visits"), hideWorkforce(scope) ? 0 : result.getLong("assigned_work"), 0,
                 hideWorkforce(scope) ? 0 : result.getLong("completed_work"), hideWorkforce(scope) ? 0 : result.getLong("approved_work"),
                 result.getObject("average_wait_seconds", Long.class), scope.role(), scopeType, scope.departmentId(),
-                range.from(), range.to(), Instant.now()));
+                range.from(), range.to(), Instant.now(), null, null, null, null, null));
         return rows.isEmpty() ? empty(scope, range) : rows.getFirst();
     }
 
@@ -152,7 +218,8 @@ public class RoleDashboardQueryService {
                 .addValue("from", from)
                 .addValue("to", to);
         return jdbc.queryForObject("""
-                SELECT (SELECT count(*) FROM appointment WHERE host_employee_id = :employeeId
+                SELECT statement_timestamp() source_checked_at,
+                       (SELECT count(*) FROM appointment WHERE host_employee_id = :employeeId
                          AND slot_start >= :from AND slot_start < :to AND status LIKE 'PENDING_%') awaiting_approval,
                        (SELECT count(*) FROM appointment WHERE host_employee_id = :employeeId
                          AND slot_start >= :from AND slot_start < :to AND status IN ('APPROVED','CHECKED_IN')) active_visits,
@@ -176,7 +243,7 @@ public class RoleDashboardQueryService {
                 result.getLong("completed_visits"), 0, 0, hideWorkforce(scope) ? 0 : result.getLong("assigned_work"),
                 hideWorkforce(scope) ? 0 : result.getLong("in_progress_work"), hideWorkforce(scope) ? 0 : result.getLong("completed_work"),
                 hideWorkforce(scope) ? 0 : result.getLong("approved_work"), null, scope.role(), "PERSONAL", scope.departmentId(),
-                range.from(), range.to(), Instant.now()));
+                range.from(), range.to(), Instant.now(), result.getTimestamp("source_checked_at").toInstant(), null, null, null, null));
     }
 
     private long visitorsInside(UUID departmentId) {
@@ -196,7 +263,7 @@ public class RoleDashboardQueryService {
     private DashboardSummary empty(RoleDataScopeService.RoleDataScope scope, DateRange range) {
         return new DashboardSummary(0, 0, visitorsInside(scope.departmentId()), 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, null, scope.role(), scope.departmentId() == null ? "COMPANY" : "DEPARTMENT",
-                scope.departmentId(), range.from(), range.to(), Instant.now());
+                scope.departmentId(), range.from(), range.to(), Instant.now(), null, null, null, null, null);
     }
 
     private DateRange range(PeriodPreset preset, LocalDate customFrom, LocalDate customTo) {
@@ -240,6 +307,20 @@ public class RoleDashboardQueryService {
     }
 
     public enum PeriodPreset { TODAY, YESTERDAY, LAST_7_DAYS, THIS_MONTH, PREVIOUS_MONTH, CUSTOM }
+    public enum Freshness { FRESH, STALE, UNKNOWN }
+    record SourceState(Long currentGeneration, Long sourceGeneration, Instant oldestRefresh,
+                       Instant newestRefresh, boolean complete) {
+        String cacheVersion() { return currentGeneration + ":" + sourceGeneration + ":" + oldestRefresh + ":" + newestRefresh; }
+        boolean cacheable(boolean personal, Instant now, Duration window) {
+            return personal ? complete : freshness(oldestRefresh, true, now, window) == Freshness.FRESH;
+        }
+        Freshness freshness(Instant watermark, boolean stable, Instant now, Duration window) {
+            if (!complete || watermark == null || sourceGeneration == null || currentGeneration == null) return Freshness.UNKNOWN;
+            if (!stable || !Objects.equals(sourceGeneration, currentGeneration)
+                    || watermark.isAfter(now) || !now.isBefore(watermark.plus(window))) return Freshness.STALE;
+            return Freshness.FRESH;
+        }
+    }
     private record DateRange(LocalDate from, LocalDate to) {}
     public record DashboardSummary(long awaitingApproval, long activeVisits, long visitorsInside,
                                    long totalEmployees, long activeEmployees, long scheduledVisits,
@@ -247,5 +328,14 @@ public class RoleDashboardQueryService {
                                    long rejectedVisits, long assignedWork, long inProgressWork,
                                    long completedWork, long approvedWork, Long averageWaitSeconds,
                                    String role, String scope, UUID departmentId,
-                                   LocalDate from, LocalDate to, Instant generatedAt) {}
+                                   LocalDate from, LocalDate to, Instant generatedAt,
+                                   Instant sourceRefreshedAt, Long sourceGeneration, Freshness freshness,
+                                   Instant freshUntil, String sourceType) {
+        DashboardSummary withFreshness(Instant watermark, Long generation, Freshness state, Instant expiresAt, String type) {
+            return new DashboardSummary(awaitingApproval, activeVisits, visitorsInside, totalEmployees, activeEmployees,
+                    scheduledVisits, arrivedVisits, completedVisits, cancelledVisits, rejectedVisits, assignedWork,
+                    inProgressWork, completedWork, approvedWork, averageWaitSeconds, role, scope, departmentId,
+                    from, to, generatedAt, watermark, generation, state, expiresAt, type);
+        }
+    }
 }

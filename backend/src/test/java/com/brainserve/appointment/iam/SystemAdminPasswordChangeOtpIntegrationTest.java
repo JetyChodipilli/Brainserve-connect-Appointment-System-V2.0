@@ -1,6 +1,7 @@
 package com.brainserve.appointment.iam;
 
 import com.brainserve.appointment.iam.api.EmailService;
+import com.brainserve.appointment.iam.application.TotpService;
 import com.brainserve.appointment.iam.infrastructure.UserAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,6 +67,8 @@ class SystemAdminPasswordChangeOtpIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper mapper;
+    @Autowired TotpService totp;
+    private final java.util.Deque<String> recoveryCodes = new java.util.ArrayDeque<>();
     @Autowired UserAccountRepository users;
     @MockBean EmailService emailService;
 
@@ -116,7 +119,23 @@ class SystemAdminPasswordChangeOtpIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode json = mapper.readTree(response);
-        return json.required("accessToken").asText();
+        String access = json.required("accessToken").asText();
+        if (!json.path("mfaRequired").asBoolean()) return access;
+        boolean enrolled = json.path("mfaEnrolled").asBoolean();
+        String code;
+        if (enrolled) code = recoveryCodes.removeFirst();
+        else {
+            JsonNode enrollment = mapper.readTree(mockMvc.perform(post("/api/v1/auth/mfa/enrollment")
+                            .header("Authorization", "Bearer " + access))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+            code = totp.codeAt(enrollment.required("secret").asText(), Instant.now());
+        }
+        JsonNode verified = mapper.readTree(mockMvc.perform(post(enrolled ? "/api/v1/auth/mfa/verify" : "/api/v1/auth/mfa/enrollment/confirm")
+                        .header("Authorization", "Bearer " + access).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(java.util.Map.of("code", code))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        verified.required("recoveryCodes").forEach(value -> recoveryCodes.add(value.asText()));
+        return verified.required("tokens").required("accessToken").asText();
     }
 
     private record LoginRequest(String email, String password) {}

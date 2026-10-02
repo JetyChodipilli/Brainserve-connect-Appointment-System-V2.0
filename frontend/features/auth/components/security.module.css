@@ -1,0 +1,22 @@
+.challenge, .panel { display: grid; gap: 16px; min-width: 0; color: var(--ink); }
+.panel { padding: 24px; margin-block: 20px; }
+.challenge header, .heading { display: flex; align-items: flex-start; gap: 12px; }
+.challenge header > svg, .heading > svg { flex-shrink: 0; color: var(--red-700); }
+.challenge h2, .heading h2 { font-size: 1.2rem; margin: 0 0 8px; }
+.challenge p, .panel p { margin: 0; line-height: 1.6; color: var(--muted); }
+.form, .setup { display: grid; gap: 12px; }
+.form label, .setup label { display: grid; gap: 8px; font-weight: 650; }
+.form input, .setup input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--white); }
+.setup img { justify-self: center; border-radius: 10px; }
+.codes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.codes code { padding: 10px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; user-select: all; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.sessions { padding: 0; margin: 0; list-style: none; display: grid; gap: 10px; }
+.sessions li { display: flex; gap: 16px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 14px; }
+.sessions li > span { display: grid; gap: 5px; min-width: 0; }
+.sessions small { color: var(--muted); overflow-wrap: anywhere; }
+.challenge button, .panel button { min-height: 44px; }
+.challenge :focus-visible, .panel :focus-visible { outline: 3px solid var(--red-500); outline-offset: 3px; }
+.gate { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.gate > section { width: min(100%, 480px); padding: 28px; }
+@media (max-width: 480px) { .panel { padding: 18px; } .sessions li { align-items: flex-start; flex-direction: column; } .gate { padding: 16px; } .codes { grid-template-columns: 1fr; } }

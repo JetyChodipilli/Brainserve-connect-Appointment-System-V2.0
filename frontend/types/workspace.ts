@@ -83,7 +83,10 @@ export type DepartmentRosterPage = {
 export type Department = { id: string; code: string; name: string; active: boolean; version: number };
 
 export type DashboardMetrics = { awaitingApproval: number; activeVisits: number; visitorsInside: number;
-    totalEmployees: number; activeEmployees: number; arrivedVisits: number };
+    totalEmployees: number; activeEmployees: number; arrivedVisits: number;
+    sourceRefreshedAt?: string | null; sourceGeneration?: number | null;
+    freshness?: "FRESH" | "STALE" | "UNKNOWN"; freshUntil?: string | null; generatedAt?: string;
+    sourceType?: "SUMMARY" | "LIVE"; metricsLoadState?: "loading" | "ready" | "error" };
 
 export type AccessRecord = { id: string; appointmentId: string; visitorName: string; badgeNumber: string;
     checkedInAt: string; checkedOutAt: string | null; processedBy: string };
@@ -115,4 +118,3 @@ export type SecurityIntakeInput = {
 };
 
 export type SettingsSection = "company" | "identity" | "roles" | "policy" | "notifications" | "privacy";
-

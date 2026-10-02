@@ -96,8 +96,10 @@ RPO/RTO remain unmeasured until a representative full restore is timed.
 
 1. Record the running verified commit and image IDs/digests for both applications,
    environment configuration, Flyway versions/checksums, and backup identifiers.
-2. Check migration compatibility. V50 is additive and retains the legacy columns
-   and refresh behavior; do not edit V1–V49 or use `flyway repair` to hide drift.
+2. Check migration compatibility. V51 adds MFA/session storage and V52 adds
+   reporting revisions and wraps existing refresh functions. Preserve V1–V50
+   checksums; do not use `flyway repair` to hide drift. Read `docs/SPRINT_2.md`
+   for MFA enrollment, encryption-key continuity and the exact trusted proxy.
 3. Verify the new release in an isolated restore before changing a persistent host.
 4. Build the new commit-tagged images, preserve the previous verified images, and
    run the same Compose `up --no-build --wait` with the new `RELEASE_ID`.

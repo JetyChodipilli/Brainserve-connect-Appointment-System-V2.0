@@ -1,6 +1,7 @@
 package com.brainserve.appointment.iam;
 
 import com.brainserve.appointment.iam.api.EmailService;
+import com.brainserve.appointment.iam.application.TotpService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -66,6 +67,7 @@ class AccountProvisioningIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper mapper;
+    @Autowired TotpService totp;
     @MockitoBean  EmailService emailService;
     private final Map<String, String> pendingPasswords = new ConcurrentHashMap<>();
     private final Map<String, String> pendingPasswordOtps = new ConcurrentHashMap<>();
@@ -287,7 +289,17 @@ class AccountProvisioningIntegrationTest {
                 .andExpect(status().is(expectedStatus))
                 .andReturn();
         if (expectedStatus != 200) return "";
-        return mapper.readTree(result.getResponse().getContentAsString()).required("accessToken").asText();
+        JsonNode tokens = mapper.readTree(result.getResponse().getContentAsString());
+        String access = tokens.required("accessToken").asText();
+        if (!tokens.path("mfaRequired").asBoolean() || tokens.path("forcePasswordChange").asBoolean()) return access;
+        JsonNode enrollment = mapper.readTree(mockMvc.perform(post("/api/v1/auth/mfa/enrollment")
+                        .header("Authorization", bearer(access)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode verification = mapper.readTree(mockMvc.perform(post("/api/v1/auth/mfa/enrollment/confirm")
+                        .header("Authorization", bearer(access)).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("code", totp.codeAt(enrollment.required("secret").asText(), java.time.Instant.now())))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        return verification.required("tokens").required("accessToken").asText();
     }
 
     private String completeRequiredPasswordChange(String email, String temporaryPassword,

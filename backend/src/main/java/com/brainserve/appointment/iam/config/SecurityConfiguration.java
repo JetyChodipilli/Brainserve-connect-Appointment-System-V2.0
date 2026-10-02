@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.config.Customizer;
@@ -40,6 +41,7 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper mapper, RateLimitFilter rateLimitFilter,
                                             ActiveAccountFilter activeAccountFilter,
+                                            AuthenticatedRequestLimitFilter authenticatedRequestLimitFilter,
                                             JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -68,7 +70,31 @@ public class SecurityConfiguration {
                         .referrerPolicy(policy -> policy.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)));
         http.addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
         http.addFilterAfter(activeAccountFilter, BearerTokenAuthenticationFilter.class);
+        http.addFilterAfter(authenticatedRequestLimitFilter, ActiveAccountFilter.class);
         return http.build();
+    }
+
+    // These filters must run inside the security chain, after identity is resolved.
+    // Spring Boot otherwise also registers @Component filters on the servlet chain.
+    @Bean
+    FilterRegistrationBean<RateLimitFilter> rateLimitRegistration(RateLimitFilter filter) {
+        var registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    FilterRegistrationBean<ActiveAccountFilter> activeAccountRegistration(ActiveAccountFilter filter) {
+        var registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthenticatedRequestLimitFilter> operationLimitRegistration(AuthenticatedRequestLimitFilter filter) {
+        var registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

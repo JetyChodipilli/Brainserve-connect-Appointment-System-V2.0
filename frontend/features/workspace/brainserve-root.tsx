@@ -7,6 +7,9 @@ import { AccountRecovery } from "../auth/account-recovery";
 import { AccountRegistration } from "../auth/account-registration";
 import { ForcedPasswordChange } from "../auth/forced-password-change";
 import { Login } from "../auth/login";
+import { MfaChallenge } from "../auth/components/mfa-challenge";
+import { securityApi } from "../auth/api/security-api";
+import securityStyles from "../auth/components/security.module.css";
 import { Welcome } from "../public/welcome";
 import { ApiError, brainServeApi, hasAuthSession, isBackendConfigured, onAuthSessionExpired, setAccessToken } from "../../services/brainserve-api";
 import { readDemoAccounts } from "../../preview/accounts";
@@ -35,12 +38,16 @@ export function BackendBrainServeApp({ browserPreviewEnabled = false }: {
     const [mustChangePassword, setMustChangePassword] = useState(false);
     const [currentPassword, setCurrentPassword] = useState("");
     const [sessionMessage, setSessionMessage] = useState("");
+    const [mfaPending, setMfaPending] = useState<{ enrolled: boolean } | null>(null);
     useEffect(
         () =>
             onAuthSessionExpired(() => {
                 writePreviewWorkspaceSession(null);
                 setMustChangePassword(false);
                 setCurrentPassword("");
+                setMfaPending(null);
+                setRole(null);
+                setUserEmail("");
                 setSessionMessage(
                     "Your login changed, expired or was revoked. Sign in again to load the current role and permissions.",
                 );
@@ -54,6 +61,7 @@ export function BackendBrainServeApp({ browserPreviewEnabled = false }: {
             if (isBackendConfigured && hasAuthSession()) {
                 try {
                     const profile = await brainServeApi.me();
+                    const security = profile.forcePasswordChange ? null : await securityApi.status();
                     if (!active) return;
                     const restoredRole = primaryRoleFromAuthorities(profile.roles);
                     if (!restoredRole) throw new ApiError(403, { detail: "Unsupported role" });
@@ -62,6 +70,7 @@ export function BackendBrainServeApp({ browserPreviewEnabled = false }: {
                     setRole(restoredRole);
                     setUserEmail(profile.email);
                     setMustChangePassword(profile.forcePasswordChange);
+                    setMfaPending(security?.mfaRequired && !security.mfaVerified ? { enrolled: security.mfaEnrolled } : null);
                     setScreen("app");
                 } catch (reason) {
                     if (!active) return;
@@ -128,6 +137,11 @@ export function BackendBrainServeApp({ browserPreviewEnabled = false }: {
                 }}
             />
         );
+    if (mfaPending) return <main className={securityStyles.gate}><section className="glass-panel">
+        <MfaChallenge enrolled={mfaPending.enrolled} onComplete={() => setMfaPending(null)} onCancel={() => {
+            void brainServeApi.logout(); setMfaPending(null); setScreen("login");
+        }} />
+    </section></main>;
     if (screen === "welcome") return <Welcome onNavigate={setScreen} />;
     if (screen === "book") return <BookingFlow onNavigate={setScreen} />;
     if (screen === "track") return <TrackAppointment onNavigate={setScreen} />;
@@ -159,6 +173,7 @@ export function BackendBrainServeApp({ browserPreviewEnabled = false }: {
         );
     return (
         <DashboardApp
+            key={`${role}:${userEmail}`}
             role={role}
             userEmail={userEmail}
             onLogout={async () => {
@@ -172,4 +187,3 @@ export function BackendBrainServeApp({ browserPreviewEnabled = false }: {
         />
     );
 }
-
