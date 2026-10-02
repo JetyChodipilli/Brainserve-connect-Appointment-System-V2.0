@@ -14,7 +14,7 @@ TOTP secrets use the existing AES-GCM encryption key; recovery codes are stored 
 
 Use the updated `backend/.env.example`. Compose forwards MFA, account operation limits, live-connection limits and freshness settings. Preserve `PII_ENCRYPTION_KEY`, `JWT_SECRET`, archive keys and existing data volumes. Deploy frontend and backend from the same verified commit; first validate a restored database. No production database is modified by the development checks.
 
-Forwarded-header rewriting is disabled. `TRUSTED_PROXY_CIDRS` identifies only the physical reverse-proxy peers; empty means direct connections. The resolver walks numeric X-Forwarded-For addresses from the trusted right edge and ignores client-supplied prefixes. Staging pins Caddy to `STAGING_PROXY_IP` (default `172.29.91.10`) on `STAGING_SUBNET` (default `172.29.91.0/24`) and trusts that one `/32`. Change both when the subnet conflicts with the host network.
+Forwarded-header rewriting is disabled. `TRUSTED_PROXY_CIDRS` identifies only the physical reverse-proxy peers; empty means direct connections. The resolver walks numeric X-Forwarded-For addresses from the trusted right edge and ignores client-supplied prefixes. Staging pins Caddy to `STAGING_PROXY_IP` (default `172.29.91.10`) on `STAGING_SUBNET` (default `172.29.91.0/24`) and trusts that one `/32`. Automatic addresses come only from `STAGING_DYNAMIC_SUBNET` (default `172.29.91.128/25`) so they cannot claim the proxy address. Change all three together when the subnet conflicts with the host network, keeping the proxy outside the dynamic range.
 
 | Budget | Default |
 |---|---|

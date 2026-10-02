@@ -41,6 +41,8 @@ networks:
     ipam:
       config:
         - subnet: "${STAGING_SUBNET:-172.29.91.0/24}"
+          # Keep automatic assignments away from the trusted proxy's fixed IP.
+          ip_range: "${STAGING_DYNAMIC_SUBNET:-172.29.91.128/25}"
 volumes:
   staging_tls:
   staging_caddy_config:
