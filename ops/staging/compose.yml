@@ -13,6 +13,7 @@ services:
     build:
       args:
         NEXT_PUBLIC_API_BASE_URL: /api/v1
+        NEXT_PUBLIC_DASHBOARD_CARDS_ENABLED: "${NEXT_PUBLIC_DASHBOARD_CARDS_ENABLED:-true}"
     environment:
       NEXT_PUBLIC_API_BASE_URL: /api/v1
   proxy:

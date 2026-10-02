@@ -23,9 +23,9 @@ import {
     X,
 } from "lucide-react";
 
-export function Overview({ role, appointments, metrics, onNavigate, onRegister, decideAppointment }: { role: Role;
+export function Overview({ role, appointments, metrics, onNavigate, onRegister, decideAppointment, hideSummary = false }: { role: Role;
     appointments: Appointment[]; metrics: DashboardMetrics & DashboardFreshnessMetadata; onNavigate: (view: View) => void; onRegister: () => void;
-    decideAppointment: (id: string, decision: "approve" | "reject") => Promise<void> }) {
+    decideAppointment: (id: string, decision: "approve" | "reject") => Promise<void>; hideSummary?: boolean }) {
     const context = role === "Reception"
         ? { title: "Reception command centre", detail: "Verify Security arrivals, route approvals and coordinate check-ins." }
         : role === "Security"
@@ -49,7 +49,7 @@ export function Overview({ role, appointments, metrics, onNavigate, onRegister, 
     const isWorkRole = role === "Employee" || role === "Team Lead";
     const primaryView: View = isWorkRole ? "work" : "appointments";
     return <>
-        <PageTitle eyebrow={`${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).toUpperCase()} · ${role.toUpperCase()}`}
+        {!hideSummary && <><PageTitle eyebrow={`${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).toUpperCase()} · ${role.toUpperCase()}`}
                    title={context.title} detail={context.detail}
                    action={<button className="button button-primary" onClick={() => role === "Reception" ? onRegister() : onNavigate(primaryView)}>
                        <Plus size={17} />{role === "Reception" ? "Register walk-in" : isWorkRole ? "Open work board" : "Open appointments"}
@@ -61,7 +61,7 @@ export function Overview({ role, appointments, metrics, onNavigate, onRegister, 
             <article className="metric-card glass-panel"><div><span>Currently inside</span><strong>{metrics.visitorsInside}</strong><small>Live access records</small></div><span className="metric-icon"><DoorOpen size={22} /></span></article>
             <article className="metric-card glass-panel"><div><span>Active employees</span><strong>{metrics.activeEmployees}</strong><small>{metrics.totalEmployees} total profiles</small></div><span className="metric-icon"><Users size={22} /></span></article>
             <article className="metric-card glass-panel"><div><span>Arrived today</span><strong>{metrics.arrivedVisits}</strong><small>Security intake recorded</small></div><span className="metric-icon"><LogIn size={22} /></span></article>
-        </section>
+        </section></>}
         <section className="dashboard-grid">
             {isWorkRole ? <article className="panel glass-panel work-overview-panel">
                 <div className="panel-heading"><div><span>DEPARTMENT DELIVERY</span><h2>Your work board</h2><p>Track assigned work, completion evidence, Team Lead decisions and acknowledgement.</p></div><BriefcaseBusiness size={22} /></div>

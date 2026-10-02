@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 for (const name of [
   "com.brainserve.appointment.DatabaseMigrationIntegrationTest",
   "com.brainserve.appointment.reporting.application.KpiReconciliationIntegrationTest",
+  "com.brainserve.appointment.reporting.application.AdministrationDashboardIntegrationTest",
   "com.brainserve.appointment.iam.AccountProvisioningIntegrationTest",
   "com.brainserve.appointment.iam.SystemAdminPasswordChangeOtpIntegrationTest",
   "com.brainserve.appointment.iam.PrivilegedSecurityIntegrationTest",

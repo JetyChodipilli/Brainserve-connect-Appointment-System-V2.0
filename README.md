@@ -228,11 +228,17 @@ Web Locks and a storage-lease fallback coordinate the leader. The SSE message is
 
 ### Reports, history and exports
 
+System Admin and CEO overviews also provide versioned measurement cards with
+explicit scope, office-period/live clocks, source coverage and matching authorized
+record lists. Missing instrumentation remains visibly unavailable. See the
+[Sprint 3 metric and rollout contract](docs/SPRINT_3.md).
+
 ```mermaid
 flowchart TD
     U["Reports workspace"]
     S["Java API: permission and role data scope"]
     D["Dashboard summary: scoped Redis cache / PostgreSQL aggregates"]
+    C["Role cards: source facts and matching paginated records"]
     V["Visit mix: grouped appointment counts for selected dates"]
     H["History: bounded dates and cursor pagination"]
     E["Export request: persist job, then async generation"]
@@ -241,10 +247,12 @@ flowchart TD
     L["Authorized expiring download URL"]
     U --> S
     S -->|"/dashboard/summary"| D
+    S -->|"/dashboard/cards"| C
     S -->|"/dashboard/visit-types"| V
     S -->|"/history"| H
     S -->|"/report-exports"| E
     D --> P
+    C --> P
     V --> P
     H --> P
     E -->|"Read authorized rows"| P
