@@ -10,6 +10,7 @@ import { VisitRegistrationModal } from "../../features/appointments/components/v
 import { AuditView } from "../../features/audit/audit-view";
 import { EssentialLogsView } from "../../features/audit/essential-logs-view";
 import { Overview } from "../../features/dashboard/overview";
+import { AdministrationDashboard, dashboardCardsEnabled } from "../../features/dashboard/administration-dashboard";
 import { EmployeeModal } from "../../features/employees/components/employee-modal";
 import { TerminationRequestModal } from "../../features/employees/components/termination-request-modal";
 import { EmployeesView } from "../../features/employees/employees-view";
@@ -80,6 +81,12 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                 {view === "overview" && (
                     role === "System Admin" ? (
                         <>
+                            {isBackendConfigured && dashboardCardsEnabled && <AdministrationDashboard
+                                role={role}
+                                userEmail={userEmail}
+                                refreshKey={workspaceRevision}
+                                onNavigate={setView}
+                            />}
                             <AccountProvisioningPanel
                                 key={`overview:${workspaceRevision}`}
                                 role={role}
@@ -93,9 +100,17 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                         </>
                     ) : ["CEO", "HR Admin"].includes(role) ? (
                         <>
+                            {role === "CEO" && isBackendConfigured && dashboardCardsEnabled && <AdministrationDashboard
+                                role={role}
+                                userEmail={userEmail}
+                                refreshKey={workspaceRevision}
+                                onNavigate={setView}
+                                legacyMetrics={metrics}
+                            />}
                             <Overview
                                 key={`overview:${workspaceRevision}:operations`}
                                 role={role}
+                                hideSummary={role === "CEO" && isBackendConfigured && dashboardCardsEnabled}
                                 appointments={appointments}
                                 metrics={metrics}
                                 onNavigate={setView}

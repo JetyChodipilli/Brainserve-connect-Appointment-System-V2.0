@@ -1,0 +1,60 @@
+.dashboard { min-width: 0; color: var(--ink); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; justify-content: space-between; padding: 18px; border-radius: 17px; }
+.periodForm { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; min-width: 0; flex: 1; }
+.periodForm label { display: grid; gap: 6px; min-width: 0; font-size: 12px; font-weight: 700; }
+.periodForm label span { display: flex; gap: 6px; align-items: center; }
+.periodForm input, .periodForm select { min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); color: var(--ink); font: inherit; }
+.controlButton, .recordButton, .pagination button, .closeButton { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--red-800); background: var(--white); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.controlButton:hover, .recordButton:hover, .pagination button:hover, .closeButton:hover { background: var(--red-50); }
+.dashboard button:disabled, .dialog button:disabled { cursor: default; opacity: .55; }
+.dashboard :is(button, input, select, summary):focus-visible, .dialog :is(button, a):focus-visible { outline: 3px solid var(--red-700); outline-offset: 3px; }
+.dateHelp { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--red-900); }
+.metadata { color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; margin: 14px 0; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.card { min-width: 0; border-radius: 17px; padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow-wrap: anywhere; }
+.cardHeading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.cardHeading h3 { margin: 0; font-size: 14px; line-height: 1.5; }
+.cardHeading > span { font: 11px/1.6 var(--font-geist-mono); color: var(--muted); }
+.clock { display: flex; flex-wrap: wrap; gap: 5px; align-items: start; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.clock svg { flex: none; margin-top: 2px; }
+.clock small { width: 100%; font-size: 12px; }
+.value { font-family: var(--font-display); font-size: clamp(24px, 2.4vw, 34px); font-weight: 500; line-height: 1.2; }
+.definition, .reason, .sample { margin: 0; font-size: 12px; line-height: 1.6; }
+.definition { color: var(--muted); }
+.reason { color: var(--red-900); background: var(--red-50); padding: 9px; border-radius: 8px; }
+.sample { color: var(--ink); }
+.source { margin-top: auto; display: grid; gap: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.source[data-freshness="stale"] > span:first-child { color: var(--red-800); font-weight: 700; }
+.recordButton { align-self: start; }
+.error { padding: 14px 16px; margin: 14px 0; color: var(--red-900); background: var(--red-50); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.error p { margin: 0 0 6px; }
+.supplementary { margin: 26px 0; }
+.supplementary h2 { font-family: var(--font-display); font-size: 25px; font-weight: 500; }
+.supplementaryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.legacyHeading { font-size: 14px; margin: 18px 0 8px; }
+.legacySummary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+.legacySummary > div { min-width: 0; border-left: 2px solid var(--line); padding-left: 12px; overflow-wrap: anywhere; }
+.legacySummary dt, .legacySummary small { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.legacySummary dd { margin: 8px 0; font-family: var(--font-display); font-size: 24px; }
+.coverage { border-radius: 14px; padding: 16px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.coverage summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; font-size: 14px; font-weight: 700; }
+.coverage ul { padding-left: 20px; }
+.coverage li + li { margin-top: 16px; }
+.coverage p { margin: 5px 0; }
+.dialog { width: min(760px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overflow-x: hidden; margin: auto; border: 1px solid var(--line); border-radius: 19px; padding: 24px; background: var(--white); color: var(--ink); box-shadow: var(--shadow); font: inherit; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.dialog::backdrop { background: var(--ink); opacity: .45; }
+.dialogHeader { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.dialogHeader > div { min-width: 0; }
+.dialogHeader span { font-size: 11px; color: var(--muted); }
+.dialogHeader h2 { font-family: var(--font-display); font-size: 25px; font-weight: 500; line-height: 1.3; margin: 8px 0; }
+.closeButton { flex: none; width: 44px; padding: 0; }
+.records { margin: 16px 0; padding: 0; list-style: none; }
+.records li { border-top: 1px solid var(--line); padding: 14px 0; }
+.records p { margin: 5px 0; }
+.records small { color: var(--muted); font-size: 12px; }
+.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+.pagination span { font-size: 12px; text-align: center; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 1000px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .legacySummary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .grid, .supplementaryGrid, .legacySummary { grid-template-columns: minmax(0, 1fr); } .toolbar { padding: 14px; } .periodForm { flex-basis: 100%; } .periodForm label { width: 100%; } .periodForm input, .periodForm select { width: 100%; font-size: 16px; } .dialog { padding: 16px; } .pagination { justify-content: center; } .pagination span { order: -1; width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .dashboard *, .dialog * { animation: none !important; transition: none !important; } }

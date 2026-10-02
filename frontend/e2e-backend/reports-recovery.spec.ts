@@ -25,7 +25,8 @@ async function fixture(page: Page, role = "ROLE_CEO") {
         if (path.endsWith("/profile/me")) return route.fulfill({ json: { ...profile, fullName: "Review User", departmentId: "11111111-1111-4111-8111-111111111111", photoUrl: null } });
         if (path.endsWith("/dashboard/summary")) {
             const status = url.searchParams.has("period") ? state.reportStatus : state.coreStatus;
-            return route.fulfill({ status, json: status === 200 ? { awaitingApproval: 3, activeVisits: 7, visitorsInside: 4, totalEmployees: 30, activeEmployees: 28, arrivedVisits: 12, scheduledVisits: 18, completedVisits: 8, cancelledVisits: 1, rejectedVisits: 2, scope: role === "ROLE_HR_ADMIN" ? "DEPARTMENT" : "COMPANY" } : { detail: "Temporary outage" } });
+            return route.fulfill({ status, json: status === 200 ? { awaitingApproval: 3, activeVisits: 7, visitorsInside: 4, totalEmployees: 30, activeEmployees: 28, arrivedVisits: 12, scheduledVisits: 18, completedVisits: 8, cancelledVisits: 1, rejectedVisits: 2, scope: role === "ROLE_HR_ADMIN" ? "DEPARTMENT" : "COMPANY",
+                sourceGeneration: 1, sourceRefreshedAt: new Date().toISOString(), freshness: "FRESH", freshUntil: new Date(Date.now() + 60_000).toISOString(), sourceType: "SUMMARY" } : { detail: "Temporary outage" } });
         }
         if (path.endsWith("/dashboard/visit-types")) return route.fulfill({ status: state.mixStatus, json: state.mixStatus === 200 ? [{ type: "EMPLOYEE_VISIT", total: 12 }, { type: "HR_INTERVIEW", total: 6 }] : { detail: "Temporary outage" } });
         if (path.endsWith("/public/company-profile")) return route.fulfill({ json: { name: "BrainServe Private Limited", emailDomain: "brainserve.in", hqAddress: "Hyderabad", supportEmail: "support@brainserve.in" } });
@@ -105,7 +106,7 @@ test("temporary session outage retains credentials, retry remains guarded, then 
     await page.getByRole("button", { name: "Retry connection" }).click();
     await expect(page.getByRole("heading", { name: "Opening your workspace…" })).toBeVisible();
     await expect(nav(page)).toBeVisible();
-    await expect(page.locator(".metric-card").filter({ hasText: "Arrived today" }).locator("strong")).toHaveText("12");
+    await expect(page.getByRole("region", { name: "Visitors", exact: true }).locator("dl div").filter({ hasText: "Arrived today" }).locator("dd")).toHaveText("12");
     await nav(page).getByRole("button", { name: "Visitors", exact: true }).click();
     await expect(page.locator("#live-occupancy").getByText("Review Visitor", { exact: true })).toBeVisible();
     await expect(page.locator("#live-occupancy").getByRole("button", { name: /Check out/ })).toHaveCount(0);
