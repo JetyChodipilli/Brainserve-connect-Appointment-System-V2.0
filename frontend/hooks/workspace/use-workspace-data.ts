@@ -13,6 +13,7 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
     const { role, setDepartments, setManagerAssignments, setEmployees, setDepartmentSummaries, setTeamLeadAssignments, setDepartmentHrAssignments, setAppointmentHosts, setAppointments, setMetrics, setAccessRecords, setStaffAccounts, setWorkspaceRetrying, setWorkspaceConnectionFailure, setOperationError, setLastLiveUpdate, workspaceRevision } = workspace;
 
     const hasLoadedCoreData = useRef(false);
+    const loadedDashboardDepartment = useRef<string | null | undefined>(undefined);
     useEffect(() => {
         if (!isBackendConfigured) return;
         let active = true;
@@ -22,6 +23,22 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
             let connectivityFailures = 0;
             let hostNames = new Map<string, string>();
             let hostCategories = new Map<string, PublicHost["category"]>();
+            let observedDepartment: string | null | undefined;
+            const clearMetrics = (state: "loading" | "error") => {
+                if (!active) return;
+                loadedDashboardDepartment.current = undefined;
+                setMetrics({ awaitingApproval: 0, activeVisits: 0, visitorsInside: 0, totalEmployees: 0,
+                    activeEmployees: 0, arrivedVisits: 0, freshness: "UNKNOWN", metricsLoadState: state });
+            };
+            const observeDepartment = (departmentId: string | null) => {
+                observedDepartment = departmentId;
+                if (loadedDashboardDepartment.current !== undefined && loadedDashboardDepartment.current !== departmentId) {
+                    clearMetrics("loading");
+                }
+            };
+            const clearDeniedMetrics = (reason: unknown) => {
+                if (reason instanceof ApiError && [401, 403, 422].includes(reason.status)) clearMetrics("error");
+            };
             if (role === "System Admin") {
                 try {
                     const [departmentList, managerAssignmentList] = await Promise.all([
@@ -49,6 +66,7 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
                     });
                     if (!active) return;
                     const assignment = workspace.assignment;
+                    observeDepartment(assignment.departmentId);
                     const department = { ...workspace.department, active: true, version: 0 };
                     const nextEmployees: Employee[] = workspace.employees.content.map((item) => ({
                         id: item.employeeNumber, uuid: item.id, departmentId: item.departmentId,
@@ -67,7 +85,10 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
                         teamLeadUserId: assignment.teamLeadUserId, teamLeadEmployeeId: assignment.teamLeadEmployeeId,
                         active: true, assignedByUserId: "", assignedAt: "", endedByUserId: null, endedAt: null }]);
                     hostNames = new Map(nextEmployees.map((item) => [item.uuid ?? item.id, item.name]));
-                } catch (reason) { errors.push(reason instanceof ApiError ? reason.message : "Your Team Lead workspace could not be loaded."); }
+                } catch (reason) {
+                    clearDeniedMetrics(reason);
+                    errors.push(reason instanceof ApiError ? reason.message : "Your Team Lead workspace could not be loaded.");
+                }
             } else if (!["Security", "System Admin"].includes(role)) {
                 const departmentRequest = ["HR Admin", "Manager", "Employee"].includes(role)
                     ? brainServeApi.visibleDepartments()
@@ -111,8 +132,12 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
                     ? departmentResult.value
                     : [];
                 if (departmentResult.status === "fulfilled") {
+                    if (["HR Admin", "Manager", "Employee"].includes(role)) {
+                        observeDepartment(departmentList.length === 1 ? departmentList[0].id : null);
+                    }
                     setDepartments(departmentList);
                 } else {
+                    clearDeniedMetrics(departmentResult.reason);
                     errors.push(departmentResult.reason instanceof ApiError
                         ? departmentResult.reason.message
                         : "The department directory could not be loaded.");
@@ -228,10 +253,16 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
                 }
             }
             if (role !== "System Admin") {
+                if (active) setMetrics((current) => ({ ...current, metricsLoadState: "loading" }));
                 try {
                     const summary = await brainServeApi.dashboard();
                     if (active) {
-                        setMetrics({ ...summary, arrivedVisits: summary.arrivedVisits ?? 0 });
+                        if (observedDepartment !== undefined && observedDepartment !== summary.departmentId) {
+                            throw new ApiError(403, { errorCode: "HISTORY_SCOPE_CHANGED",
+                                detail: "Your reporting department changed. Refresh your workspace." });
+                        }
+                        loadedDashboardDepartment.current = summary.departmentId;
+                        setMetrics({ ...summary, arrivedVisits: summary.arrivedVisits ?? 0, metricsLoadState: "ready" });
                     }
                     if (!active) return;
                     coreLoads += 1;
@@ -239,6 +270,8 @@ export function useWorkspaceData(workspace: Pick<WorkspaceState, "role" | "setDe
                 } catch (reason) {
                     if (isConnectivityFailure(reason)) connectivityFailures += 1;
                     errors.push(reason instanceof ApiError ? reason.message : "Dashboard metrics could not be loaded.");
+                    clearDeniedMetrics(reason);
+                    if (active) setMetrics((current) => ({ ...current, metricsLoadState: "error" }));
                 }
             }
             if (["Reception", "Security", "CEO"].includes(role)) {

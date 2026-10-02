@@ -7,6 +7,8 @@ for (const name of [
   "com.brainserve.appointment.reporting.application.KpiReconciliationIntegrationTest",
   "com.brainserve.appointment.iam.AccountProvisioningIntegrationTest",
   "com.brainserve.appointment.iam.SystemAdminPasswordChangeOtpIntegrationTest",
+  "com.brainserve.appointment.iam.PrivilegedSecurityIntegrationTest",
+  "com.brainserve.appointment.realtime.application.RedisRatePolicyIntegrationTest",
 ]) {
   const xml = readFileSync(`backend/target/surefire-reports/TEST-${name}.xml`, "utf8");
   const suite = xml.match(/<testsuite\b[^>]*>/)?.[0];
@@ -18,4 +20,4 @@ for (const name of [
   assert.ok(count > 0, `${name}: no tests executed`);
   console.log(`${name}: ${count} database tests executed`);
 }
-console.log("POSTGRESQL_COVERAGE_VERIFIED");
+console.log("POSTGRESQL_AND_REDIS_COVERAGE_VERIFIED");

@@ -99,7 +99,7 @@ jobs:
           QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
         run: mvn --batch-mode --no-transfer-progress clean verify
 
-      - name: Require real PostgreSQL integration coverage
+      - name: Require real PostgreSQL and Redis integration coverage
         working-directory: .
         run: node scripts/assert-database-tests.mjs
 

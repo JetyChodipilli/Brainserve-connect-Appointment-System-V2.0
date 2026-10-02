@@ -56,7 +56,7 @@ class VisitTypeReportServiceTest {
     @Test void missingDepartmentCannotReadCompanyChartOrSummaryOrCache() {
         scope("ROLE_HR_ADMIN", false, null);
         var redis = mock(StringRedisTemplate.class);
-        var dashboard = new RoleDashboardQueryService(jdbc, scopes, redis, new ObjectMapper(), "Asia/Kolkata", 180);
+        var dashboard = new RoleDashboardQueryService(jdbc, scopes, redis, new ObjectMapper(), "Asia/Kolkata", 180, 120);
         assertThrows(BusinessException.class, () -> service.counts(actor, date, date));
         assertThrows(BusinessException.class, () -> dashboard.summary(actor, RoleDashboardQueryService.PeriodPreset.TODAY, null, null));
         verifyNoInteractions(jdbc, redis);

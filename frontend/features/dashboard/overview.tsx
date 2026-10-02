@@ -4,6 +4,8 @@ import { PageTitle } from "../../components/ui/page-title";
 import { StatusPill } from "../../components/ui/status-pill";
 import { type Appointment, type DashboardMetrics, type Role, type View } from "../../types/workspace";
 import { needsAppointmentAction } from "../appointments/appointment-utils";
+import { DashboardFreshness } from "./dashboard-freshness-label";
+import { type DashboardFreshnessMetadata } from "./dashboard-freshness";
 import {
     ArrowRight,
     BriefcaseBusiness,
@@ -22,7 +24,7 @@ import {
 } from "lucide-react";
 
 export function Overview({ role, appointments, metrics, onNavigate, onRegister, decideAppointment }: { role: Role;
-    appointments: Appointment[]; metrics: DashboardMetrics; onNavigate: (view: View) => void; onRegister: () => void;
+    appointments: Appointment[]; metrics: DashboardMetrics & DashboardFreshnessMetadata; onNavigate: (view: View) => void; onRegister: () => void;
     decideAppointment: (id: string, decision: "approve" | "reject") => Promise<void> }) {
     const context = role === "Reception"
         ? { title: "Reception command centre", detail: "Verify Security arrivals, route approvals and coordinate check-ins." }
@@ -52,6 +54,7 @@ export function Overview({ role, appointments, metrics, onNavigate, onRegister, 
                    action={<button className="button button-primary" onClick={() => role === "Reception" ? onRegister() : onNavigate(primaryView)}>
                        <Plus size={17} />{role === "Reception" ? "Register walk-in" : isWorkRole ? "Open work board" : "Open appointments"}
                    </button>} />
+        <DashboardFreshness summary={metrics} />
         <section className="metric-grid">
             <article className="metric-card glass-panel"><div><span>Active visits</span><strong>{metrics.activeVisits}</strong><small>Approved or currently in progress</small></div><span className="metric-icon"><CalendarDays size={22} /></span></article>
             <article className="metric-card glass-panel"><div><span>In workflow</span><strong>{metrics.awaitingApproval}</strong><small>{pending.length} require your action</small></div><span className="metric-icon"><Clock3 size={22} /></span></article>

@@ -8,7 +8,9 @@ const lockfile = JSON.parse(readFileSync(new URL("../package-lock.json", import.
 test("audited runtime pins are represented by the committed npm lockfile", () => {
     const directPins = {
         "@cloudflare/vite-plugin": "1.54.9",
-        next: "16.3.5",
+        next: "16.3.8",
+        vinext: "1.0.0-beta.13",
+        "@vitejs/plugin-rsc": "0.5.35",
         wrangler: "4.131.2",
     };
     for (const [name, version] of Object.entries(directPins)) {

@@ -1,0 +1,11 @@
+.status {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0 0 12px;
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.status svg { flex: none; align-self: flex-start; margin-top: 2px; }

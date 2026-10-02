@@ -34,6 +34,7 @@ public class RoleDataScopeService {
         var member = staff.requireActive(userId);
         String role = member.roles().stream().min(Comparator.comparingInt(RoleDataScopeService::roleRank))
                 .orElseThrow(() -> denied("The account has no reporting role"));
+        if (roleRank(role) == 99) throw denied("The account has no reporting role");
         boolean organizationWide = role.equals(SYSTEM_ADMIN) || role.equals(CEO)
                 || role.equals(RECEPTIONIST) || role.equals(SECURITY);
         UUID departmentId = member.employeeId() == null || organizationWide

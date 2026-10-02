@@ -9,6 +9,7 @@ const API_BASE_URL = configuredApiBaseUrl ?? "";
 const API_REQUEST_TIMEOUT_MS = 20_000;
 
 const AUTH_SESSION_EXPIRED_EVENT = "brainserve:auth-session-expired";
+const AUTH_SESSION_CHANGED_EVENT = "brainserve:auth-session-changed";
 
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
@@ -46,7 +47,8 @@ function requireCurrentSession(generation: number) {
 }
 
 export function setAccessToken(token: string | null) {
-  if (token !== accessToken || (token === null && refreshToken !== null)) invalidatePendingSessionWork();
+  const changed = token !== accessToken || (token === null && refreshToken !== null);
+  if (changed) invalidatePendingSessionWork();
   accessToken = token;
   if (typeof window !== "undefined") {
     if (token) window.sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
@@ -56,11 +58,14 @@ export function setAccessToken(token: string | null) {
     refreshToken = null;
     if (typeof window !== "undefined") window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   }
+  if (changed && typeof window !== "undefined") window.dispatchEvent(new CustomEvent(AUTH_SESSION_CHANGED_EVENT));
 }
 
 export function setAuthTokens(access: string, refresh: string) {
-  if (access !== accessToken || refresh !== refreshToken) invalidatePendingSessionWork();
+  const changed = access !== accessToken || refresh !== refreshToken;
+  if (changed) invalidatePendingSessionWork();
   storeAuthTokens(access, refresh);
+  if (changed && typeof window !== "undefined") window.dispatchEvent(new CustomEvent(AUTH_SESSION_CHANGED_EVENT));
 }
 
 function storeAuthTokens(access: string, refresh: string) {
@@ -159,6 +164,14 @@ async function performApiRequest<T>(path: string, init: RequestInit = {}, retry 
       ...init, headers, credentials: "omit", signal: controller.signal,
     });
     requireCurrentSession(generation);
+    if (response.status === 401) {
+      const problem = (await response.clone().json().catch(() => ({}))) as ProblemResponse;
+      requireCurrentSession(generation);
+      if (["ACCOUNT_AUTHORITY_CHANGED", "ACCOUNT_NOT_ACTIVE", "PASSWORD_CHANGE_REQUIRED"].includes(problem.errorCode ?? "")) {
+        expireAuthSession();
+        throw new ApiError(401, problem);
+      }
+    }
     if (response.status === 401 && retry && refreshToken && !path.endsWith("/auth/refresh") && !path.endsWith("/auth/login")) {
       if (await refreshAccessToken()) {
         requireCurrentSession(generation);
@@ -168,6 +181,8 @@ async function performApiRequest<T>(path: string, init: RequestInit = {}, retry 
     if (!response.ok) {
       const problem = (await response.json().catch(() => ({}))) as ProblemResponse;
       requireCurrentSession(generation);
+      if (problem.errorCode === "MFA_STEP_UP_REQUIRED") problem.detail = "Verify your identity in My profile → Account security, then retry this action.";
+      if (problem.errorCode === "MFA_REQUIRED" && !path.startsWith("/auth/")) expireAuthSession();
       throw new ApiError(response.status, problem);
     }
     const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
@@ -230,13 +245,14 @@ function subscribeDirectlyToWorkspaceUpdates(
     onUpdate: () => void,
     onStateChange: (state: RealtimeConnectionState) => void,
 ) {
+  const generation = authSessionGeneration;
   let stopped = false;
   let controller: AbortController | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
 
   const scheduleReconnect = () => {
-    if (stopped) return;
+    if (stopped || generation !== authSessionGeneration) return;
     onStateChange("reconnecting");
     const baseDelay = Math.min(30_000, 3_000 * (2 ** reconnectAttempt));
     const jitter = Math.round(Math.random() * 750);
@@ -251,7 +267,7 @@ function subscribeDirectlyToWorkspaceUpdates(
     let buffer = "";
     while (!stopped) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done || stopped || generation !== authSessionGeneration) break;
       buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
       const frames = buffer.split("\n\n");
       buffer = frames.pop() ?? "";
@@ -263,7 +279,7 @@ function subscribeDirectlyToWorkspaceUpdates(
   };
 
   const connect = async () => {
-    if (stopped || !accessToken) { onStateChange("offline"); return; }
+    if (stopped || generation !== authSessionGeneration || !accessToken) { onStateChange("offline"); return; }
     controller = new AbortController();
     onStateChange("connecting");
     let handshakeTimedOut = false;
@@ -279,7 +295,9 @@ function subscribeDirectlyToWorkspaceUpdates(
         cache: "no-store",
         signal: controller.signal,
       });
+      requireCurrentSession(generation);
       if (response.status === 401 && await refreshAccessToken() && accessToken) {
+        requireCurrentSession(generation);
         response = await fetch(`${API_BASE_URL}/realtime/stream`, {
           method: "GET",
           headers: { Accept: "text/event-stream", Authorization: `Bearer ${accessToken}` },
@@ -288,6 +306,7 @@ function subscribeDirectlyToWorkspaceUpdates(
           signal: controller.signal,
         });
       }
+      requireCurrentSession(generation);
       clearTimeout(handshakeTimeout);
       if (!response.ok) throw new Error(`Live update connection failed (${response.status}).`);
       reconnectAttempt = 0;
@@ -296,7 +315,7 @@ function subscribeDirectlyToWorkspaceUpdates(
       if (!stopped) scheduleReconnect();
     } catch (reason) {
       clearTimeout(handshakeTimeout);
-      if (!stopped && (handshakeTimedOut
+      if (!stopped && generation === authSessionGeneration && (handshakeTimedOut
           || !(reason instanceof DOMException && reason.name === "AbortError"))) scheduleReconnect();
     }
   };
@@ -332,6 +351,32 @@ export function subscribeToWorkspaceUpdates(
     onStateChange: (state: RealtimeConnectionState) => void,
 ) {
   if (typeof window === "undefined") return () => undefined;
+  let cleanup = accessToken ? openWorkspaceUpdateSubscription(onUpdate, onStateChange) : () => undefined;
+  const changeSession = () => {
+    cleanup();
+    onStateChange("offline");
+    cleanup = accessToken ? openWorkspaceUpdateSubscription(onUpdate, onStateChange) : () => undefined;
+  };
+  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, changeSession);
+  return () => { window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, changeSession); cleanup(); };
+}
+
+function openWorkspaceUpdateSubscription(
+    onUpdate: () => void,
+    onStateChange: (state: RealtimeConnectionState) => void,
+) {
+  const generation = authSessionGeneration;
+  // Only an account identifier scopes coordination. Credentials and record data never leave this tab.
+  let subject = "unknown";
+  try {
+    const claims = JSON.parse(atob((accessToken ?? "").split(".")[1].replaceAll("-", "+").replaceAll("_", "/"))) as { sub?: unknown };
+    if (typeof claims.sub === "string") subject = claims.sub;
+  } catch { /* Invalid tokens are still rejected by the backend. */ }
+  const scope = encodeURIComponent(`${API_BASE_URL}:${subject}`);
+  const channelName = `${WORKSPACE_UPDATE_CHANNEL}:${scope}`;
+  const lockName = `${WORKSPACE_UPDATE_LOCK}:${scope}`;
+  const leaseKey = `${WORKSPACE_UPDATE_LEASE_KEY}:${scope}`;
+  const messageKey = `${WORKSPACE_UPDATE_MESSAGE_KEY}:${scope}`;
 
   const realtimeStates: RealtimeConnectionState[] = ["connecting", "live", "reconnecting", "offline"];
   const runtimeCrypto = globalThis.crypto as (Crypto & { randomUUID?: () => string }) | undefined;
@@ -351,7 +396,7 @@ export function subscribeToWorkspaceUpdates(
   let channel: BroadcastChannel | null = null;
 
   try {
-    if ("BroadcastChannel" in window) channel = new BroadcastChannel(WORKSPACE_UPDATE_CHANNEL);
+    if ("BroadcastChannel" in window) channel = new BroadcastChannel(channelName);
   } catch {
     channel = null;
   }
@@ -363,7 +408,7 @@ export function subscribeToWorkspaceUpdates(
       return;
     }
     try {
-      window.localStorage.setItem(WORKSPACE_UPDATE_MESSAGE_KEY, JSON.stringify({
+      window.localStorage.setItem(messageKey, JSON.stringify({
         ...message,
         nonce: `${message.sentAt}-${Math.random().toString(36).slice(2)}`,
       }));
@@ -374,7 +419,7 @@ export function subscribeToWorkspaceUpdates(
 
   const readLease = (): WorkspaceUpdateLease | null => {
     try {
-      const stored = window.localStorage.getItem(WORKSPACE_UPDATE_LEASE_KEY);
+      const stored = window.localStorage.getItem(leaseKey);
       if (!stored) return null;
       const candidate = JSON.parse(stored) as Partial<WorkspaceUpdateLease>;
       return typeof candidate.leaderId === "string" && typeof candidate.expiresAt === "number"
@@ -387,7 +432,7 @@ export function subscribeToWorkspaceUpdates(
 
   const writeLease = () => {
     try {
-      window.localStorage.setItem(WORKSPACE_UPDATE_LEASE_KEY, JSON.stringify({
+      window.localStorage.setItem(leaseKey, JSON.stringify({
         leaderId: tabId,
         expiresAt: Date.now() + WORKSPACE_UPDATE_LEASE_MS,
       } satisfies WorkspaceUpdateLease));
@@ -399,7 +444,7 @@ export function subscribeToWorkspaceUpdates(
 
   const releaseOwnedLease = () => {
     try {
-      if (readLease()?.leaderId === tabId) window.localStorage.removeItem(WORKSPACE_UPDATE_LEASE_KEY);
+      if (readLease()?.leaderId === tabId) window.localStorage.removeItem(leaseKey);
     } catch {
       // The lease expires automatically if storage becomes unavailable during cleanup.
     }
@@ -425,7 +470,7 @@ export function subscribeToWorkspaceUpdates(
   };
 
   const startLeading = () => {
-    if (stopped || leader) return;
+    if (stopped || leader || document.visibilityState !== "visible") return;
     leader = true;
     workspaceUpdateLeader = true;
     leaderState = "connecting";
@@ -464,9 +509,11 @@ export function subscribeToWorkspaceUpdates(
   };
 
   const acceptCoordinationMessage = (value: unknown) => {
-    if (!value || typeof value !== "object") return;
+    if (stopped || generation !== authSessionGeneration || !value || typeof value !== "object") return;
     const message = value as Partial<WorkspaceUpdateCoordinationMessage>;
     if (message.senderId === tabId || typeof message.senderId !== "string") return;
+    if (typeof message.sentAt !== "number" || !Number.isFinite(message.sentAt)
+        || Math.abs(Date.now() - message.sentAt) > WORKSPACE_UPDATE_LEASE_MS) return;
     if (message.type === "refresh") {
       onUpdate();
       return;
@@ -482,7 +529,7 @@ export function subscribeToWorkspaceUpdates(
   if (channel) channel.onmessage = (event: MessageEvent<unknown>) => acceptCoordinationMessage(event.data);
 
   const evaluateFallbackLeadership = () => {
-    if (stopped || !usingLeaseFallback) return;
+    if (stopped || !usingLeaseFallback || document.visibilityState !== "visible") return;
     const lease = readLease();
     if (leader) {
       if (lease && lease.leaderId !== tabId && lease.expiresAt > Date.now()) {
@@ -495,7 +542,7 @@ export function subscribeToWorkspaceUpdates(
     if (fallbackClaimTimer) return;
     fallbackClaimTimer = setTimeout(() => {
       fallbackClaimTimer = null;
-      if (stopped || leader) return;
+      if (stopped || leader || document.visibilityState !== "visible") return;
       const current = readLease();
       if (current && current.expiresAt > Date.now()) return;
       if (writeLease()) startLeading();
@@ -505,7 +552,7 @@ export function subscribeToWorkspaceUpdates(
   const startLeaseFallback = () => {
     if (stopped || usingLeaseFallback) return;
     try {
-      const probeKey = `${WORKSPACE_UPDATE_LEASE_KEY}.probe.${tabId}`;
+      const probeKey = `${leaseKey}.probe.${tabId}`;
       window.localStorage.setItem(probeKey, "1");
       window.localStorage.removeItem(probeKey);
     } catch {
@@ -520,12 +567,12 @@ export function subscribeToWorkspaceUpdates(
   };
 
   const handleStorage = (event: StorageEvent) => {
-    if (event.key === WORKSPACE_UPDATE_MESSAGE_KEY && event.newValue) {
+    if (event.key === messageKey && event.newValue) {
       try { acceptCoordinationMessage(JSON.parse(event.newValue)); }
       catch { /* Ignore malformed messages from unrelated or older clients. */ }
       return;
     }
-    if (event.key === WORKSPACE_UPDATE_LEASE_KEY && usingLeaseFallback) evaluateFallbackLeadership();
+    if (event.key === leaseKey && usingLeaseFallback) evaluateFallbackLeadership();
   };
   window.addEventListener("storage", handleStorage);
   onStateChange("connecting");
@@ -533,11 +580,14 @@ export function subscribeToWorkspaceUpdates(
   const lockManager = typeof navigator !== "undefined"
       ? (navigator as Navigator & { locks?: WorkspaceUpdateLockManager }).locks
       : undefined;
-  if (lockManager?.request) {
-    lockAbortController = new AbortController();
+  const requestWebLock = () => {
+    if (!lockManager?.request || stopped || lockAbortController || usingLeaseFallback
+        || document.visibilityState !== "visible") return;
+    const pendingController = new AbortController();
+    lockAbortController = pendingController;
     void lockManager.request(
-        WORKSPACE_UPDATE_LOCK,
-        { mode: "exclusive", signal: lockAbortController.signal },
+        lockName,
+        { mode: "exclusive", signal: pendingController.signal },
         async () => {
           if (stopped) return;
           startLeading();
@@ -548,14 +598,32 @@ export function subscribeToWorkspaceUpdates(
     ).catch((reason: unknown) => {
       if (stopped || (reason instanceof DOMException && reason.name === "AbortError")) return;
       startLeaseFallback();
+    }).finally(() => {
+      if (lockAbortController === pendingController) lockAbortController = null;
+      if (!stopped && !usingLeaseFallback && document.visibilityState === "visible") requestWebLock();
     });
-  } else {
-    startLeaseFallback();
-  }
+  };
+  const suspendLeadership = () => {
+    stopLeading(true);
+    lockAbortController?.abort();
+    releaseWebLock?.();
+  };
+  const handleVisibility = () => {
+    if (document.visibilityState !== "visible") { suspendLeadership(); return; }
+    onUpdate();
+    if (lockManager?.request) requestWebLock(); else { startLeaseFallback(); evaluateFallbackLeadership(); }
+  };
+  document.addEventListener("visibilitychange", handleVisibility);
+  window.addEventListener("pagehide", suspendLeadership);
+  window.addEventListener("pageshow", handleVisibility);
+  if (lockManager?.request) requestWebLock(); else startLeaseFallback();
 
   return () => {
     stopped = true;
     window.removeEventListener("storage", handleStorage);
+    document.removeEventListener("visibilitychange", handleVisibility);
+    window.removeEventListener("pagehide", suspendLeadership);
+    window.removeEventListener("pageshow", handleVisibility);
     lockAbortController?.abort();
     releaseWebLock?.();
     releaseWebLock = null;
@@ -569,7 +637,7 @@ export function subscribeToWorkspaceUpdates(
 
 export const authApi = {
 login(email: string, password: string) {
-    return apiRequest<{ accessToken: string; refreshToken: string; forcePasswordChange: boolean }>("/auth/login", {
+    return apiRequest<{ accessToken: string; refreshToken: string; forcePasswordChange: boolean; mfaRequired?: boolean; mfaEnrolled?: boolean }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });

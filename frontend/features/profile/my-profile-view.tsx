@@ -23,6 +23,7 @@ import {
 import { readDemoManagerAssignments } from "../../preview/manager-assignments";
 import { readDemoInternalNotifications, writeDemoInternalNotifications } from "../../preview/notifications";
 import { PageTitle } from "../../components/ui/page-title";
+import { SecurityPanel } from "../auth/components/security-panel";
 import { StatusPill } from "../../components/ui/status-pill";
 import { ROLE_AUTHORITY_BY_LABEL } from "../../config/roles";
 import { type Department, type Employee, type Role } from "../../types/workspace";
@@ -345,9 +346,9 @@ export function MyProfileView({ role, userEmail, departments, employees, staffAc
                         </form>}
             {closureRequests.filter((item) => !["REQUESTED", "BUSINESS_APPROVED", "PENDING_SYSTEM_ADMIN", "SCHEDULED"].includes(item.status)).slice(0, 3).map((item) => <div className="closure-history-row" key={item.id}><span><strong>{item.status.replaceAll("_", " ")}</strong><small>{item.decisionNote ?? item.reason}</small></span><time>{new Date(item.archivedAt ?? item.cancelledAt ?? item.requestedAt).toLocaleDateString("en-IN")}</time></div>)}
         </article>
+        <SecurityPanel />
         <article className="profile-security-note glass-panel"><Fingerprint size={21} /><span><strong>Private profile storage</strong><small>Profile pictures are virus-scanned and stored privately. Role identity stays locked; HR and Team Lead department changes only take effect after the required approval and an audited assignment decision.</small></span></article>
         {message && <div className="success-banner"><CheckCircle2 size={17} />{message}</div>}
         {error && <div className="login-error" role="alert">{error}</div>}
     </section>;
 }
-

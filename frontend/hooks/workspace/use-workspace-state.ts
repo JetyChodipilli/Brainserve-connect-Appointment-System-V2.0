@@ -60,6 +60,7 @@ export function useWorkspaceState({ role, userEmail, onLogout }: WorkspaceIdenti
         ? [] : readDemoManagerAssignments());
     const [metrics, setMetrics] = useState<DashboardMetrics>(() => isBackendConfigured ? {
         awaitingApproval: 0, activeVisits: 0, visitorsInside: 0, totalEmployees: 0, activeEmployees: 0, arrivedVisits: 0,
+        metricsLoadState: "loading", freshness: "UNKNOWN",
     } : {
         awaitingApproval: initialAppointments.filter((item) => ["Pending", "Awaiting Security", "Awaiting Reception", "Awaiting HR", "Awaiting Team Lead", "Awaiting Manager", "Awaiting CEO"].includes(item.status)).length,
         activeVisits: initialAppointments.filter((item) => ["Approved", "Checked in"].includes(item.status)).length,

@@ -24,11 +24,24 @@ public class RefreshTokenSession extends AuditableEntity {
     @Column(name = "replaced_by_hash", length = 64)
     private String replacedByHash;
 
+    @Column(name = "mfa_verified_at")
+    private Instant mfaVerifiedAt;
+    @Column(name = "session_started_at", nullable = false)
+    private Instant sessionStartedAt;
+
     protected RefreshTokenSession() {}
     public RefreshTokenSession(UUID userId, String tokenHash, UUID familyId, Instant expiresAt) {
+        this(userId, tokenHash, familyId, expiresAt, Instant.now(), null);
+    }
+    public RefreshTokenSession(UUID userId, String tokenHash, UUID familyId, Instant expiresAt,
+                               Instant sessionStartedAt, Instant mfaVerifiedAt) {
         this.userId = userId; this.tokenHash = tokenHash; this.familyId = familyId; this.expiresAt = expiresAt;
+        this.sessionStartedAt = sessionStartedAt; this.mfaVerifiedAt = mfaVerifiedAt;
     }
     public UUID getUserId() { return userId; }
+    public Instant getExpiresAt() { return expiresAt; }
+    public Instant getMfaVerifiedAt() { return mfaVerifiedAt; }
+    public Instant getSessionStartedAt() { return sessionStartedAt; }
     public UUID getFamilyId() { return familyId; }
     public boolean isUsable() { return revokedAt == null && expiresAt.isAfter(Instant.now()); }
     public boolean isRevoked() { return revokedAt != null; }

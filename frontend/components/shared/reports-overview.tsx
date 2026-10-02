@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { brainServeApi } from "../../services/brainserve-api";
+import { ApiError, brainServeApi } from "../../services/brainserve-api";
+import { DashboardFreshness } from "../../features/dashboard/dashboard-freshness-label";
 import styles from "./reports-overview.module.css";
 
 const colors = ["#8d0a20", "#c04763", "#496985", "#367563", "#92641f", "#73518b", "#63707d", "#ba7154"];
@@ -27,9 +28,15 @@ export default function ReportsOverview({ role, refreshKey }: { role: string; re
                 if (!active) return;
                 const errors: string[] = [];
                 if (totals.status === "fulfilled") setSummary(totals.value);
-                else errors.push("Report totals could not be refreshed.");
+                else {
+                    if (totals.reason instanceof ApiError && [401, 403].includes(totals.reason.status)) setSummary(null);
+                    errors.push("Report totals could not be refreshed.");
+                }
                 if (mix.status === "fulfilled") setTypes(mix.value);
-                else errors.push("Visit mix could not be refreshed.");
+                else {
+                    if (mix.reason instanceof ApiError && [401, 403].includes(mix.reason.status)) setTypes(null);
+                    errors.push("Visit mix could not be refreshed.");
+                }
                 setError(errors.join(" "));
                 setLoading(false);
             });
@@ -61,6 +68,7 @@ export default function ReportsOverview({ role, refreshKey }: { role: string; re
         {loading && <p role="status">Loading report metrics…</p>}
         {error && <p role="alert">{error} {summary || types ? "Last loaded values are retained for the applied range." : "Retry to load your report."}</p>}
         <p>Applied range: {range.from} through {range.to}{summary?.generatedAt ? ` · Totals generated ${new Date(summary.generatedAt).toLocaleTimeString()}` : ""}</p>
+        <DashboardFreshness summary={{ ...summary, metricsLoadState: loading ? "loading" : error ? "error" : "ready" }} />
         <div className={styles.metrics}>{cards.map(([label, value]) => <article className="panel glass-panel" key={label}>
             <span>{label}</span><strong>{typeof value === "number" ? value.toLocaleString() : "—"}</strong>
         </article>)}</div>
@@ -82,4 +90,3 @@ export default function ReportsOverview({ role, refreshKey }: { role: string; re
         </article>
     </section>;
 }
-

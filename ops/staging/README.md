@@ -26,6 +26,12 @@ a replacement secret file during upgrade or rollback.
 The staging override disables bootstrap accounts, uses same-origin `/api/v1`, and
 adds HTTPS on loopback port 8443. Caddy uses an internal CA by default: trust its
 root certificate on authorized clients. Infrastructure ports remain loopback.
+The network defaults to `172.29.91.0/24`; automatic container addresses come from
+`172.29.91.128/25`, leaving the proxy's fixed `172.29.91.10` outside that pool.
+If those addresses conflict with the host network, set `STAGING_SUBNET`,
+`STAGING_DYNAMIC_SUBNET`, and `STAGING_PROXY_IP` together. Keep the dynamic range
+inside the subnet and the proxy address inside the subnet but outside the dynamic
+range. The backend trusts only that exact proxy address for forwarded headers.
 For remote staging, explicitly bind `STAGING_BIND_IP` to the intended interface,
 configure firewall/access controls and DNS, and use an organization-approved
 certificate. `STAGING_TLS` may name the certificate/key directive; mount the files
@@ -96,8 +102,10 @@ RPO/RTO remain unmeasured until a representative full restore is timed.
 
 1. Record the running verified commit and image IDs/digests for both applications,
    environment configuration, Flyway versions/checksums, and backup identifiers.
-2. Check migration compatibility. V50 is additive and retains the legacy columns
-   and refresh behavior; do not edit V1–V49 or use `flyway repair` to hide drift.
+2. Check migration compatibility. V51 adds MFA/session storage and V52 adds
+   reporting revisions and wraps existing refresh functions. Preserve V1–V50
+   checksums; do not use `flyway repair` to hide drift. Read `docs/SPRINT_2.md`
+   for MFA enrollment, encryption-key continuity and the exact trusted proxy.
 3. Verify the new release in an isolated restore before changing a persistent host.
 4. Build the new commit-tagged images, preserve the previous verified images, and
    run the same Compose `up --no-build --wait` with the new `RELEASE_ID`.

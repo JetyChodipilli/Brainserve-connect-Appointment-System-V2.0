@@ -6,6 +6,7 @@ import com.brainserve.appointment.iam.domain.UserAccount;
 import com.brainserve.appointment.iam.api.EmailService;
 import com.brainserve.appointment.iam.infrastructure.RefreshTokenSessionRepository;
 import com.brainserve.appointment.iam.infrastructure.UserAccountRepository;
+import com.brainserve.appointment.iam.infrastructure.MfaCredentialRepository;
 import com.brainserve.appointment.shared.application.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -38,6 +39,8 @@ public class AuthenticationService {
     private final EmailService emailService;
     private final StringRedisTemplate redis;
     private final AuthenticationSecurityStateWriter securityState;
+    private final MfaCredentialRepository mfaCredentials;
+    private final PrivilegedSecurityPolicy mfaPolicy;
     private final long refreshTokenDays;
     private final long passwordChangeOtpMinutes;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -46,12 +49,14 @@ public class AuthenticationService {
                                  PasswordEncoder passwordEncoder, JwtService jwtService,
                                  CompanyEmailPolicy emailPolicy, EmailService emailService, StringRedisTemplate redis,
                                  AuthenticationSecurityStateWriter securityState,
+                                 MfaCredentialRepository mfaCredentials, PrivilegedSecurityPolicy mfaPolicy,
                                  @Value("${brainserve.security.refresh-token-days}") long refreshTokenDays,
                                  @Value("${brainserve.security.password-change-otp-minutes:10}") long passwordChangeOtpMinutes) {
         this.users = users; this.sessions = sessions; this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService; this.emailPolicy = emailPolicy; this.emailService = emailService;
         this.redis = redis; this.securityState = securityState; this.refreshTokenDays = refreshTokenDays;
         this.passwordChangeOtpMinutes = passwordChangeOtpMinutes;
+        this.mfaCredentials = mfaCredentials; this.mfaPolicy = mfaPolicy;
     }
 
     @Transactional
@@ -94,8 +99,11 @@ public class AuthenticationService {
         if (rotation != AuthenticationSecurityStateWriter.RefreshRotation.ROTATED) {
             throw invalidRefreshToken();
         }
-        JwtService.AccessToken access = jwtService.issue(user);
-        return new TokenPair(access.value(), access.expiresAt(), nextToken, user.isForcePasswordChange());
+        boolean enrolled = mfaCredentials.existsByUserIdAndEnrolledAtIsNotNull(user.getId());
+        boolean required = mfaPolicy.required(user, enrolled);
+        JwtService.AccessToken access = jwtService.issue(user, current.getFamilyId(), current.getMfaVerifiedAt(), required, enrolled);
+        return new TokenPair(access.value(), access.expiresAt(), nextToken, user.isForcePasswordChange(),
+                required && current.getMfaVerifiedAt() == null, enrolled);
     }
 
     public void logout(String refreshToken) {
@@ -103,7 +111,7 @@ public class AuthenticationService {
     }
 
     @Transactional
-    public void logoutAll(UUID userId) { sessions.revokeAllForUser(userId, Instant.now()); }
+    public void logoutAll(UUID userId) { securityState.revokeAllUserSessions(userId); }
 
     public void requestPasswordChangeOtp(UUID userId, String currentPassword) {
         UserAccount user = users.findById(userId)
@@ -151,11 +159,37 @@ public class AuthenticationService {
     }
 
     private TokenPair createPair(UserAccount user, UUID familyId) {
-        JwtService.AccessToken access = jwtService.issue(user);
+        boolean enrolled = mfaCredentials.existsByUserIdAndEnrolledAtIsNotNull(user.getId());
+        boolean required = mfaPolicy.required(user, enrolled);
+        JwtService.AccessToken access = jwtService.issue(user, familyId, null, required, enrolled);
+        String refresh = randomToken();
+        Instant expiry = required && !user.isForcePasswordChange()
+                ? Instant.now().plus(PrivilegedSecurityPolicy.CHALLENGE_LIFETIME)
+                : Instant.now().plus(refreshTokenDays, ChronoUnit.DAYS);
+        sessions.save(new RefreshTokenSession(user.getId(), hash(refresh), familyId, expiry));
+        return new TokenPair(access.value(), access.expiresAt(), refresh, user.isForcePasswordChange(), required, enrolled);
+    }
+
+    /** Called under the owner lock after the authenticator proof has been consumed. */
+    TokenPair completeMfa(UserAccount user, RefreshTokenSession current, Instant verifiedAt) {
+        String refresh = randomToken();
+        String nextHash = hash(refresh);
+        current.rotateTo(nextHash);
+        sessions.save(new RefreshTokenSession(user.getId(), nextHash, current.getFamilyId(),
+                Instant.now().plus(refreshTokenDays, ChronoUnit.DAYS), current.getSessionStartedAt(), verifiedAt));
+        JwtService.AccessToken access = jwtService.issue(user, current.getFamilyId(), verifiedAt, true, true);
+        return new TokenPair(access.value(), access.expiresAt(), refresh, user.isForcePasswordChange(), false, true);
+    }
+
+    /** Replacing an authenticator invalidates every old proof and session, including this browser's old JWT. */
+    TokenPair replaceMfa(UserAccount user, Instant verifiedAt) {
+        sessions.revokeAllForUser(user.getId(), Instant.now());
+        UUID familyId = UUID.randomUUID();
         String refresh = randomToken();
         sessions.save(new RefreshTokenSession(user.getId(), hash(refresh), familyId,
-                Instant.now().plus(refreshTokenDays, ChronoUnit.DAYS)));
-        return new TokenPair(access.value(), access.expiresAt(), refresh, user.isForcePasswordChange());
+                Instant.now().plus(refreshTokenDays, ChronoUnit.DAYS), Instant.now(), verifiedAt));
+        JwtService.AccessToken access = jwtService.issue(user, familyId, verifiedAt, true, true);
+        return new TokenPair(access.value(), access.expiresAt(), refresh, user.isForcePasswordChange(), false, true);
     }
 
     private String randomToken() {
@@ -205,5 +239,6 @@ public class AuthenticationService {
         }
     }
 
-    public record TokenPair(String accessToken, Instant accessTokenExpiresAt, String refreshToken, boolean forcePasswordChange) {}
+    public record TokenPair(String accessToken, Instant accessTokenExpiresAt, String refreshToken,
+                            boolean forcePasswordChange, boolean mfaRequired, boolean mfaEnrolled) {}
 }

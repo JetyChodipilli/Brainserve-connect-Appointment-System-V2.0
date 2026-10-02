@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -21,9 +22,26 @@ public class OperationalSummaryRefreshService {
     }
 
     @Scheduled(fixedDelayString = "${brainserve.reporting.summary-refresh-ms:60000}", initialDelayString = "15000")
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void refreshCurrentSummary() {
         LocalDate today = LocalDate.now(officeZone);
+        refreshDay(today);
+        refreshMonth(today);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void refreshCommittedChanges() {
+        LocalDate today = LocalDate.now(officeZone);
+        Long generation = jdbc.queryForObject("select generation from reporting_source_revision where singleton for update", Long.class);
+        Boolean current = jdbc.queryForObject("""
+                select exists(select 1 from daily_operational_summary
+                               where summary_date = ? and scope_key = 'GLOBAL' and source_generation = ?)
+                   and exists(select 1 from monthly_operational_summary
+                               where summary_month = ? and scope_key = 'GLOBAL' and source_generation = ?)
+                """, Boolean.class, today, generation, today.withDayOfMonth(1), generation);
+        // A transaction may publish multiple audit events. The first listener
+        // refreshes its committed revision; later events reuse that same refresh.
+        if (Boolean.TRUE.equals(current)) return;
         refreshDay(today);
         refreshMonth(today);
     }

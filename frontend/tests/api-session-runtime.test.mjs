@@ -49,6 +49,7 @@ for (const status of [200, 401]) {
     test(`a delayed ${status} response body cannot reach a newer session`, async (t) => {
         const api = await client(), body = deferred(), started = deferred();
         t.mock.method(globalThis, "fetch", () => Promise.resolve({ status, ok: status === 200,
+            clone: () => ({ json: () => { started.resolve(); return body.promise; } }),
             headers: new Headers({ "Content-Type": "application/json" }),
             json: () => { started.resolve(); return body.promise; } }));
         api.setAuthTokens("account-a", "refresh-a");
@@ -111,4 +112,20 @@ test("mutations are not coalesced and a 429 response is not automatically replay
         api.apiRequest("/work-tasks", { method: "POST" })]);
     assert.equal(calls, 2);
     assert.ok(results.every((result) => result.status === "rejected" && result.reason.status === 429));
+});
+
+test("changed account authority ends the workspace without silently changing role", async (t) => {
+    const api = await client(); let calls = 0;
+    t.mock.method(globalThis, "fetch", () => { calls++; return Promise.resolve(json({ errorCode: "ACCOUNT_AUTHORITY_CHANGED" }, 401)); });
+    api.setAuthTokens("account-a", "refresh-a");
+    await assert.rejects(api.apiRequest("/employees"), (error) => error.status === 401);
+    assert.equal(calls, 1); assert.equal(api.hasAuthSession(), false);
+});
+
+test("fresh MFA rejection preserves credentials and points to account security", async (t) => {
+    const api = await client();
+    t.mock.method(globalThis, "fetch", () => Promise.resolve(json({ errorCode: "MFA_STEP_UP_REQUIRED" }, 403)));
+    api.setAuthTokens("account-a", "refresh-a");
+    await assert.rejects(api.apiRequest("/report-exports", { method: "POST" }), /My profile/);
+    assert.equal(api.hasAuthSession(), true);
 });
