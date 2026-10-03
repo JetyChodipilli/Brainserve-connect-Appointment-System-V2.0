@@ -17,7 +17,7 @@ async function fixture(page: Page, role = "EMPLOYEE") {
     const profile = { userId: "employee-user", employeeId, email: "employee@brainserve.in", roles: [`ROLE_${role}`], permissions: [], forcePasswordChange: false };
     const state = { profile, items: Array.from({ length: 43 }, (_, index) => task(index)), reads: [] as URLSearchParams[], actions: [] as { endpoint: string; body: Record<string, unknown> }[],
         preferences: { revision: 0, layout: "LIST", density: "COMPACT", savedFilters: [] } as WorkboardPreferences, preferenceWrites: [] as Record<string, unknown>[], prefConflict: false,
-        planning, uploads: () => uploads, uploadFailure: 'SCANNER_UNAVAILABLE', planningConflict: false, planningDenied: false, conflict: false, denyPage: false, workspaceStatus: 200, detailStatus: 200, deferredPage: null as Route | null, deferredDetail: null as Route | null, lateDetailId: "", lateQuery: "", serial: 0 };
+        planning, uploads: () => uploads, uploadFailure: 'SCANNER_UNAVAILABLE', planningConflict: false, planningDenied: false, planningStatus: 200, downloadStatus: 200, mutationStatus: 200, conflict: false, denyPage: false, workspaceStatus: 200, detailStatus: 200, deferredPage: null as Route | null, deferredDetail: null as Route | null, lateDetailId: "", lateQuery: "", serial: 0 };
     await page.addInitScript(() => { sessionStorage.setItem("brainserve.connect.access-token", "sprint5-access"); sessionStorage.setItem("brainserve.connect.refresh-token", "sprint5-refresh"); });
     const paged = (content: unknown[]) => ({ content, number: 0, size: 50, totalElements: content.length, totalPages: 1, last: true });
     const pageData = (params: URLSearchParams) => {
@@ -34,6 +34,9 @@ async function fixture(page: Page, role = "EMPLOYEE") {
     await page.route("http://backend.invalid/api/v1/**", async (route) => {
         const url = new URL(route.request().url()), endpoint = url.pathname.replace("/api/v1", ""), method = route.request().method();
         if (endpoint.startsWith('/work-tasks/task-000/')) {
+            if (state.planningStatus !== 200) return route.fulfill({ status: state.planningStatus, json: { detail: 'Task scope removed' } });
+            if (endpoint.endsWith('/download') && state.downloadStatus !== 200) return route.fulfill({ status: state.downloadStatus, json: { detail: 'Evidence scope removed' } });
+            if (method !== 'GET' && state.mutationStatus !== 200) return route.fulfill({ status: state.mutationStatus, json: { detail: 'Task scope removed' } });
             if (state.planningDenied) return route.fulfill({ status: 403, json: { detail: 'Planning permission removed' } });
             if (endpoint.endsWith('/download')) return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.7 synthetic private evidence' });
             if (method !== 'GET') {
@@ -148,4 +151,30 @@ test('blockers preserve deadline and denied reload removes controls; close retai
     const { state } = await fixture(page, 'TEAM_LEAD'); await planningTab(page); await drawer(page).getByRole('button', { name: 'Raise blocker' }).click(); const form = page.getByRole('dialog', { name: 'Raise blocker', exact: true });
     await form.getByRole('textbox', { name: 'Reason', exact: true }).fill('Awaiting signed specification'); await form.getByRole('button', { name: 'Close planning form' }).click(); await page.getByRole('button', { name: 'Keep editing planning' }).click(); await expect(form.getByRole('textbox', { name: 'Reason', exact: true })).toHaveValue('Awaiting signed specification'); await form.getByRole('button', { name: 'Save planning change' }).click();
     await expect(drawer(page).getByText('Awaiting signed specification', { exact: true })).toBeVisible(); expect(state.planning.dueDate).toBe('2099-12-31'); state.planningDenied = true; await drawer(page).getByRole('button', { name: 'Reload planning' }).click(); await expect(drawer(page).getByRole('alert')).toContainText('permission removed'); await expect(drawer(page).getByRole('button', { name: 'Resolve blocker' })).toHaveCount(0);
+});
+
+for (const status of [403, 404]) test(`denied evidence download ${status} clears retained content and selected file`, async ({ page }) => {
+    const { state } = await fixture(page); await planningTab(page);
+    await drawer(page).getByText('Version 1 · Accepted by Team Lead', { exact: true }).click();
+    await drawer(page).getByLabel('Evidence file (JPEG, PNG or PDF)').setInputFiles({ name: 'private-selected.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic') });
+    state.downloadStatus = status;
+    await drawer(page).getByRole('button', { name: 'Download accepted.pdf' }).click();
+    await expect(drawer(page).getByRole('alert')).toContainText('scope removed');
+    await expect(drawer(page).getByText('accepted.pdf', { exact: true })).toHaveCount(0);
+    await expect(drawer(page).getByText('Selected: private-selected.pdf · not uploaded')).toHaveCount(0);
+    await expect(drawer(page).getByRole('button', { name: 'Scan & upload evidence' })).toHaveCount(0);
+});
+for (const operation of ['mutation', 'reload']) test(`scope denial during requirements ${operation} clears form and notes`, async ({ page }) => {
+    const { state } = await fixture(page, 'TEAM_LEAD'); await planningTab(page);
+    await drawer(page).getByRole('button', { name: 'Edit requirements & deadline' }).click();
+    const form = page.getByRole('dialog', { name: 'Requirements & deadline' });
+    await form.getByRole('textbox', { name: 'Reason', exact: true }).fill('Private unsaved commitment reason');
+    if (operation === 'mutation') { state.mutationStatus = 404; await form.getByRole('button', { name: 'Save planning change' }).click(); }
+    else { state.planningConflict = true; await form.getByRole('button', { name: 'Save planning change' }).click(); await expect(form.getByRole('alert')).toContainText('Planning changed'); state.planningStatus = 404; await form.getByRole('button', { name: 'Reload planning and retain notes' }).click(); }
+    await expect(form).toHaveCount(0); await expect(drawer(page).getByRole('alert')).toContainText('scope removed');
+    await expect(drawer(page).getByRole('button', { name: 'Edit requirements & deadline' })).toHaveCount(0);
+    state.mutationStatus = 200; state.planningStatus = 200; state.planningConflict = false;
+    await drawer(page).getByRole('button', { name: 'Reload planning' }).click();
+    await drawer(page).getByRole('button', { name: 'Edit requirements & deadline' }).click();
+    await expect(form.getByRole('textbox', { name: 'Reason', exact: true })).toHaveValue('');
 });

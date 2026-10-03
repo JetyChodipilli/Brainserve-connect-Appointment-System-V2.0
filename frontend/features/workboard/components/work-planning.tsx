@@ -24,6 +24,8 @@ export function WorkPlanningPanel({ task, onChanged }: { task: WorkboardItem; on
     const serial = useRef(0);
     const current = useRef<WorkPlanning | null>(null);
     const initialDraft = useRef('');
+    const deniedScope = (cause: unknown) => cause instanceof ApiError && [401, 403, 404].includes(cause.status);
+    const clearScoped = () => { current.current = null; initialDraft.current = ''; setPlanning(null); setDraft(null); setDialog(null); setFile(null); setReason(''); setContact(''); setCompleted([]); setConfirmClose(false); setConflict(false); setSaved(''); };
     const accept = (value: WorkPlanning) => { current.current = value; setPlanning(value); setCompleted(value.checklist.filter(item => item.completed).map(item => item.id)); };
     const reload = async () => {
         const request = ++serial.current;
@@ -33,12 +35,12 @@ export function WorkPlanningPanel({ task, onChanged }: { task: WorkboardItem; on
             if (!isBackendConfigured) { accept(current.current ?? { taskId: task.id, taskVersion: task.version, priority: task.priority ?? 'NORMAL', originalDueDate: task.dueDate, originalDueDateKnown: false, dueDate: task.dueDate, estimateMinutes: null, evidenceRequired: false, checklist: [], blockers: [], evidence: [], submissions: [], contactOptions: [], permissions: { manage: false, progress: false, blocker: false, resolveBlocker: false, upload: false } }); return; }
             const value = await workboardApi.planning(task.id, controller.current.signal);
             if (alive.current && request === serial.current) { accept(value); setConflict(false); }
-        } catch (cause) { if (alive.current && request === serial.current) { setPlanning(null); current.current = null; setError(cause instanceof Error ? cause.message : 'Planning is unavailable.'); } }
+        } catch (cause) { if (alive.current && request === serial.current) { if (deniedScope(cause)) clearScoped(); else { setPlanning(null); current.current = null; } setError(cause instanceof Error ? cause.message : 'Planning is unavailable.'); } }
         finally { if (alive.current && request === serial.current) setBusy(false); }
     };
     useEffect(() => {
         alive.current = true; const start = setTimeout(() => { if (alive.current) void reload(); }, 0);
-        const changed = () => { alive.current = false; serial.current++; controller.current?.abort(); current.current = null; setPlanning(null); setDraft(null); setFile(null); setDialog(null); setError('Session changed. Reopen this worksheet in the current workspace.'); };
+        const changed = () => { alive.current = false; serial.current++; controller.current?.abort(); clearScoped(); setError('Session changed. Reopen this worksheet in the current workspace.'); };
         window.addEventListener('brainserve:auth-session-changed', changed);
         return () => { clearTimeout(start); alive.current = false; controller.current?.abort(); window.removeEventListener('brainserve:auth-session-changed', changed); };
         // Each drawer is keyed to task identity. Version updates explicitly reload current planning.
@@ -56,7 +58,7 @@ export function WorkPlanningPanel({ task, onChanged }: { task: WorkboardItem; on
         const generation = ++serial.current; controller.current?.abort(); const abort = new AbortController(); controller.current = abort;
         setBusy(true); setError(''); setSaved('');
         try { const value = await request(current.current, abort.signal); if (!alive.current || generation !== serial.current) return; accept(value); setFile(null); setSaved('Saved to this worksheet.'); if (close) { setDialog(null); setDraft(null); setReason(''); } onChanged(); }
-        catch (cause) { if (!alive.current || generation !== serial.current) return; const denied = cause instanceof ApiError && [401, 403].includes(cause.status); if (denied) { current.current = null; setPlanning(null); } setConflict(cause instanceof ApiError && cause.status === 409); setError(cause instanceof Error ? cause.message : 'Change was not confirmed. Reload current data before retrying.'); }
+        catch (cause) { if (!alive.current || generation !== serial.current) return; if (deniedScope(cause)) clearScoped(); setConflict(cause instanceof ApiError && cause.status === 409); setError(cause instanceof Error ? cause.message : 'Change was not confirmed. Reload current data before retrying.'); }
         finally { if (alive.current && generation === serial.current) setBusy(false); }
     };
     const open = (kind: NonNullable<typeof dialog>) => {
@@ -67,7 +69,7 @@ export function WorkPlanningPanel({ task, onChanged }: { task: WorkboardItem; on
     const download = async (evidence: WorkEvidence) => {
         const generation = ++serial.current; controller.current?.abort(); const abort = new AbortController(); controller.current = abort; setBusy(true); setError('');
         try { const blob = await workboardApi.downloadEvidence(task.id, evidence.id, abort.signal); if (!alive.current || generation !== serial.current) return; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = evidence.filename.replace(/[\\/\x00-\x1f]/g, '_'); anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-        catch (cause) { if (alive.current && generation === serial.current) setError(cause instanceof Error ? cause.message : 'Download is unavailable.'); }
+        catch (cause) { if (alive.current && generation === serial.current) { if (deniedScope(cause)) clearScoped(); setError(cause instanceof Error ? cause.message : 'Download is unavailable.'); } }
         finally { if (alive.current && generation === serial.current) setBusy(false); }
     };
     const evidenceList = (items: WorkEvidence[], draftList = false) => <ul className="work-evidence-list">{items.map(item => <li key={item.id}><div><strong>{item.filename}</strong><small>{Math.ceil(item.sizeBytes / 1024)} KB · {item.contentType}</small><details><summary>File integrity</summary><small>SHA-256: {item.sha256}</small></details></div><button type="button" className="button button-secondary" disabled={busy} onClick={() => void download(item)}>Download {item.filename}</button>{draftList && planning?.permissions.upload && <button type="button" className="button button-secondary" disabled={busy || conflict} onClick={() => void mutate((value, signal) => workboardApi.removeEvidence(task.id, item.id, value.taskVersion, signal))}>Remove draft {item.filename}</button>}</li>)}</ul>;

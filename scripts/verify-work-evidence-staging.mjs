@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { embeddedTestPdf } from './fixtures/work-evidence-pdf.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -89,8 +90,8 @@ let downloaded = await call(employeePerson, `${taskPath}/evidence/${evidence.id}
 assert.deepEqual(downloaded.bytes, safe); assert.equal(downloaded.headers['cache-control'], 'no-store');
 assert.equal(downloaded.headers['x-content-type-options'], 'nosniff'); assert.match(downloaded.headers['content-disposition'], /^attachment;/);
 await call(otherPerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, 404);
-// Put the standard antivirus test signature inside a matching PDF transport.
-const eicar = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'), Buffer.from('\n%%EOF\n')]);
+// Embed the canonical antivirus test file as an actual, uncompressed PDF attachment.
+const eicar = embeddedTestPdf(Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'));
 await call(employeePerson, `${taskPath}/evidence`, 'POST', upload(eicar, 'antivirus-test.pdf', 'application/pdf'), 422);
 assert.equal((await call(employeePerson, `${taskPath}/planning`)).json.evidence.length, 1);
 docker(['stop', 'clamav']);
