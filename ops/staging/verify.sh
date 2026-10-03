@@ -4,6 +4,8 @@ set -euo pipefail
 # be disposable: this drills a restore by moving only this stack's backend.
 : "${RELEASE_ID:?Set RELEASE_ID to the checked-out commit}"
 : "${STAGING_DOMAIN:=localhost}"
+[ "${BRAINSERVE_DISPOSABLE_STACK:-}" = 1 ] || { echo "Explicit disposable-stack opt-in required" >&2; exit 1; }
+[ "${STAGING_DOMAIN}" = localhost ] || { echo "Disposable rehearsal requires localhost" >&2; exit 1; }
 export STAGING_DOMAIN
 compose=(docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack)
 evidence="${STAGING_EVIDENCE_DIR:-/tmp/brainserve-staging-evidence}"
