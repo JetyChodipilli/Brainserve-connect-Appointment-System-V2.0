@@ -194,6 +194,16 @@ class Sprint4PostgresIntegrationTest {
         String status=jdbc.queryForObject("select status from appointment where id=?",String.class,result.rows().getFirst().recordId());assertThat(status).startsWith("PENDING_").isNotIn("APPROVED","CHECKED_IN","COMPLETED");
         assertThat(count("select count(*) from visit_access_record where appointment_id=?",result.rows().getFirst().recordId())).isZero();
     }
+    @Test void invalidVisitorPolicyRowDoesNotRollBackOtherPreviewRows() {
+        String good=visitorCsv("valid-policy");String bad=visitorCsv("invalid-policy");
+        String[] values=bad.substring(bad.indexOf('\n')+1).split(",",-1);
+        values[9]=Instant.parse(values[8]).plusSeconds(1020).toString();
+        var job=imports.preview(RECEPTION,ImportKind.VISITORS,DuplicatePolicy.FAIL,good+"\n"+String.join(",",values));
+        assertThat(job.totalRows()).isEqualTo(2);assertThat(job.failed()).isEqualTo(1);
+        assertThat(job.rows().getFirst().status()).isEqualTo("VALID");
+        assertThat(job.rows().getLast().errors()).isNotEmpty();
+        assertThat(count("select count(*) from appointment where visitor_email in ('valid-policy@sprint4.test','invalid-policy@sprint4.test')")).isZero();
+    }
     @Test void policyOrHostChangesAfterVisitorPreviewFailTheRow() {
         var policy=imports.preview(RECEPTION,ImportKind.VISITORS,DuplicatePolicy.FAIL,visitorCsv("policy"));jdbc.update("update system_setting set version=version+1 where setting_key='APPOINTMENT.MIN_LEAD_MINUTES'");
         assertThat(imports.execute(RECEPTION,policy.id(),policy.checksum(),"visitor-policy-changed").failed()).isEqualTo(1);

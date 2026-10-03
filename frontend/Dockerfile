@@ -1,6 +1,7 @@
 FROM node:22.14-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci
 
 FROM dependencies AS build
@@ -23,6 +24,7 @@ RUN addgroup -S brainserve && adduser -S -G brainserve brainserve \
     && mkdir -p /app/.wrangler && chown brainserve:brainserve /app/.wrangler
 COPY --chown=brainserve:brainserve --from=build /app/package.json /app/package-lock.json ./
 COPY --chown=brainserve:brainserve --from=production-dependencies /app/node_modules ./node_modules
+COPY --chown=brainserve:brainserve --from=production-dependencies /app/vendor ./vendor
 COPY --chown=brainserve:brainserve --from=build /app/dist ./dist
 COPY --chown=brainserve:brainserve --from=build /app/.openai ./.openai
 COPY --chown=brainserve:brainserve --from=build /app/vite.config.ts ./vite.config.ts

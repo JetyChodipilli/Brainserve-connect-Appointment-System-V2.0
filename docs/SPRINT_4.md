@@ -103,3 +103,9 @@ features remain in their scheduled sprints.
 The new screens use existing fonts, tokens and feature boundaries. Kiranism's
 dashboard page/form/table organization is adapted to this application's stack;
 no parallel identity provider, fetching framework or theme is introduced.
+
+CI also detected CVE-2026-93687 in the existing transitive `braces` dependency.
+Until an upstream fixed release is available, a private MIT source copy applies
+the reviewed depth guard, with installation-resolution and exploit regressions.
+See [the patch provenance and removal criteria](../frontend/vendor/braces/README.md).
+The normal npm audit threshold remains in force.

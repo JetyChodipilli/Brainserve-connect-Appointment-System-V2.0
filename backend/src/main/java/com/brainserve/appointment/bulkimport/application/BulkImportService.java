@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -29,11 +30,15 @@ public class BulkImportService {
     public static final String ROLLBACK_NOTICE="Each applied row is committed independently. Employee profiles have no login credentials; invitations remain separate. Visitor registrations retain their normal approval stages and may send downstream notifications. Applied records are not automatically deleted or undone; use the existing governed correction/cancellation workflows.";
     private final JdbcTemplate jdbc; private final ObjectMapper json; private final CurrentAccountAuthority authority;
     private final DepartmentCommands departments; private final EmployeeProfileImport employees; private final VisitorImport visitors;
-    private final AuditService audit; private final TransactionTemplate transactions;
+    private final AuditService audit; private final TransactionTemplate transactions; private final TransactionTemplate validationTransactions;
     public BulkImportService(JdbcTemplate jdbc,ObjectMapper json,CurrentAccountAuthority authority,DepartmentCommands departments,
                              EmployeeProfileImport employees,VisitorImport visitors,AuditService audit,PlatformTransactionManager manager) {
         this.jdbc=jdbc;this.json=json;this.authority=authority;this.departments=departments;this.employees=employees;this.visitors=visitors;this.audit=audit;this.transactions=new TransactionTemplate(manager);
         this.transactions.setTimeout(30);
+        this.validationTransactions=new TransactionTemplate(manager);
+        this.validationTransactions.setReadOnly(true);
+        this.validationTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.validationTransactions.setTimeout(30);
     }
     public Options options(UUID actor) {var a=authority.requireActive(actor);return new Options(Arrays.stream(ImportKind.values()).filter(k->allowed(a,k)).toList(),ImportCsv.MAX_ROWS,ImportCsv.MAX_BYTES,List.of("SKIP","FAIL"));}
     public Template template(UUID actor,ImportKind kind) {require(actor,kind);List<String> c=COLUMNS.get(kind);return new Template(kind,kind.name().toLowerCase(Locale.ROOT)+"-template.csv",String.join(",",c)+"\r\n",c);}
@@ -48,7 +53,9 @@ public class BulkImportService {
             int number=1;
             for(Map<String,String> values:parsed) {
                 number++;List<String> errors=new ArrayList<>();Map<String,String> refs=new TreeMap<>();String status="VALID";
-                try { validate(actor,kind,values);refs=references(kind,values,false);
+                // Expected row rejection must not mark the durable preview transaction rollback-only.
+                // Existing transactional validators run in an isolated read-only transaction.
+                try { refs=validationTransactions.execute(validation->{validate(actor,kind,values);return references(kind,values,false);});
                     String identity=identity(kind,values);
                     if(!seen.add(identity)||duplicate(kind,values)) {status=policy==DuplicatePolicy.SKIP?"SKIPPED":"FAILED";errors.add("Matching identity already exists; create-only import will not overwrite it");}
                 } catch(BusinessException e) {status="FAILED";errors.add(e.getMessage());}
