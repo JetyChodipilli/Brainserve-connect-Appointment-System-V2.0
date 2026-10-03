@@ -1,0 +1,12 @@
+export type ImportKind = "DEPARTMENTS" | "EMPLOYEES" | "VISITORS";
+export type DuplicatePolicy = "SKIP" | "FAIL";
+export type SetupStep = { id: string; title: string; complete: boolean; issues: string[]; settingKeys: string[] };
+export type SetupState = { policyVersion: string; revision: number; status: "IN_PROGRESS" | "COMPLETE";
+    currentStep: string; completedAt: string | null; officeZone: string; steps: SetupStep[] };
+export type ImportOptions = { allowedKinds: ImportKind[]; maxRows: number; maxBytes: number; duplicatePolicies: DuplicatePolicy[] };
+export type ImportRow = { rowNumber: number; status: "VALID" | "APPLIED" | "SKIPPED" | "FAILED";
+    values: Record<string, string>; errors: string[]; recordId: string | null };
+export type ImportJob = { id: string; kind: ImportKind; duplicatePolicy: DuplicatePolicy;
+    status: "PREVIEW" | "QUEUED" | "RUNNING" | "COMPLETED" | "EXPIRED"; checksum: string;
+    createdAt: string; expiresAt: string; totalRows: number; applied: number; skipped: number; failed: number;
+    rows: ImportRow[]; rollbackNotice: string };

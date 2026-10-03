@@ -65,7 +65,7 @@ public class AuthenticatedRequestLimitFilter extends OncePerRequestFilter {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         String method = request.getMethod();
         if ("POST".equals(method)) {
-            if (path.equals("/api/v1/documents") || path.equals("/api/v1/profile/me/photo")) return new Rule("upload", uploads);
+            if (path.equals("/api/v1/documents") || path.equals("/api/v1/profile/me/photo") || path.equals("/api/v1/bulk-imports/preview")) return new Rule("upload", uploads);
             if (path.equals("/api/v1/report-exports") || path.matches("/api/v1/report-exports/[^/]+/retry"))
                 return new Rule("export-job", exportJobs);
         }

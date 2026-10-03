@@ -15,6 +15,7 @@ import { readDemoAccounts } from "../../preview/accounts";
 import { readDemoDepartmentHrAssignments, readDemoTeamLeadAssignments } from "../../preview/directory";
 import { readDemoManagerAssignments } from "../../preview/manager-assignments";
 import { PageTitle } from "../../components/ui/page-title";
+import { BulkImportEntry } from "../setup-imports/bulk-imports";
 import { StatusPill } from "../../components/ui/status-pill";
 import { type Department, type DepartmentRosterPage, type Employee, type Role } from "../../types/workspace";
 import { fail } from "../../utils/errors";
@@ -237,6 +238,7 @@ export function OrganizationView({ role, userEmail, departments, employees, staf
                                                           onClick={() => { setShowForm((value) => !value); setError(""); setMessage(""); }}>
                        {showForm ? <X size={17} /> : <Plus size={17} />} {showForm ? "Close form" : "Add department"}
                    </button>} />
+        <BulkImportEntry accountScope={`${role}:${userEmail}`} kinds={["DEPARTMENTS"]} label="Import departments" />
         <section className="org-overview glass-panel">
             <div><span>Departments</span><strong>{visibleDepartments.length}</strong><small>{visibleDepartments.filter((item) => item.active).length} visible active units</small></div>
             <i /><div><span>Total workforce</span><strong>{totalEmployees}</strong><small>{role === "CEO" ? "Across the organization" : "Within your assigned department"}</small></div>
@@ -425,4 +427,3 @@ export function OrganizationView({ role, userEmail, departments, employees, staf
         })}</div>
     </>;
 }
-

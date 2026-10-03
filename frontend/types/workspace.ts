@@ -117,4 +117,4 @@ export type SecurityIntakeInput = {
     notes: string | null;
 };
 
-export type SettingsSection = "company" | "identity" | "roles" | "policy" | "notifications" | "privacy";
+export type SettingsSection = "company" | "identity" | "roles" | "policy" | "notifications" | "privacy" | "setup" | "imports";

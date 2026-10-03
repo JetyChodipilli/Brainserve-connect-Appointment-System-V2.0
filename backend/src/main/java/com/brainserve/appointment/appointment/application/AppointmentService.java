@@ -44,7 +44,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-public class AppointmentService implements AppointmentAvailability, AppointmentAccess, AppointmentStatistics, AppointmentRecords {
+public class AppointmentService implements AppointmentAvailability, AppointmentAccess, AppointmentStatistics, AppointmentRecords, com.brainserve.appointment.appointment.api.VisitorImport {
     private final AppointmentRepository appointments;
     private final EmployeeDirectory employees;
     private final StringRedisTemplate redis;
@@ -73,6 +73,25 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         this.teamLeads = teamLeads;
         this.departmentHrs = departmentHrs;
         this.managers = managers;
+    }
+
+    private CreateAppointment importCommand(com.brainserve.appointment.appointment.api.VisitorImport.Visit visit) {
+        return new CreateAppointment(AppointmentType.valueOf(visit.type()), visit.visitorName(), visit.visitorEmail(),
+                visit.visitorPhone(), visit.visitorCompany(), visit.hostEmployeeId(), visit.departmentId(),
+                visit.requestedEmployeeId(), visit.slotStart(), visit.slotEnd(), visit.purpose());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void validateImport(com.brainserve.appointment.appointment.api.VisitorImport.Visit visit) {
+        // The normal constructor path validates slots, hosts and required leadership without saving.
+        newAppointment("import-preview", importCommand(visit));
+    }
+
+    @Override
+    @Transactional
+    public UUID importPendingVisit(UUID actorId, String key, com.brainserve.appointment.appointment.api.VisitorImport.Visit visit) {
+        return registerAtReception(key, actorId, importCommand(visit)).getId();
     }
 
     @Transactional

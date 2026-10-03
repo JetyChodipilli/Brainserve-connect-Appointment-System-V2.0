@@ -168,6 +168,10 @@ public class GlobalExceptionHandler {
             Exception ex,
             HttpServletRequest request
     ) {
+        if (Boolean.TRUE.equals(request.getAttribute("brainserve.import.body.tooLarge"))) {
+            return problem(HttpStatus.PAYLOAD_TOO_LARGE, "IMPORT_BODY_TOO_LARGE",
+                    "Import request exceeds the bounded JSON transport limit", request, null);
+        }
         return problem(
                 HttpStatus.BAD_REQUEST,
                 "INVALID_REQUEST",

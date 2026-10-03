@@ -6,12 +6,14 @@ import { StatusPill } from "../../components/ui/status-pill";
 import { type Department, type Employee, type Role } from "../../types/workspace";
 import { visitorInitials } from "../appointments/appointment-utils";
 import { EmployeeServicePanel } from "./components/employee-service-panel";
+import { BulkImportEntry } from "../setup-imports/bulk-imports";
 import { employeeStatusLabel } from "./employee-utils";
 import { Building2, CheckCircle2, FileText, Search, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 export function EmployeesView({
                            role,
+                           userEmail,
                            refreshKey,
                            employees,
                            departments,
@@ -23,6 +25,7 @@ export function EmployeesView({
                            onStatus,
                        }: {
     role: Role;
+    userEmail: string;
     employees: Employee[];
     departments: Department[];
     staffAccounts: StaffAccount[];
@@ -228,6 +231,7 @@ export function EmployeesView({
                     )
                 }
             />
+            <BulkImportEntry accountScope={`${role}:${userEmail}`} kinds={["EMPLOYEES"]} label="Import employee profiles" />
             {role === "HR Admin" && (
                 <section className="panel glass-panel department-assignment-queue">
                     <div className="panel-heading">
@@ -487,4 +491,3 @@ export function EmployeesView({
         </>
     );
 }
-

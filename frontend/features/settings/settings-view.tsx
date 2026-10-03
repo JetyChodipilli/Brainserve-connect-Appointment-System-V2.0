@@ -13,6 +13,8 @@ import {
     type WorkspaceSetting,
 } from "../../services/brainserve-api";
 import { PageTitle } from "../../components/ui/page-title";
+import { CompanySetup } from "../setup-imports/company-setup";
+import { BulkImports } from "../setup-imports/bulk-imports";
 import { type Department, type Employee, type Role, type SettingsSection } from "../../types/workspace";
 import { fail } from "../../utils/errors";
 import { AccountRecoveryApprovalPanel } from "../accounts/components/account-recovery-approval-panel";
@@ -43,6 +45,8 @@ import {
     ShieldCheck,
     UserCog,
     UserPlus,
+    ListChecks,
+    Upload,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
@@ -77,9 +81,11 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
     const [managedAccountsLoading, setManagedAccountsLoading] = useState(false);
     const allowedRoles = [["ROLE_RECEPTIONIST", "Receptionist"], ["ROLE_SECURITY", "Security"]];
     const nav: Array<[SettingsSection, typeof Building2, string]> = [
+        ...(role === "System Admin" ? [["setup", ListChecks, "Company setup"] as [SettingsSection, typeof Building2, string]] : []),
         ["company", Building2, "Company profile"], ["identity", Fingerprint, "Identity & access"],
         ["roles", UserCog, "Roles & responsibilities"], ["policy", CalendarDays, "Appointment policy"],
         ["notifications", Bell, "Notifications"], ["privacy", ShieldCheck, "Privacy & retention"],
+        ["imports", Upload, "Safe CSV imports"],
     ];
 
     useEffect(() => {
@@ -166,6 +172,8 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
     return <><PageTitle eyebrow="WORKSPACE ADMINISTRATION" title="BrainServe Connect controls" detail="Company identity, role-scoped access, appointment rules, notifications and privacy settings backed by the Spring service." />
         {role === "System Admin" && <IntegrationStatusPanel />}
         <div className="settings-grid"><article className="settings-nav glass-panel">{nav.map(([id, Icon, label]) => <button type="button" className={section === id ? "active" : ""} key={id} onClick={() => { setSection(id); setError(""); setMessage(""); }}><Icon size={18} />{label}<ChevronRight size={16} /></button>)}</article><div className="identity-settings">
+            {section === "setup" && <CompanySetup role={role} userEmail={userEmail} onConfigure={setSection} />}
+            {section === "imports" && <BulkImports accountScope={`${role}:${userEmail}`} />}
             {section === "company" && settingPanel("Company profile", "ORGANIZATION IDENTITY", "These values drive the public visitor experience and official support details.", ["COMPANY.NAME", "COMPANY.EMAIL_DOMAIN", "COMPANY.HQ_ADDRESS", "COMPANY.SUPPORT_EMAIL"])}
             {section === "identity" && <>
                 <article className="panel glass-panel"><div className="panel-heading"><div><span>YOUR STAFF IDENTITY</span><h2>Company login</h2><p>Current login: <strong>{userEmail}</strong>. Your authenticated role is locked to <strong>{role}</strong>.</p></div><LockKeyhole size={22} /></div>{role !== "System Admin" && <form className="inline-account-form" onSubmit={changeOwnEmail}><label>New company email<input name="newEmail" type="email" placeholder="name@brainserve.in" required /></label><label>Current password<input name="currentPassword" type="password" minLength={8} required /></label><button className="button button-secondary"><Fingerprint size={16} /> Update my email</button></form>}</article>
@@ -210,4 +218,3 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
             {message && <div className="success-banner"><CheckCircle2 size={17} /> {message}</div>}{error && <div className="login-error" role="alert">{error}</div>}
         </div></div></>;
 }
-

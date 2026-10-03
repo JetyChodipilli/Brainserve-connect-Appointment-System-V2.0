@@ -9,7 +9,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -69,29 +68,7 @@ public class DepartmentController {
     public DepartmentResponse create(
             @Valid @RequestBody DepartmentRequest request
     ) {
-        if (departments.existsByCodeIgnoreCase(request.code())) {
-            throw departmentCodeConflict();
-        }
-
-        final Department created;
-        try {
-            created = departments.saveAndFlush(
-                    new Department(request.code(), request.name())
-            );
-        } catch (DataIntegrityViolationException exception) {
-            // A database unique constraint is still required to close the
-            // exists-check race between concurrent create requests.
-            throw departmentCodeConflict();
-        }
-
-        audit.record(
-                "DEPARTMENT_CREATED",
-                "DEPARTMENT",
-                created.getId().toString(),
-                auditDetails(created)
-        );
-
-        return DepartmentResponse.from(created);
+        return DepartmentResponse.from(new DepartmentCommands(departments, audit).create(request.code(), request.name()));
     }
 
     @PatchMapping("/{id}/status")

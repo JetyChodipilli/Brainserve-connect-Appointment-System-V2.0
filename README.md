@@ -233,6 +233,12 @@ explicit scope, office-period/live clocks, source coverage and matching authoriz
 record lists. Missing instrumentation remains visibly unavailable. See the
 [Sprint 3 metric and rollout contract](docs/SPRINT_3.md).
 
+System Admin can resume the company setup checklist from Settings. Safe imports
+provide bounded CSV templates, row validation, current-permission checks and
+durable per-row results for departments, employee profiles and pending visits.
+Profile imports do not provision accounts; visitor imports retain the existing
+approval process. See [Sprint 4 setup, imports and recovery](docs/SPRINT_4.md).
+
 ```mermaid
 flowchart TD
     U["Reports workspace"]
