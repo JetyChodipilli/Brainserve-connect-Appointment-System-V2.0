@@ -30,7 +30,7 @@ Versions below describe the corrected source snapshot reviewed on 16 September 2
 | Layer | Technology | How BrainServe uses it |
 | --- | --- | --- |
 | Interface | <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/react/react-original.svg" width="24" height="24" alt="React logo"> **React 19.2.8** · <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/typescript/typescript-original.svg" width="24" height="24" alt="TypeScript logo"> **TypeScript 5.9.3** | Public booking and staff workspaces; typed API requests and role-specific screens. |
-| Frontend runtime | <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/nextjs/nextjs-original.svg" width="24" height="24" alt="Next.js logo"> **Next.js 16.3.5 APIs** · **Vinext 1.0.0-beta.8** · <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/vitejs/vitejs-original.svg" width="24" height="24" alt="Vite logo"> **Vite 8.2.2** | App Router-compatible frontend built through `vinext build`; Vite serves local development. |
+| Frontend runtime | <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/nextjs/nextjs-original.svg" width="24" height="24" alt="Next.js logo"> **Next.js 16.3.8 APIs** · **Vinext 1.0.0-beta.13** · <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/vitejs/vitejs-original.svg" width="24" height="24" alt="Vite logo"> **Vite 8.2.2** | App Router-compatible frontend built through `vinext build`; Vite serves local development. |
 | Styling | **Tailwind CSS 4.2.1**, CSS/CSS Modules, Lucide React, Manrope and Newsreader | Responsive layouts, icons, glass panels and CSS-transform recovery animations. |
 | Business API | <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/java/java-original.svg" width="24" height="24" alt="Java logo"> **Java 21** · <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/spring/spring-original.svg" width="24" height="24" alt="Spring logo"> **Spring Boot 3.5.7** · **Spring Modulith 1.4.7** | One modular backend application with REST controllers, domain services, transactions and module-boundary tests. |
 | Identity and access | **Spring Security**, JWT, BCrypt, Jakarta Validation | Stateless bearer authentication, active-account checks, method permissions, department/host scope and input validation. |
@@ -238,6 +238,11 @@ provide bounded CSV templates, row validation, current-permission checks and
 durable per-row results for departments, employee profiles and pending visits.
 Profile imports do not provision accounts; visitor imports retain the existing
 approval process. See [Sprint 4 setup, imports and recovery](docs/SPRINT_4.md).
+
+Workboard offers a compact list, board lanes, scoped quick filters and a detail
+drawer. Layout, density and named filters persist per account. Existing submission,
+review and rework actions use observed task versions to detect concurrent changes.
+See [Sprint 5 Workboard and rollout](docs/SPRINT_5.md).
 
 ```mermaid
 flowchart TD

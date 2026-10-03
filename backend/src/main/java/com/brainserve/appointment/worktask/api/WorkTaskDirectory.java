@@ -14,6 +14,9 @@ public interface WorkTaskDirectory {
 
     TaskSnapshot requireTask(UUID workTaskId);
 
+    /** Serializes the existing Insight writer with delivery writers and advances the observed revision. */
+    TaskSnapshot requireTaskForMutation(UUID workTaskId, Long expectedVersion);
+
     TaskSnapshot requestInsightRework(
             UUID workTaskId,
             String reviewerRole,

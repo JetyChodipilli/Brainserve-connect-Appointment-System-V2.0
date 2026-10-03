@@ -54,14 +54,14 @@ public class DepartmentWorkTaskController {
     @PreAuthorize("hasAuthority('WORK_TASK_PROGRESS')")
     TaskResponse start(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                        @Valid @RequestBody UpdateRequest request) {
-        return TaskResponse.from(service.start(userId(jwt), employeeId(jwt, false), id, request.note()));
+        return TaskResponse.from(service.start(userId(jwt), employeeId(jwt, false), id, request.note(), request.expectedVersion()));
     }
 
     @PostMapping("/{id}/complete")
     @PreAuthorize("hasAuthority('WORK_TASK_PROGRESS')")
     TaskResponse complete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                           @Valid @RequestBody UpdateRequest request) {
-        return TaskResponse.from(service.complete(userId(jwt), employeeId(jwt, false), id, request.note()));
+        return TaskResponse.from(service.complete(userId(jwt), employeeId(jwt, false), id, request.note(), request.expectedVersion()));
     }
 
     @PostMapping("/{id}/revise-rework")
@@ -69,27 +69,29 @@ public class DepartmentWorkTaskController {
     TaskResponse reviseRework(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                               @Valid @RequestBody RequiredUpdateRequest request) {
         return TaskResponse.from(service.reviseEmployeeRework(
-                userId(jwt), employeeId(jwt, true), id, request.note()));
+                userId(jwt), employeeId(jwt, false), id, request.note(), request.expectedVersion()));
     }
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasRole('TEAM_LEAD') and hasAuthority('WORK_TASK_REVIEW')")
     TaskResponse approve(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                          @Valid @RequestBody UpdateRequest request) {
-        return TaskResponse.from(service.approve(userId(jwt), id, request.note()));
+        return TaskResponse.from(service.approve(userId(jwt), id, request.note(), request.expectedVersion()));
     }
 
     @PostMapping("/{id}/request-changes")
     @PreAuthorize("hasRole('TEAM_LEAD') and hasAuthority('WORK_TASK_REVIEW')")
     TaskResponse requestChanges(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                                 @Valid @RequestBody RequiredUpdateRequest request) {
-        return TaskResponse.from(service.requestChanges(userId(jwt), id, request.note()));
+        return TaskResponse.from(service.requestChanges(userId(jwt), id, request.note(), request.expectedVersion()));
     }
 
     @PostMapping("/{id}/acknowledge")
     @PreAuthorize("hasRole('EMPLOYEE') and hasAuthority('WORK_TASK_PROGRESS')")
-    TaskResponse acknowledge(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return TaskResponse.from(service.acknowledge(userId(jwt), employeeId(jwt, true), id));
+    TaskResponse acknowledge(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                             @Valid @RequestBody(required = false) VersionRequest request) {
+        return TaskResponse.from(service.acknowledge(userId(jwt), employeeId(jwt, false), id,
+                request == null ? null : request.expectedVersion()));
     }
 
     @GetMapping("/performance")
@@ -110,8 +112,9 @@ public class DepartmentWorkTaskController {
                                 @NotBlank @Size(max = 160) String title,
                                 @NotBlank @Size(min = 5, max = 1000) String description,
                                 @NotNull @FutureOrPresent LocalDate dueDate) {}
-    public record UpdateRequest(@Size(max = 1000) String note) {}
-    public record RequiredUpdateRequest(@NotBlank @Size(max = 1000) String note) {}
+    public record VersionRequest(@jakarta.validation.constraints.PositiveOrZero Long expectedVersion) {}
+    public record UpdateRequest(@Size(max = 1000) String note, @jakarta.validation.constraints.PositiveOrZero Long expectedVersion) {}
+    public record RequiredUpdateRequest(@NotBlank @Size(max = 1000) String note, @jakarta.validation.constraints.PositiveOrZero Long expectedVersion) {}
     public record TaskResponse(UUID id, UUID departmentId, UUID employeeId, UUID teamLeadUserId,
                                UUID assignedByUserId, String assignedByRole, String assigneeRole,
                                String title, String description, String departmentBranch, LocalDate dueDate,

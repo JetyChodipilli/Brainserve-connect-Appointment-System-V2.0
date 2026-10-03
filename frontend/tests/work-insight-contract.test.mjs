@@ -303,21 +303,25 @@ test("HR, Manager, CEO and System Admin receive role-specific Insights tables", 
   assert.ok(api.includes("decideManagerWorkInsight"));
 });
 
-test("Insights and Work Board use role-owned forms and expandable audit evidence", () => {
+test("Insights and Work Board preserve role-owned forms, drawer feedback and audit evidence", () => {
   for (const marker of [
     "insight-decision-modal",
     "work-action-modal",
     "insight-cycle-steps",
     "insight-evidence-grid",
     "insight-toolbar",
-    "work-rework-alert",
-    "task-flow",
+    "work-drawer",
+    "work-history",
   ]) {
     assert.ok(
         app.includes(marker),
         `missing enhanced UI ${marker}`,
     );
   }
+
+  assert.ok(app.includes("Current reviewer feedback"));
+  assert.ok(app.includes("task.insightReviewReason ?? task.teamLeadReview"));
+  assert.ok(app.includes("task.allowedActions.map"));
 
   assert.ok(
       app.includes(

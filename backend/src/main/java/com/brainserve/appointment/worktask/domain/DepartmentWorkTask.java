@@ -60,6 +60,10 @@ public class DepartmentWorkTask extends AuditableEntity {
     @Column(name = "acknowledged_at")
     private Instant acknowledgedAt;
 
+    // Null means no submission has been tracked since V55; old cycles are not reconstructed.
+    @Column(name = "submission_version")
+    private Long submissionVersion;
+
     protected DepartmentWorkTask() {}
 
     public DepartmentWorkTask(UUID departmentId, UUID employeeId, UUID teamLeadUserId,
@@ -94,6 +98,7 @@ public class DepartmentWorkTask extends AuditableEntity {
         employeeUpdate = normalize(update);
         if (startedAt == null) startedAt = Instant.now();
         completedAt = Instant.now();
+        submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
         approvedAt = null;
         acknowledgedAt = null;
     }
@@ -154,6 +159,7 @@ public class DepartmentWorkTask extends AuditableEntity {
         }
         employeeUpdate = required(update, "A revised completion update is required");
         completedAt = Instant.now();
+        submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
     }
 
     public void reviseEmployeeReworkSubmission(String update) {
@@ -169,6 +175,7 @@ public class DepartmentWorkTask extends AuditableEntity {
         }
         employeeUpdate = required(update, "A revised completion update is required");
         completedAt = Instant.now();
+        submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
     }
 
     public void finalizeInsightApproval() {
@@ -224,6 +231,8 @@ public class DepartmentWorkTask extends AuditableEntity {
     }
 
     private String normalize(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+
+    public Long getSubmissionVersion() { return submissionVersion; }
 
     public UUID getDepartmentId() { return departmentId; }
     public UUID getEmployeeId() { return employeeId; }

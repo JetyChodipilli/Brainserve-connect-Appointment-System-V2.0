@@ -10,6 +10,7 @@ const hrService = read("../backend/src/main/java/com/brainserve/appointment/depa
 const migration = read("../backend/src/main/resources/db/migration/V24__department_hr_routing.sql");
 const frontend = readFrontendSource();
 const workTask = read("../backend/src/main/java/com/brainserve/appointment/worktask/application/DepartmentWorkTaskService.java");
+const authority = read("../backend/src/main/java/com/brainserve/appointment/iam/api/CurrentAccountAuthority.java");
 const insight = read("../backend/src/main/java/com/brainserve/appointment/workinsight/application/WorkInsightService.java");
 
 test("PostgreSQL enforces one active HR per department while CEO transfers an existing HR safely", () => {
@@ -34,7 +35,9 @@ test("visitor host rules are enforced by backend and reflected in the form", () 
 
 test("department HR owns appointment, task and insight queues", () => {
   assert.ok(appointment.includes("departmentHrs.requireForUser(userId).departmentId()"));
-  assert.ok(workTask.includes("departmentHrs.requireForUser(userId).departmentId()"));
+  assert.ok(workTask.includes("authority.requireWorkScope(userId)"));
+  assert.ok(workTask.includes("tasks.findTop500ByDepartmentIdOrderByCreatedAtDesc(scope.departmentId())"));
+  assert.ok(workTask.includes("requireUnchangedScope(userId, scope)"));
+  assert.ok(authority.includes("department_hr_assignment"));
   assert.ok(sourceIncludes(insight, "departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId)"));
 });
-
