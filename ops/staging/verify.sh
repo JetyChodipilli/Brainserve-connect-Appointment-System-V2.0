@@ -42,6 +42,7 @@ grep -q '^51:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^52:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^53:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^54:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^55:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 restored="$("${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select string_agg(id || chr(58) || evidence, chr(44) order by id) from sprint1_recovery_probe"')"
 [ "${restored}" = '1:zero-wait,2:scoped-access' ]
 cat > "${evidence}/restore-compose.yml" <<'YAML'
@@ -56,5 +57,5 @@ smoke
 # migration or volume deletion; this establishes the first verified fallback.
 "${compose[@]}" up -d --no-build --force-recreate --wait --wait-timeout 180 backend frontend
 smoke
-printf 'Release: %s\nTLS and API authorization: passed\nV54 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+printf 'Release: %s\nTLS and API authorization: passed\nV55 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

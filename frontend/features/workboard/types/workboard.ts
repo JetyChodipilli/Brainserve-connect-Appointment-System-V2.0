@@ -30,3 +30,24 @@ export type WorkInsight = { auditRecordId: string | null; workTaskId: string; we
   teamLeadReworkGuidance: string | null; teamLeadRespondedAt: string | null; reworkCycle: number };
 
 export type WorkTaskWorkflowState = { workTaskId: string; auditStatus: WorkInsight["auditStatus"] };
+
+export type WorkboardScope = "TODAY" | "CARRY_FORWARD" | "HISTORY" | "ALL";
+export type WorkboardQuickFilter = "ALL" | "MY_ACTIONS" | "DUE_TODAY" | "OVERDUE_DELIVERY" | "AWAITING_MY_REVIEW" | "RETURNED_FOR_REWORK";
+export type WorkboardSort = "DUE_DATE" | "UPDATED_AT" | "TITLE" | "PRIORITY";
+export type WorkboardCriteria = { scope: WorkboardScope; quickFilter: WorkboardQuickFilter; query: string;
+  status: "ALL" | WorkTask["status"]; branch: string; sort: WorkboardSort };
+export type WorkboardAction = "start" | "complete" | "approve" | "request-changes" | "acknowledge" |
+  "insight-rework" | "revise-rework" | "hr-rework" | "hr-audit" | "open-oversight";
+export type WorkboardLane = "DELIVERY" | "REVIEW" | "REWORK" | "CLOSED";
+export type WorkboardItem = WorkTask & { assigneeName: string; auditStatus: WorkInsight["auditStatus"];
+  auditRecordId: string | null; auditVersion: number | null; updatedAt: string; submissionVersion: number | null;
+  priority: null; blocked: null; allowedActions: WorkboardAction[]; nextActor: string | null; lane: WorkboardLane };
+export type WorkboardPage = { policyVersion: "workboard.v1"; generatedAt: string; officeZone: string; officeDate: string;
+  scope: "OWN" | "DEPARTMENT"; departmentId: string | null; number: number; size: number; totalElements: number;
+  totalPages: number; counts: { scopes: Record<WorkboardScope, number>; quickFilters: Record<WorkboardQuickFilter, number> };
+  laneCounts: Record<WorkboardLane, number>; items: WorkboardItem[] };
+export type WorkboardDetail = { item: WorkboardItem; history: { id: string; title: string; occurredAt: string;
+  actorRole: string | null; note: string | null }[]; historyTruncated: boolean };
+export type SavedWorkboardFilter = WorkboardCriteria & { id: string; name: string };
+export type WorkboardPreferences = { revision: number; layout: "LIST" | "BOARD"; density: "COMPACT" | "COMFORTABLE";
+  savedFilters: SavedWorkboardFilter[] };

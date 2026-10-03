@@ -39,7 +39,6 @@ const roles = read(
 );
 const api = readApiSource();
 const app = readFrontendSource();
-const styles = read("app/globals.css");
 
 test("Employee, Team Lead, HR and Manager use the governed work board", () => {
   assert.ok(
@@ -70,7 +69,7 @@ test("Employee, Team Lead, HR and Manager use the governed work board", () => {
 test("task sheets never fall back to another employee's assignments", () => {
   assert.ok(
       app.includes(
-          'if (role === "Employee" && !currentEmployeeId)',
+          'if (!isBackendConfigured && role === "Employee" && !currentEmployeeId)',
       ),
   );
   assert.ok(
@@ -83,37 +82,30 @@ test("task sheets never fall back to another employee's assignments", () => {
   assert.ok(app.includes("NEW TASK SHEET"));
   assert.ok(app.includes("Worksheet instructions"));
   assert.ok(
-      app.includes('className="task-sheet-grid"'),
+      app.includes('className="workboard-list"'),
   );
 });
 
 test("task sheets use a compact readable summary with progressive disclosure", () => {
-  assert.ok(app.includes('className="task-sheet-summary"'));
+  // Sprint 5 runtime and routed-browser tests exercise the replaced inline-card flow.
+  assert.ok(app.includes('className="workboard-row"'));
   assert.ok(app.includes('className="task-sheet-brief"'));
-  assert.ok(app.includes("WORK TO COMPLETE"));
   assert.ok(app.includes('aria-labelledby={`work-task-${task.id}-title`}'));
   assert.ok(app.includes("expandedTaskId"));
-  assert.ok(app.includes("aria-expanded={expanded}"));
   assert.ok(app.includes("View details"));
-  assert.ok(styles.includes(".task-sheet-brief p"));
-  assert.ok(styles.includes("-webkit-line-clamp: 2"));
-  assert.ok(styles.includes(".task-sheet-summary h2 { min-height: 0"));
-  assert.ok(styles.includes("repeat(auto-fit, minmax(min(100%, 390px), 1fr))"));
-  assert.ok(styles.includes("white-space: pre-wrap"));
-  assert.ok(styles.includes("align-items: stretch"));
-  assert.ok(styles.includes(".task-sheet-card.is-expanded { grid-column: 1 / -1"));
-  assert.ok(app.includes('className="task-sheet-summary-alert-slot"'));
-  assert.ok(styles.includes(".task-sheet-summary-alert-slot { min-height: 27px"));
-  assert.ok(styles.includes(".task-sheet-card.is-expanded .task-sheet-summary-meta"));
-  assert.ok(styles.includes(".task-sheet-card { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; padding: 12px"));
-  assert.ok(styles.includes(".task-flow { display: flex; align-items: center; min-width: 0; overflow: hidden"));
-  assert.ok(styles.includes(".task-sheet-card > header > div { min-width: 0; overflow: hidden"));
-  assert.ok(styles.includes(".task-sheet-card > footer .button { max-width: 100%"));
-  assert.ok(app.includes("{expanded && <>"));
+  assert.ok(app.includes("<WorkTaskDrawer"));
+  assert.ok(app.includes('role="tablist" aria-label="Worksheet details"'));
+  assert.ok(app.includes("Current submission version"));
+  assert.ok(app.includes("Next actor"));
+  assert.ok(app.includes("element?.showModal()"));
+  assert.ok(app.includes('if (event.key !== "Tab") return'));
+  assert.ok(app.includes("Discard your unsaved worksheet note?"));
+  assert.ok(read("app/professional-ui.css").includes(".work-drawer { width: 100vw; border-radius: 0; }"));
 });
 
 test("work board refreshes are isolated, non-overlapping and preserve the last good data", () => {
-  assert.ok(app.includes("loadInFlightRef.current"));
+  assert.ok(app.includes("sequence === loadSequence.current"));
+  assert.ok(app.includes("loadController.current?.abort()"));
   assert.ok(app.includes("hasLoadedTasksRef.current"));
   assert.ok(app.includes("await Promise.allSettled(["));
   assert.ok(app.includes("The last loaded worksheets remain visible"));
@@ -129,17 +121,17 @@ test("HR and Manager retain a visible department scope even on an empty daily bo
   assert.ok(app.includes("setScopeDepartments(scopeResult.value)"));
   assert.ok(app.includes('className="work-scope-summary"'));
   assert.ok(app.includes("DEPARTMENT SCOPE"));
-  assert.ok(app.includes("assignedDepartment?.name, ...tasks.map"));
-  assert.ok(app.includes('aria-label="Department scope"'));
+  assert.ok(app.includes("boardPage?.scope === \"OWN\""));
+  assert.ok(app.includes("Department / branch filter"));
 });
 
 test("the work board defaults to today while preserving open carry-forward work", () => {
-  assert.ok(app.includes('useState<"TODAY" | "CARRY_FORWARD">("TODAY")'));
-  assert.ok(app.includes("officeDateFromInstant(task.createdAt) === today"));
-  assert.ok(app.includes("isOpenCarryForwardTask"));
+  assert.ok(app.includes('useState<WorkboardScope>("TODAY")'));
+  assert.ok(app.includes("officeDateFromInstant(item.createdAt) === today"));
+  assert.ok(app.includes('scope === "CARRY_FORWARD" ? outstanding : !outstanding'));
   assert.ok(app.includes("Open carry-forward"));
-  assert.ok(app.includes("Closed older worksheets stay stored for governance and audit"));
-  assert.ok(app.includes('queueScope === "TODAY" ? todayTasks : carryForwardTasks'));
+  assert.ok(app.includes("History contains older closed work"));
+  assert.ok(app.includes("previewWorkboardPage(previewItems, criteria, page, size"));
 });
 
 test("older worksheets remain persisted instead of being deleted from history", () => {
@@ -247,7 +239,13 @@ test("backend scopes tasks and assignees to the actor's department", () => {
       service.includes("teamLeads.requireForUser"),
   );
   assert.ok(service.includes("activeByEmployeeId"));
-  assert.ok(service.includes("managers.requireForUser(userId).departmentId()"));
+  // Current authority deliberately replaces the stale JWT/role-directory lookup.
+  assert.ok(service.includes('var current = requirePermission(userId, "WORK_TASK_READ")'));
+  assert.ok(service.includes("var scope = authority.requireWorkScope(userId)"));
+  assert.ok(service.includes("current.employeeId()"));
+  assert.ok(service.includes("requireUnchangedScope(userId, scope)"));
+  assert.ok(service.includes('requirePermission(actorUserId, "WORK_TASK_CREATE")'));
+  assert.ok(service.includes("requireUnchangedScope(actorUserId, currentScope)"));
   assert.ok(service.includes("staff.activeWithAnyRoleInDepartment(Set.of(EMPLOYEE, TEAM_LEAD), departmentId, 200)"));
   assert.ok(controller.includes('@GetMapping("/workspace")'));
   assert.ok(

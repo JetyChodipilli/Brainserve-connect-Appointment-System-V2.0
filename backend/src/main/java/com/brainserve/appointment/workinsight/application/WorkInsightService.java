@@ -4,6 +4,8 @@ import com.brainserve.appointment.audit.api.AuditService;
 import com.brainserve.appointment.departmenthr.api.DepartmentHrDirectory;
 import com.brainserve.appointment.employee.api.EmployeeDirectory;
 import com.brainserve.appointment.iam.api.StaffCommunicationDirectory;
+import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
+import com.brainserve.appointment.teamlead.api.TeamLeadDirectory;
 import com.brainserve.appointment.manager.api.ManagerDirectory;
 import com.brainserve.appointment.shared.application.BusinessException;
 
@@ -50,11 +52,15 @@ public class WorkInsightService {
     private final AuditService audit;
     private final DepartmentHrDirectory departmentHrs;
     private final ManagerDirectory managers;
+    private final CurrentAccountAuthority authority;
+    private final TeamLeadDirectory teamLeads;
+    private final WorkboardQueryService workboard;
 
     public WorkInsightService(WorkTaskDirectory tasks, WorkTaskAuditRecordRepository audits,
                               EmployeeDirectory employees, StaffCommunicationDirectory staff,
                               ApplicationEventPublisher events, AuditService audit,
                               DepartmentHrDirectory departmentHrs, ManagerDirectory managers,
+                              CurrentAccountAuthority authority, TeamLeadDirectory teamLeads, WorkboardQueryService workboard,
                               @Value("${brainserve.appointment.office-zone:Asia/Kolkata}")
                               String officeZone) {
         this.tasks = tasks;
@@ -65,6 +71,9 @@ public class WorkInsightService {
         this.audit = audit;
         this.departmentHrs = departmentHrs;
         this.managers = managers;
+        this.authority = authority;
+        this.teamLeads = teamLeads;
+        this.workboard = workboard;
         this.officeZone = ZoneId.of(officeZone);
     }
 
@@ -125,25 +134,20 @@ public class WorkInsightService {
 
     @Transactional(readOnly = true)
     public List<TaskWorkflowState> taskWorkflowStates(UUID userId) {
-        StaffCommunicationDirectory.StaffMember member = staff.requireActive(userId);
-        List<WorkTaskAuditRecord> records;
-        if (member.roles().contains(TEAM_LEAD)) {
-            records = audits.findTop500ByTeamLeadUserIdOrderByHrAuditedAtDesc(userId);
-        } else if (member.roles().contains("ROLE_EMPLOYEE") && member.employeeId() != null) {
-            records = audits.findTop500ByEmployeeIdOrderByHrAuditedAtDesc(member.employeeId());
-        } else {
-            throw new BusinessException("WORK_TASK_WORKFLOW_STATE_DENIED",
-                    "Only the assigned Employee or Team Lead can inspect worksheet workflow states",
-                    HttpStatus.FORBIDDEN);
-        }
-        return records.stream()
-                .map(record -> new TaskWorkflowState(record.getWorkTaskId(),
-                        record.getAuditStatus().name()))
-                .toList();
+        return workboard.workflowStates(userId);
     }
 
     @Transactional
     public Insight markAudited(UUID hrUserId, UUID workTaskId) {
+        return markAudited(hrUserId, workTaskId, null);
+    }
+
+    @Transactional
+    public Insight markAudited(UUID hrUserId, UUID workTaskId, Long expectedTaskVersion) {
+        requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
+        tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
+        requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
+
         requireRole(hrUserId, HR, "Only HR can audit a worksheet");
         TaskSnapshot task = requireAuditReadyTask(workTaskId);
         departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
@@ -167,6 +171,15 @@ public class WorkInsightService {
 
     @Transactional
     public Insight requestHrRework(UUID hrUserId, UUID workTaskId, String reason) {
+        return requestHrRework(hrUserId, workTaskId, reason, null);
+    }
+
+    @Transactional
+    public Insight requestHrRework(UUID hrUserId, UUID workTaskId, String reason, Long expectedTaskVersion) {
+        requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
+        tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
+        requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
+
         requireRole(hrUserId, HR, "Only HR can return an Insights worksheet for rework");
         TaskSnapshot task = requireAuditReadyTask(workTaskId);
         departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
@@ -186,6 +199,15 @@ public class WorkInsightService {
 
     @Transactional
     public Insight assignRework(UUID teamLeadUserId, UUID workTaskId, String guidance) {
+        return assignRework(teamLeadUserId, workTaskId, guidance, null);
+    }
+
+    @Transactional
+    public Insight assignRework(UUID teamLeadUserId, UUID workTaskId, String guidance, Long expectedTaskVersion) {
+        requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
+        tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
+        requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
+
         WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId)
                 .orElseThrow(() -> new BusinessException("WORK_INSIGHT_NOT_FOUND",
                         "The Insights rework request was not found", HttpStatus.NOT_FOUND));
@@ -213,6 +235,15 @@ public class WorkInsightService {
 
     @Transactional
     public Insight reviseReworkSubmission(UUID teamLeadUserId, UUID workTaskId, String update) {
+        return reviseReworkSubmission(teamLeadUserId, workTaskId, update, null);
+    }
+
+    @Transactional
+    public Insight reviseReworkSubmission(UUID teamLeadUserId, UUID workTaskId, String update, Long expectedTaskVersion) {
+        requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
+        tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
+        requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
+
         WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId)
                 .orElseThrow(() -> new BusinessException("WORK_INSIGHT_NOT_FOUND",
                         "The Insights rework request was not found", HttpStatus.NOT_FOUND));
@@ -448,6 +479,24 @@ public class WorkInsightService {
                 task.departmentBranch(), task.employeeId(), employee.employeeNumber(),
                 employee.displayName(), task.teamLeadUserId(), teamLeadName,
                 task.assignedByRole(), task.assigneeRole(), task.title(), task.status(), hrUserId);
+    }
+
+    private void requireCurrent(UUID actor, String role, String permission, UUID taskId) {
+        var current = authority.requireActive(actor);
+        if (!role.equals(current.role()) || !current.permissions().contains(permission)) {
+            throw new BusinessException("WORK_INSIGHT_ROLE_REQUIRED", "Your current role or permissions do not allow this action", HttpStatus.FORBIDDEN);
+        }
+        var scope = authority.requireWorkScope(actor);
+        if (!scope.authority().equals(current)) throw new BusinessException("WORK_INSIGHT_ROLE_REQUIRED", "Your current account changed. Reload before submitting", HttpStatus.FORBIDDEN);
+        TaskSnapshot task = tasks.requireTask(taskId);
+        if (!scope.departmentId().equals(task.departmentId())) throw new BusinessException("WORK_INSIGHT_SCOPE_DENIED", "This worksheet is outside your current department assignment", HttpStatus.FORBIDDEN);
+        if (HR.equals(role)) departmentHrs.requireAssignedReviewer(task.departmentId(), actor);
+        if (TEAM_LEAD.equals(role)) {
+            var lead = teamLeads.requireForUser(actor);
+            if (!lead.departmentId().equals(task.departmentId()) || !actor.equals(task.teamLeadUserId())) {
+                throw new BusinessException("WORK_INSIGHT_TEAM_LEAD_SCOPE_DENIED", "This rework is outside your current assignment", HttpStatus.FORBIDDEN);
+            }
+        }
     }
 
     private void requireRole(UUID userId, String role, String message) {

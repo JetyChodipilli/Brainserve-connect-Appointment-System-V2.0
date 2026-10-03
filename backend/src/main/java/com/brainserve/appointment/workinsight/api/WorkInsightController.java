@@ -42,29 +42,30 @@ public class WorkInsightController {
 
     @PostMapping("/tasks/{taskId}/audit")
     @PreAuthorize("hasRole('HR_ADMIN') and hasAuthority('WORK_INSIGHT_AUDIT')")
-    WorkInsightService.Insight audit(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId) {
-        return service.markAudited(actor(jwt), taskId);
+    WorkInsightService.Insight audit(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId,
+                                    @Valid @RequestBody(required = false) VersionRequest request) {
+        return service.markAudited(actor(jwt), taskId, request == null ? null : request.expectedTaskVersion());
     }
 
     @PostMapping("/tasks/{taskId}/request-rework")
     @PreAuthorize("hasRole('HR_ADMIN') and hasAuthority('WORK_INSIGHT_AUDIT')")
     WorkInsightService.Insight requestRework(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId,
                                              @Valid @RequestBody ReworkRequest request) {
-        return service.requestHrRework(actor(jwt), taskId, request.reason());
+        return service.requestHrRework(actor(jwt), taskId, request.reason(), request.expectedTaskVersion());
     }
 
     @PostMapping("/tasks/{taskId}/assign-rework")
     @PreAuthorize("hasRole('TEAM_LEAD') and hasAuthority('WORK_TASK_REVIEW')")
     WorkInsightService.Insight assignRework(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId,
                                             @Valid @RequestBody GuidanceRequest request) {
-        return service.assignRework(actor(jwt), taskId, request.guidance());
+        return service.assignRework(actor(jwt), taskId, request.guidance(), request.expectedTaskVersion());
     }
 
     @PostMapping("/tasks/{taskId}/revise-rework")
     @PreAuthorize("hasRole('TEAM_LEAD') and hasAuthority('WORK_TASK_REVIEW')")
     WorkInsightService.Insight reviseRework(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId,
                                             @Valid @RequestBody SubmissionUpdateRequest request) {
-        return service.reviseReworkSubmission(actor(jwt), taskId, request.update());
+        return service.reviseReworkSubmission(actor(jwt), taskId, request.update(), request.expectedTaskVersion());
     }
 
     @PostMapping("/{recordId}/ceo-decision")
@@ -83,8 +84,12 @@ public class WorkInsightController {
     }
 
     private UUID actor(Jwt jwt) { return UUID.fromString(jwt.getSubject()); }
+    public record VersionRequest(@jakarta.validation.constraints.PositiveOrZero Long expectedTaskVersion) {}
     public record DecisionRequest(@NotNull Boolean approved, @Size(max = 1000) String remarks) {}
-    public record ReworkRequest(@NotBlank @Size(max = 1000) String reason) {}
-    public record GuidanceRequest(@NotBlank @Size(max = 1000) String guidance) {}
-    public record SubmissionUpdateRequest(@NotBlank @Size(max = 1000) String update) {}
+    public record ReworkRequest(@NotBlank @Size(max = 1000) String reason,
+                                @jakarta.validation.constraints.PositiveOrZero Long expectedTaskVersion) {}
+    public record GuidanceRequest(@NotBlank @Size(max = 1000) String guidance,
+                                @jakarta.validation.constraints.PositiveOrZero Long expectedTaskVersion) {}
+    public record SubmissionUpdateRequest(@NotBlank @Size(max = 1000) String update,
+                                @jakarta.validation.constraints.PositiveOrZero Long expectedTaskVersion) {}
 }

@@ -15,6 +15,130 @@
     --ease-spring: cubic-bezier(.16, 1, .3, 1);
 }
 
+/* Sprint 5: compact, paginated department work and native modal sheets. */
+body:has(.work-drawer[open], .workboard-action-dialog[open], .work-create-dialog[open]) { overflow: hidden; }
+.workboard-v5 { min-width: 0; }
+.workboard-v5 .button, .workboard-v5 button, .work-drawer button, .workboard-action-dialog button, .work-create-dialog button { min-height: 44px; }
+.workboard-v5 label, .work-create-dialog label, .workboard-action-dialog label { display: grid; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.workboard-v5 input, .workboard-v5 select, .work-create-dialog input, .work-create-dialog select, .work-create-dialog textarea, .workboard-action-dialog textarea { width: 100%; min-width: 0; min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); color: var(--ink); font: 500 14px/1.5 var(--font-ui); }
+.workboard-v5 :focus-visible, .work-drawer :focus-visible, .work-create-dialog :focus-visible, .workboard-action-dialog :focus-visible { outline: 3px solid var(--red-600); outline-offset: 3px; }
+.workboard-filters, .workboard-results { min-width: 0; padding: 18px; border-radius: 14px; display: grid; gap: 14px; }
+.workboard-period-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.workboard-period-header .work-scope-summary { margin-left: auto; min-width: 180px; }
+.workboard-options-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--line); }
+.workboard-options-row details[open] { grid-column: 1 / -1; }
+.workboard-periods, .workboard-quick-filters, .workboard-view-controls, .workboard-view-controls > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.workboard-periods button, .workboard-quick-filters button { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); color: var(--ink); font: 700 13px/1.4 var(--font-ui); }
+.workboard-periods button.active, .workboard-quick-filters button.active, .workboard-view-controls button[aria-pressed="true"] { color: var(--white); background: var(--red-700); border-color: var(--red-700); }
+.workboard-periods b, .workboard-quick-filters b { font-size: 12px; min-width: 20px; }
+.workboard-controls { display: grid; grid-template-columns: minmax(210px, 1.5fr) repeat(3, minmax(150px, 1fr)); gap: 12px; }
+.workboard-search > div { display: flex; align-items: center; position: relative; }
+.workboard-search svg { position: absolute; left: 12px; color: var(--muted); }
+.workboard-search input { padding-left: 38px; }
+.workboard-filter-help, .work-detail-note { margin: 0; color: var(--muted); font: 500 12px/1.6 var(--font-ui); }
+.workboard-view-controls { justify-content: flex-start; }
+.workboard-view-controls > label { min-width: 140px; }
+.workboard-view-controls > label { display: flex; align-items: center; gap: 8px; }
+.workboard-view-controls > label select { width: 145px; }
+.workboard-filters details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--red-800); font: 700 13px/1.5 var(--font-ui); }
+.workboard-filters details > summary::before { content: "+"; margin-right: 8px; }
+.workboard-filters details[open] > summary::before { content: "−"; }
+.workboard-filters details > summary:focus-visible { outline: 3px solid var(--red-600); outline-offset: 3px; }
+.workboard-view-controls > .button { margin-left: auto; }
+.workboard-saved-filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; align-items: end; gap: 12px; padding: 10px 0; }
+.workboard-saved-list { margin: 0; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; list-style: none; }
+.workboard-saved-list li { max-width: 100%; display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.workboard-saved-list button { padding: 8px 12px; background: var(--white); color: var(--red-800); font-size: 13px; overflow-wrap: anywhere; }
+.workboard-result-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.workboard-result-heading h2 { margin: 0; font: 500 24px/1.2 var(--font-display); }
+.workboard-result-heading > span { color: var(--muted); font-size: 12px; }
+.workboard-list { display: grid; gap: 0; }
+.workboard-row { display: grid; grid-template-columns: minmax(170px, 1.6fr) minmax(95px, .7fr) 95px minmax(115px, .8fr) auto; gap: 14px; align-items: center; min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.workboard-row:last-child { border-bottom: 0; }
+.workboard-row > * { min-width: 0; }
+.workboard-task { display: grid; gap: 4px; }
+.workboard-row h2 { margin: 0; font: 700 14px/1.5 var(--font-ui); overflow-wrap: anywhere; }
+.workboard-row small, .workboard-task > span { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.workboard-assignee, .workboard-due { display: grid; gap: 3px; font-size: 13px; }
+.workboard-assignee strong { overflow-wrap: anywhere; }
+.workboard-row .work-task-status { max-width: 100%; white-space: normal; font-size: 12px; line-height: 1.4; }
+.workboard-row .button { padding: 8px 12px; font-size: 12px; }
+.workboard-row-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.density-comfortable .workboard-row { padding-top: 22px; padding-bottom: 22px; }
+.workboard-lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.workboard-lane { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--red-50); }
+.workboard-lane h3 { display: flex; justify-content: space-between; margin: 0; font-size: 14px; }
+.workboard-lane > p { color: var(--muted); font-size: 12px; margin: 6px 0 12px; }
+.workboard-lane .workboard-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; margin-top: 10px; background: var(--white); border: 1px solid var(--line); border-radius: 9px; }
+.workboard-lane .workboard-task, .workboard-lane .work-task-status, .workboard-lane .workboard-row-actions { grid-column: 1 / -1; }
+.workboard-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--line); }
+.workboard-pagination > label { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.workboard-pagination select { width: 75px; }
+.workboard-pagination > span { color: var(--muted); font-size: 12px; }
+.work-drawer, .work-create-dialog, .workboard-action-dialog { color: var(--ink); padding: 0; border: 1px solid var(--line); background: var(--white); box-shadow: var(--shadow); font-family: var(--font-ui); }
+.work-drawer::backdrop, .work-create-dialog::backdrop, .workboard-action-dialog::backdrop { background: rgba(50, 3, 13, .42); backdrop-filter: blur(3px); }
+.work-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(620px, 95vw); height: 100dvh; max-height: 100dvh; max-width: 100vw; border-radius: 18px 0 0 18px; }
+.work-drawer[open] { display: flex; flex-direction: column; }
+.work-drawer-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 22px; border-bottom: 1px solid var(--line); }
+.work-drawer-header > div { min-width: 0; display: grid; gap: 10px; }
+.work-drawer-header small, .work-create-dialog header small, .workboard-action-dialog header small { color: var(--red-800); font-size: 12px; font-weight: 800; }
+.work-drawer h2, .work-create-dialog h2, .workboard-action-dialog h2 { margin: 0; font: 500 28px/1.2 var(--font-display); overflow-wrap: anywhere; }
+.work-drawer h3 { margin: 0 0 6px; font-size: 14px; }
+.work-drawer .icon-button, .work-create-dialog .icon-button, .workboard-action-dialog .icon-button { min-width: 44px; min-height: 44px; }
+.work-drawer-tabs { display: flex; gap: 4px; padding: 6px 18px; border-bottom: 1px solid var(--line); }
+.work-drawer-tabs button { flex: 1; color: var(--muted); border-bottom: 3px solid transparent; background: var(--white); font: 700 13px/1.4 var(--font-ui); }
+.work-drawer-tabs button[aria-selected="true"] { color: var(--red-800); border-bottom-color: var(--red-700); }
+.work-drawer-body { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 22px; }
+.work-drawer-body p { margin-top: 0; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 14px; line-height: 1.65; }
+.work-detail-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }
+.work-detail-fields dt { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+.work-detail-fields dd { margin: 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.work-drawer-footer { padding: 18px 22px; border-top: 1px solid var(--line); background: var(--white); }
+.work-drawer-footer .work-task-actions { flex-wrap: wrap; gap: 8px; }
+.work-drawer-footer .button { min-height: 44px; font-size: 13px; }
+.work-history { margin: 0; padding-left: 22px; display: grid; gap: 20px; }
+.work-history li { padding-left: 5px; }
+.work-history strong, .work-history time, .work-history small { display: block; font-size: 13px; line-height: 1.7; }
+.work-history time, .work-history small { color: var(--muted); }
+.work-create-dialog, .workboard-action-dialog { margin: auto; width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); border-radius: 16px; overflow-y: auto; }
+.work-create-dialog form { padding: 22px; display: grid; gap: 20px; }
+.work-create-dialog header, .workboard-action-dialog header { display: flex; justify-content: space-between; gap: 12px; }
+.work-create-dialog header p, .workboard-action-dialog header p { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 10px 0 0; }
+.workboard-action-dialog .work-action-context { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.workboard-action-dialog .work-action-context strong, .workboard-action-dialog .work-action-context small { font-size: 13px; }
+.workboard-action-dialog textarea { min-height: 160px; }
+@media (max-width: 1100px) {
+    .workboard-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .workboard-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .workboard-row { grid-template-columns: minmax(150px, 1.4fr) minmax(100px, 1fr) 100px; }
+    .workboard-row .work-task-status { grid-column: 1 / 3; }
+}
+@media (max-width: 640px) {
+    .workboard-v5 input, .workboard-v5 select, .work-create-dialog input, .work-create-dialog select, .work-create-dialog textarea, .workboard-action-dialog textarea { font-size: 16px; }
+    .work-drawer-body p, .work-detail-fields dd { font-size: 16px; }
+    .workboard-filters, .workboard-results { padding: 14px; }
+    .workboard-periods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .workboard-period-header > div { width: 100%; }
+    .workboard-options-row { grid-template-columns: minmax(0, 1fr); }
+    .workboard-periods button { font-size: 12px; }
+    .workboard-controls, .workboard-saved-filters, .workboard-lanes { grid-template-columns: minmax(0, 1fr); }
+    .workboard-view-controls > .button { margin-left: 0; }
+    .workboard-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .workboard-task { grid-column: 1 / -1; }
+    .workboard-row .work-task-status, .workboard-row-actions { grid-column: 1 / -1; }
+    .workboard-row-actions > button { flex: 1; }
+    .workboard-pagination { justify-content: flex-start; }
+    .workboard-pagination > span { width: 100%; }
+    .work-drawer { width: 100vw; border-radius: 0; }
+    .work-drawer-header, .work-drawer-body, .work-drawer-footer { padding: 18px; }
+    .work-detail-fields { grid-template-columns: minmax(0, 1fr); }
+    .work-create-dialog form { padding: 18px; }
+    .work-create-dialog .modal-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .workboard-v5 *, .work-drawer *, .work-create-dialog *, .workboard-action-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
 html {
     min-width: 320px;
     color-scheme: light;

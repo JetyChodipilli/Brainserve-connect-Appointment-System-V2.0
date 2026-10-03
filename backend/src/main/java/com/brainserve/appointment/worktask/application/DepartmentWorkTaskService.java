@@ -4,6 +4,9 @@ import com.brainserve.appointment.audit.api.AuditService;
 import com.brainserve.appointment.departmenthr.api.DepartmentHrDirectory;
 import com.brainserve.appointment.employee.api.EmployeeDirectory;
 import com.brainserve.appointment.iam.api.StaffCommunicationDirectory;
+import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import com.brainserve.appointment.manager.api.ManagerDirectory;
 import com.brainserve.appointment.organization.api.OrganizationDirectory;
 import com.brainserve.appointment.shared.application.BusinessException;
@@ -45,12 +48,15 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
     private final AuditService audit;
     private final DepartmentHrDirectory departmentHrs;
     private final ManagerDirectory managers;
+    private final CurrentAccountAuthority authority;
+    private final EntityManager entityManager;
 
     public DepartmentWorkTaskService(DepartmentWorkTaskRepository tasks, EmployeeDirectory employees,
                                      TeamLeadDirectory teamLeads, OrganizationDirectory organization,
                                      StaffCommunicationDirectory staff,
                                      ApplicationEventPublisher events, AuditService audit,
-                                     DepartmentHrDirectory departmentHrs, ManagerDirectory managers) {
+                                     DepartmentHrDirectory departmentHrs, ManagerDirectory managers,
+                                     CurrentAccountAuthority authority, EntityManager entityManager) {
         this.tasks = tasks;
         this.employees = employees;
         this.teamLeads = teamLeads;
@@ -60,6 +66,8 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
         this.audit = audit;
         this.departmentHrs = departmentHrs;
         this.managers = managers;
+        this.authority = authority;
+        this.entityManager = entityManager;
     }
 
     @Transactional
@@ -143,30 +151,23 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
 
     @Transactional(readOnly = true)
     public List<DepartmentWorkTask> list(UUID userId, UUID employeeId) {
-        Set<String> roles = staff.requireActive(userId).roles();
-        if (roles.contains(HR)) {
-            return tasks.findTop500ByDepartmentIdOrderByCreatedAtDesc(
-                    departmentHrs.requireForUser(userId).departmentId());
-        }
-        if (roles.contains(TEAM_LEAD)) {
-            return tasks.findTop500ByDepartmentIdOrderByCreatedAtDesc(
-                    teamLeads.requireForUser(userId).departmentId());
-        }
-        if (roles.contains(MANAGER)) {
-            return tasks.findTop500ByDepartmentIdOrderByCreatedAtDesc(
-                    managers.requireForUser(userId).departmentId());
-        }
-        if (roles.contains(EMPLOYEE) && employeeId != null) {
-            return tasks.findTop200ByEmployeeIdOrderByCreatedAtDesc(employeeId);
-        }
-        throw new BusinessException("WORK_TASK_ROLE_REQUIRED",
-                "Only Employees, Team Leads, HR and the assigned Manager can view department work",
-                HttpStatus.FORBIDDEN);
+        var current = requirePermission(userId, "WORK_TASK_READ");
+        var scope = authority.requireWorkScope(userId);
+        requireCurrentAuthority(current, scope.authority());
+        List<DepartmentWorkTask> result = "ROLE_EMPLOYEE".equals(current.role())
+                ? tasks.findTop200ByEmployeeIdOrderByCreatedAtDesc(current.employeeId()).stream()
+                    .filter(task -> "EMPLOYEE".equals(task.getAssigneeRole()) && scope.departmentId().equals(task.getDepartmentId())).toList()
+                : tasks.findTop500ByDepartmentIdOrderByCreatedAtDesc(scope.departmentId());
+        requireUnchangedScope(userId, scope);
+        return result;
     }
 
     @Transactional(readOnly = true)
     public Workspace workspace(UUID actorUserId) {
-        Set<String> roles = staff.requireActive(actorUserId).roles();
+        var current = requirePermission(actorUserId, "WORK_TASK_CREATE");
+        var currentScope = authority.requireWorkScope(actorUserId);
+        requireCurrentAuthority(current, currentScope.authority());
+        Set<String> roles = Set.of(current.role());
         UUID departmentId;
         UUID excludedEmployeeId = null;
         TeamLeadDirectory.Assignment activeLead;
@@ -216,6 +217,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                     employee.designation(), role));
         }
         eligible.sort(Comparator.comparing(EligibleAssignee::displayName, String.CASE_INSENSITIVE_ORDER));
+        requireUnchangedScope(actorUserId, currentScope);
         return new Workspace(department.id(), department.code(), department.name(), List.copyOf(eligible));
     }
 
@@ -232,6 +234,52 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
     @Transactional(readOnly = true)
     public TaskSnapshot requireTask(UUID workTaskId) {
         return snapshot(require(workTaskId));
+    }
+
+    @Override
+    @Transactional
+    public TaskSnapshot requireTaskForMutation(UUID taskId, Long expectedVersion) {
+        DepartmentWorkTask task = requireObservedVersion(taskId, expectedVersion);
+        // Audit-only decisions must invalidate the task version observed by a Workboard client too.
+        entityManager.lock(task, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        return snapshot(task);
+    }
+
+    private DepartmentWorkTask requireObservedVersion(UUID taskId, Long expectedVersion) {
+        return requireObservedVersion(taskId, expectedVersion, () -> {});
+    }
+
+    private DepartmentWorkTask requireObservedVersion(UUID taskId, Long expectedVersion, Runnable revalidate) {
+        DepartmentWorkTask task = tasks.findById(taskId).orElseThrow(() -> new BusinessException(
+                "WORK_TASK_NOT_FOUND", "The work task was not found", HttpStatus.NOT_FOUND));
+        // Refresh acquires the row lock and replaces any earlier ORM snapshot in one operation.
+        try { entityManager.refresh(task, LockModeType.PESSIMISTIC_WRITE); }
+        catch (jakarta.persistence.EntityNotFoundException ex) {
+            throw new BusinessException("WORK_TASK_NOT_FOUND", "The work task was not found", HttpStatus.NOT_FOUND);
+        }
+        revalidate.run();
+        if (expectedVersion != null && (expectedVersion < 0 || expectedVersion != task.getVersion())) {
+            throw new BusinessException("WORK_TASK_VERSION_CONFLICT",
+                    "This worksheet changed. Reload it before submitting your update", HttpStatus.CONFLICT);
+        }
+        return task;
+    }
+
+    private void requireCurrentAuthority(CurrentAccountAuthority.Authority before, CurrentAccountAuthority.Authority after) {
+        if (!before.equals(after)) throw new BusinessException("WORK_TASK_PERMISSION_DENIED",
+                "Your current account changed. Reload before submitting", HttpStatus.FORBIDDEN);
+    }
+
+    private void requireUnchangedScope(UUID actor, CurrentAccountAuthority.WorkScope before) {
+        if (!before.equals(authority.requireWorkScope(actor))) throw new BusinessException("WORK_TASK_PERMISSION_DENIED",
+                "Your current role, permissions or assignment changed. Reload before submitting", HttpStatus.FORBIDDEN);
+    }
+
+    private CurrentAccountAuthority.Authority requirePermission(UUID actor, String permission) {
+        var current = authority.requireActive(actor);
+        if (!current.permissions().contains(permission)) throw new BusinessException("WORK_TASK_PERMISSION_DENIED",
+                "Your current permissions do not allow this action", HttpStatus.FORBIDDEN);
+        return current;
     }
 
     @Override
@@ -279,15 +327,38 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
 
     @Transactional
     public DepartmentWorkTask start(UUID userId, UUID employeeId, UUID taskId, String update) {
+        return start(userId, employeeId, taskId, update, null);
+    }
+
+    @Transactional
+    public DepartmentWorkTask start(UUID userId, UUID employeeId, UUID taskId, String update, Long expectedVersion) {
+        var current = requirePermission(userId, "WORK_TASK_PROGRESS");
+        var currentScope = authority.requireWorkScope(userId);
+        requireCurrentAuthority(current, currentScope.authority());
+        employeeId = current.employeeId();
+        requireProgressScope(userId, employeeId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
+        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(userId, currentScope));
         DepartmentWorkTask task = requireProgressScope(userId, employeeId, taskId);
         task.start(update);
         notifyProgress(userId, task, "started", update);
         audit(task, "IN_PROGRESS");
+        tasks.flush();
         return task;
     }
 
     @Transactional
     public DepartmentWorkTask complete(UUID userId, UUID employeeId, UUID taskId, String update) {
+        return complete(userId, employeeId, taskId, update, null);
+    }
+
+    @Transactional
+    public DepartmentWorkTask complete(UUID userId, UUID employeeId, UUID taskId, String update, Long expectedVersion) {
+        var current = requirePermission(userId, "WORK_TASK_PROGRESS");
+        var currentScope = authority.requireWorkScope(userId);
+        requireCurrentAuthority(current, currentScope.authority());
+        employeeId = current.employeeId();
+        requireProgressScope(userId, employeeId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
+        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(userId, currentScope));
         DepartmentWorkTask task = requireProgressScope(userId, employeeId, taskId);
         task.complete(update);
         if (TEAM_LEAD_ASSIGNEE.equals(task.getAssigneeRole())) {
@@ -298,12 +369,26 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
             notifyProgress(userId, task, "marked completed and is waiting for Team Lead approval", update);
         }
         audit(task, "COMPLETED");
+        tasks.flush();
         return task;
     }
 
     @Transactional
     public DepartmentWorkTask reviseEmployeeRework(UUID employeeUserId, UUID employeeId,
                                                    UUID taskId, String update) {
+        return reviseEmployeeRework(employeeUserId, employeeId, taskId, update, null);
+    }
+
+    @Transactional
+    public DepartmentWorkTask reviseEmployeeRework(UUID employeeUserId, UUID employeeId,
+                                                   UUID taskId, String update, Long expectedVersion) {
+        var current = requirePermission(employeeUserId, "WORK_TASK_PROGRESS");
+        var currentScope = authority.requireWorkScope(employeeUserId);
+        requireCurrentAuthority(current, currentScope.authority());
+        employeeId = current.employeeId();
+        if (!"ROLE_EMPLOYEE".equals(current.role())) throw new BusinessException("WORK_TASK_ROLE_REQUIRED", "Only the assigned Employee can perform this action", HttpStatus.FORBIDDEN);
+        requireEmployeeScope(employeeId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
+        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(employeeUserId, currentScope));
         DepartmentWorkTask task = requireEmployeeScope(employeeId, taskId);
         task.reviseEmployeeReworkSubmission(update);
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(employeeUserId,
@@ -311,11 +396,23 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                 "Employee updated and resubmitted rework for worksheet ‘" + task.getTitle()
                         + "’. Review the corrected delivery in Work Board."));
         audit(task, "REWORK_RESUBMITTED");
+        tasks.flush();
         return task;
     }
 
     @Transactional
     public DepartmentWorkTask approve(UUID teamLeadUserId, UUID taskId, String review) {
+        return approve(teamLeadUserId, taskId, review, null);
+    }
+
+    @Transactional
+    public DepartmentWorkTask approve(UUID teamLeadUserId, UUID taskId, String review, Long expectedVersion) {
+        var current = requirePermission(teamLeadUserId, "WORK_TASK_REVIEW");
+        var currentScope = authority.requireWorkScope(teamLeadUserId);
+        requireCurrentAuthority(current, currentScope.authority());
+        if (!"ROLE_TEAM_LEAD".equals(current.role())) throw new BusinessException("WORK_TASK_ROLE_REQUIRED", "Only the assigned Team Lead can review delivery", HttpStatus.FORBIDDEN);
+        requireTeamLeadReviewScope(teamLeadUserId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
+        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(teamLeadUserId, currentScope));
         DepartmentWorkTask task = requireTeamLeadReviewScope(teamLeadUserId, taskId);
         task.approve(review);
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(teamLeadUserId, employeeUserId(task),
@@ -325,21 +422,46 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                 "Team Lead reviewed and approved ‘" + task.getTitle() + "’ in department branch "
                         + task.getDepartmentBranch() + ". HR audit is required.");
         audit(task, "APPROVED");
+        tasks.flush();
         return task;
     }
 
     @Transactional
     public DepartmentWorkTask requestChanges(UUID teamLeadUserId, UUID taskId, String review) {
+        return requestChanges(teamLeadUserId, taskId, review, null);
+    }
+
+    @Transactional
+    public DepartmentWorkTask requestChanges(UUID teamLeadUserId, UUID taskId, String review, Long expectedVersion) {
+        var current = requirePermission(teamLeadUserId, "WORK_TASK_REVIEW");
+        var currentScope = authority.requireWorkScope(teamLeadUserId);
+        requireCurrentAuthority(current, currentScope.authority());
+        if (!"ROLE_TEAM_LEAD".equals(current.role())) throw new BusinessException("WORK_TASK_ROLE_REQUIRED", "Only the assigned Team Lead can review delivery", HttpStatus.FORBIDDEN);
+        requireTeamLeadReviewScope(teamLeadUserId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
+        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(teamLeadUserId, currentScope));
         DepartmentWorkTask task = requireTeamLeadReviewScope(teamLeadUserId, taskId);
         task.requestChanges(review);
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(teamLeadUserId, employeeUserId(task),
                 "Changes were requested for ‘" + task.getTitle() + "’: " + review.trim()));
         audit(task, "CHANGES_REQUESTED");
+        tasks.flush();
         return task;
     }
 
     @Transactional
     public DepartmentWorkTask acknowledge(UUID employeeUserId, UUID employeeId, UUID taskId) {
+        return acknowledge(employeeUserId, employeeId, taskId, null);
+    }
+
+    @Transactional
+    public DepartmentWorkTask acknowledge(UUID employeeUserId, UUID employeeId, UUID taskId, Long expectedVersion) {
+        var current = requirePermission(employeeUserId, "WORK_TASK_PROGRESS");
+        var currentScope = authority.requireWorkScope(employeeUserId);
+        requireCurrentAuthority(current, currentScope.authority());
+        employeeId = current.employeeId();
+        if (!"ROLE_EMPLOYEE".equals(current.role())) throw new BusinessException("WORK_TASK_ROLE_REQUIRED", "Only the assigned Employee can perform this action", HttpStatus.FORBIDDEN);
+        requireEmployeeScope(employeeId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
+        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(employeeUserId, currentScope));
         DepartmentWorkTask task = requireEmployeeScope(employeeId, taskId);
         task.acknowledge();
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(employeeUserId,
@@ -349,6 +471,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                 "Employee acknowledged the approved worksheet ‘" + task.getTitle()
                         + "’. It is ready for HR audit.");
         audit(task, "ACKNOWLEDGED");
+        tasks.flush();
         return task;
     }
 
@@ -388,7 +511,8 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
 
     private DepartmentWorkTask requireTeamLeadReviewScope(UUID teamLeadUserId, UUID taskId) {
         DepartmentWorkTask task = requireTeamLeadScope(teamLeadUserId, taskId);
-        if (!task.requiresTeamLeadReview()) {
+        if (!task.requiresTeamLeadReview()
+                || task.getEmployeeId().equals(authority.requireActive(teamLeadUserId).employeeId())) {
             throw new BusinessException("WORK_TASK_SELF_REVIEW_NOT_ALLOWED",
                     "A Team Lead cannot approve or return their own HR-assigned worksheet",
                     HttpStatus.FORBIDDEN);
@@ -409,9 +533,13 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
 
     private DepartmentWorkTask requireEmployeeScope(UUID employeeId, UUID taskId) {
         DepartmentWorkTask task = require(taskId);
-        if (!EMPLOYEE_ASSIGNEE.equals(task.getAssigneeRole()) || !task.getEmployeeId().equals(employeeId)) {
+        if (employeeId == null || !EMPLOYEE_ASSIGNEE.equals(task.getAssigneeRole()) || !task.getEmployeeId().equals(employeeId)) {
             throw new BusinessException("WORK_TASK_EMPLOYEE_SCOPE_DENIED",
                     "This task is assigned to another employee", HttpStatus.FORBIDDEN);
+        }
+        employees.requireActiveEmployee(employeeId);
+        if (!task.getDepartmentId().equals(employees.departmentIdForEmployee(employeeId))) {
+            throw new BusinessException("WORK_TASK_EMPLOYEE_SCOPE_DENIED", "This task is outside your current department", HttpStatus.FORBIDDEN);
         }
         return task;
     }

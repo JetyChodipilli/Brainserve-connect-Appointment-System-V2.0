@@ -254,6 +254,13 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler({org.springframework.dao.OptimisticLockingFailureException.class,
+            jakarta.persistence.OptimisticLockException.class})
+    public ProblemDetail staleVersion(Exception ex, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "RECORD_VERSION_CONFLICT",
+                "This record changed. Reload it before submitting your update", request, null);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail conflict(
             DataIntegrityViolationException ex,

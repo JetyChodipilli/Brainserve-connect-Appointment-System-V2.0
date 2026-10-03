@@ -105,11 +105,14 @@ RPO/RTO remain unmeasured until a representative full restore is timed.
 2. Check migration compatibility. V51 adds MFA/session storage, V52 adds
    reporting revisions and wraps existing refresh functions, and V53 adds
    dashboard measurement facts/coverage. V54 adds versioned company setup and
-   durable import previews/results. Preserve V1–V53
+   durable import previews/results. V55 adds Workboard preferences and submission
+   counters. Preserve V1–V54
    checksums; do not use `flyway repair` to hide drift. Read `docs/SPRINT_2.md`
    for MFA enrollment, encryption-key continuity and the exact trusted proxy;
    `docs/SPRINT_3.md` describes metric definitions, source gaps and screen rollback.
    Read `docs/SPRINT_4.md` before resuming interrupted imports or rolling back setup.
+   Read `docs/SPRINT_5.md` for Workboard scopes, version conflicts and backend-first
+   rollout. Restore verification checks V55 and compares all migration checksums.
 3. Verify the new release in an isolated restore before changing a persistent host.
 4. Build the new commit-tagged images, preserve the previous verified images, and
    run the same Compose `up --no-build --wait` with the new `RELEASE_ID`.
