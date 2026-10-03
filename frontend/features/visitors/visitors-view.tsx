@@ -8,12 +8,13 @@ import { type AccessRecord, type Appointment, type Role } from "../../types/work
 import { fail } from "../../utils/errors";
 import { visitorInitials } from "../appointments/appointment-utils";
 import { VisitorIdentityRegistry } from "./visitor-identity-registry";
+import { BulkImportEntry } from "../setup-imports/bulk-imports";
 import { ArrowRight, CalendarDays, Check, CheckCircle2, DoorOpen, LogIn, LogOut, QrCode, UserPlus, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
-export function VisitorsView({ role, appointments, accessRecords, onCheckIn, onReferenceCheckIn, onPassCheckIn, onCheckOut,
+export function VisitorsView({ role, userEmail, appointments, accessRecords, onCheckIn, onReferenceCheckIn, onPassCheckIn, onCheckOut,
                           decideReceptionVisit, onRegister }: {
-    role: Role; appointments: Appointment[]; accessRecords: AccessRecord[];
+    role: Role; userEmail: string; appointments: Appointment[]; accessRecords: AccessRecord[];
     onCheckIn: (id: string) => Promise<void>; onReferenceCheckIn: (reference: string) => Promise<void>;
     onPassCheckIn: (token: string) => Promise<void>; onCheckOut: (id: string) => Promise<void>;
     decideReceptionVisit: (id: string, decision: "verify" | "reject") => Promise<void>; onRegister: () => void;
@@ -57,6 +58,7 @@ export function VisitorsView({ role, appointments, accessRecords, onCheckIn, onR
                    title={role === "Security" ? "Everyone inside, accounted for" : "A calm, confident arrival"}
                    detail="Security captures each arrival, Reception verifies it, and CEO visits go directly to the assigned department Manager for approval."
                    action={<button className="button button-primary" onClick={onRegister}><UserPlus size={17} /> {role === "Security" ? "Create walk-in" : "Register visitor"}</button>} />
+        <BulkImportEntry accountScope={`${role}:${userEmail}`} kinds={["VISITORS"]} label="Import pending visits" />
         <div className="reception-actions">
             <button className="action-tile glass-panel" onClick={onRegister}><span><UserPlus size={24} /></span><div><strong>{role === "Security" ? "Create walk-in appointment" : "Register interview or meeting"}</strong><small>{role === "Security" ? "Capture arrival and notify Reception immediately" : "Start the Security → Reception → approval workflow"}</small></div><ArrowRight size={18} /></button>
             <button className="action-tile glass-panel" onClick={() => document.getElementById("live-occupancy")?.scrollIntoView({ behavior: "smooth", block: "center" })}><span><DoorOpen size={24} /></span><div><strong>Emergency list</strong><small>{accessRecords.length} people currently inside</small></div><ArrowRight size={18} /></button>
@@ -70,4 +72,3 @@ export function VisitorsView({ role, appointments, accessRecords, onCheckIn, onR
         </section>
     </>;
 }
-

@@ -36,7 +36,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
-public class EmployeeService implements EmployeeDirectory, EmployeeStatistics {
+public class EmployeeService implements EmployeeDirectory, EmployeeStatistics, com.brainserve.appointment.employee.api.EmployeeProfileImport {
 
     private final EmployeeRepository employees;
     private final OrganizationDirectory organization;
@@ -78,6 +78,30 @@ public class EmployeeService implements EmployeeDirectory, EmployeeStatistics {
         this.departmentHrs = departmentHrs;
         this.teamLeads = teamLeads;
         this.managers = managers;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void requireImportDepartment(UUID actorId, UUID departmentId) {
+        requireRequestedDepartment(actorId, departmentId);
+        organization.requireActiveDepartment(departmentId);
+    }
+
+    @Override
+    @Transactional
+    public UUID importProfile(UUID actorId, com.brainserve.appointment.employee.api.EmployeeProfileImport.Profile profile) {
+        requireRequestedDepartment(actorId, profile.departmentId());
+        var department = organization.lockActiveDepartment(profile.departmentId());
+        if (employees.existsByOfficialEmailIgnoreCase(profile.officialEmail())) {
+            throw new BusinessException("EMPLOYEE_EMAIL_EXISTS", "Official email is already assigned", HttpStatus.CONFLICT);
+        }
+        // Reuse the same employee-number sequence, entity defaults and scoped validation,
+        // deliberately leaving governed account invitation/provisioning as a separate action.
+        String number = "BSPL-" + department.code() + "-" + String.format("%04d", nextEmployeeNumberSequence());
+        Employee employee = employees.saveAndFlush(new Employee(number, profile.firstName(), profile.lastName(),
+                profile.officialEmail(), profile.phoneNumber(), department.id(), profile.designation(), profile.joiningDate()));
+        audit.record("EMPLOYEE_PROFILE_IMPORTED", "EMPLOYEE", employee.getId().toString(), "{\"profileOnly\":true}");
+        return employee.getId();
     }
 
     @Transactional

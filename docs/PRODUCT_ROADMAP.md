@@ -1,6 +1,6 @@
 # BrainServe product roadmap and sprint plan
 
-Planning baseline: 30 September 2026. Status: researched proposal for implementation; only the audit fixes described in [V2_AUDIT.md](V2_AUDIT.md) are implemented in this change. Requirements and testable release gates are in [V2_REQUIREMENTS.md](V2_REQUIREMENTS.md).
+Planning baseline: the expanded BrainServe Connect V2 PRD dated 30 September 2026. Its sixteen-sprint sequence replaces the earlier ten-sprint proposal below. S1–S3 are merged; S4 covers company setup and safe imports. Implementation and verification evidence live in the individual `SPRINT_*.md` documents. Enterprise and SaaS schedules remain proposals.
 
 ## Release decision
 
@@ -38,23 +38,28 @@ The existing role, department, company configuration, approval, retention, audit
 
 One sprint is two weeks. Estimates assume one experienced full-stack engineer, about **60–70 focused engineering hours per sprint**, with part-time product/UAT, QA/security and operations input available. Engineering estimates include implementation, automated tests, migration/rollback work and documentation; customer approvals, OAuth verification, procurement and independent assessments can add calendar time.
 
-A lean pilot is S1–S4 with a temporary manual/demo setup for integrations and printing: roughly 240–320 engineering hours, 8 weeks of work plus 1–2 weeks contingency. It is a supervised pilot, not the full Phase 1 claim. Full V2.0 plans ten sprints; unresolved acceptance gates delay launch rather than silently dropping protections.
+A supervised pilot after S4 is conditional on setup/import UAT, staging recovery, accurate initial cards, current core flows, accepted limits and a named support owner. Integrations and printing remain manual until their own acceptance gates pass. The expanded V2.0 backlog has sixteen ordered sprint containers; the suggested two-week cadence is a sizing aid rather than a delivery promise. Unresolved acceptance gates delay launch.
 
 ### Phase 1: V2.0 commercial single-company release
 
-| Sprint | Deliverable | Acceptance evidence | Dependencies / requirement IDs |
-| --- | --- | --- | --- |
-| S0 — completed audit increment | Session race and limiter fixes, cache/tab runtime coverage | CI green; reviewed audit backlog | AUD report; current change |
-| S1 | Versioned production/staging deployment template, TLS, secret injection and encrypted backup/restore procedure | Install on a clean staging environment, rotate a secret, restore a backup and roll back an image | Chosen cloud/DNS/SMTP; P1-01, P1-02 |
-| S2 | Office-NAT-safe rate policy, trusted proxies, dashboard freshness, metrics baseline and backend cycle inventory | Same-IP legitimate-user and spoofed-header tests; scope/freshness tests; recorded latency baseline | S1; P1-03, P1-04, CORE-01 |
-| S3 | Resumable company setup and branding/policy configuration | Authorized admin completes/re-enters setup; invalid department/role combinations blocked; current theme preserved | Existing configuration/accounts modules; P1-05 |
-| S4 | Guided admin/role onboarding, inline help, seeded demo, commercial pilot package | Fresh admin and receptionist finish scripted tasks; demo is separate from customer data; support/install checklist | S3; P1-06, P1-11 |
-| S5 | Integration adapter foundation and connection/admin status screens | Encrypted credentials, disconnect/revoke, after-commit jobs, deduplication, bounded retries and failed-job replay | Provider choice + test accounts; P1-07 |
-| S6 | First calendar provider: approved appointment create/update/cancel | Duplicate event delivery produces one event; cancellation clears it; renewal/disconnect and timezone tests | S5 + provider consent; P1-08 |
-| S7 | First arrival messaging provider | Arrival event once per delivery key; 429/timeout retry with delay; permission-safe app links and owner runbook | S5; P1-09 |
-| S8 | Restricted kiosk mode and badge printing | Auto-reset clears visitor data; staff admin inaccessible; print/QR tested on agreed tablet/printer | Agreed device matrix; P1-10 |
-| S9 | Production dashboards/alerts, realistic load and restore drill | Agreed p95/p99 targets measured; Redis/queue/database failures alerted; RPO/RTO recorded | S1/S2 + representative data; P1-02, P1-12 |
-| S10 | Pilot UAT, upgrade/rollback rehearsal, support and manual subscription packaging | All release gates signed off; second clean customer install demonstrated; known limits recorded | S1–S9; P1-11, P1-12 |
+| Sprint | Deliverable | Reviewable exit |
+| --- | --- | --- |
+| S1 | Baseline deployment and restore/rollback; KPI reconciliation fixtures | Source definitions and reproducible staging install |
+| S2 | Rate policy, privileged security/session design, tab safeguards and freshness | Adversarial and recovery evidence for foundations |
+| S3 | Dashboard contracts, stage/event coverage and first System Admin/CEO cards | Scoped fixture reconciliation and unknown/freshness states |
+| S4 | Company setup and bounded import preview/job flow | Setup/import UAT and conditional supervised pilot gates |
+| S5 | Workboard compact list/board, drawer and quick filters | Existing task actions and role rules preserved |
+| S6 | Priority, blockers, checklists and secure evidence | Versioned updates and evidence controls |
+| S7 | Timelines/comments, drafts and scoped unified search | Ownership, account-switch, recovery and leakage tests |
+| S8 | Templates and recurrence | One occurrence under concurrent workers; eligibility exceptions |
+| S9 | Handover, workload and work analytics | Authorship and original-deadline cohorts preserved |
+| S10 | Notification preferences and approval escalation | Mandatory policy, quiet hours, delegation and deduplication |
+| S11 | Integration connection/delivery foundation and support diagnostics | Credentials, redaction and adapter simulator tests |
+| S12 | First calendar provider | Real consent and create/update/cancel reconciliation UAT |
+| S13 | First messaging provider | Arrival notice, renewal/revocation and retry UAT |
+| S14 | Group preregistration, QR intake, restricted kiosk and badges | Scan/device security and selected printer hardware UAT |
+| S15 | Accessibility completion, monitoring/load/DR drills | Measured performance and restore/rollback reports |
+| S16 | Pilot feedback, compatibility, release docs and commercial UAT | Accepted release gates, limits and support owner |
 
 ### Phase 2: V2.1–V2.2 enterprise pilots
 

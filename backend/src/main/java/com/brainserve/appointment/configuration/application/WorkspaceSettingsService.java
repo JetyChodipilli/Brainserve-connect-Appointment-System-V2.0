@@ -78,6 +78,9 @@ public class WorkspaceSettingsService implements WorkspacePolicy {
     }
 
     private void validateKey(String key, String value) {
+        if (key.equals("COMPANY.OFFICE_ZONE")) {
+            try { java.time.ZoneId.of(value); } catch (java.time.DateTimeException e) { invalid("Office zone must be an IANA time-zone identifier"); }
+        }
         if (key.equals("COMPANY.EMAIL_DOMAIN")
                 && !value.toLowerCase(java.util.Locale.ROOT).matches("^(?!-)[a-z0-9-]+(\\.[a-z0-9-]+)+$")) {
             invalid("Company email domain must be a valid domain such as brainserve.in");

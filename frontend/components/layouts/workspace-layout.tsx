@@ -151,7 +151,7 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                 {view === "insights" && <WorkInsightsView key={`insights:${workspaceRevision}`} role={role} userEmail={userEmail} departments={departments}
                                                           employees={employees} staffAccounts={staffAccounts}
                                                           managerAssignments={managerAssignments} />}
-                {view === "employees" && <EmployeesView role={role} refreshKey={workspaceRevision} employees={employees}
+                {view === "employees" && <EmployeesView role={role} userEmail={userEmail} refreshKey={workspaceRevision} employees={employees}
                                                         departments={departments}
                                                         staffAccounts={staffAccounts}
                                                         currentEmployee={currentEmployee}
@@ -165,7 +165,7 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                                                               }} />}
                 {view === "account-lifecycle" && <AccountLifecycleView key={`account-lifecycle:${workspaceRevision}`} role={role}
                                                                        userEmail={userEmail} staffAccounts={staffAccounts} departments={departments} employees={employees} />}
-                {view === "visitors" && <VisitorsView key={`visitors:${workspaceRevision}`} role={role} appointments={appointments} accessRecords={accessRecords}
+                {view === "visitors" && <VisitorsView key={`visitors:${workspaceRevision}`} role={role} userEmail={userEmail} appointments={appointments} accessRecords={accessRecords}
                                                       onCheckIn={checkInAppointment} onReferenceCheckIn={checkInByReference}
                                                       onPassCheckIn={checkInByPass} onCheckOut={checkOutAppointment}
                                                       decideReceptionVisit={decideReceptionVisit} onRegister={() => setVisitModal(true)} />}

@@ -1,0 +1,12 @@
+{
+  "name": "@brainserve/braces",
+  "version": "3.0.3-brainserve.1",
+  "private": true,
+  "description": "MIT braces 3.0.3 with reviewed upstream PR72 depth guard",
+  "license": "MIT",
+  "main": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "fill-range": "7.1.1"
+  }
+}

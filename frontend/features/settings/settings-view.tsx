@@ -13,6 +13,8 @@ import {
     type WorkspaceSetting,
 } from "../../services/brainserve-api";
 import { PageTitle } from "../../components/ui/page-title";
+import { CompanySetup } from "../setup-imports/company-setup";
+import { BulkImports } from "../setup-imports/bulk-imports";
 import { type Department, type Employee, type Role, type SettingsSection } from "../../types/workspace";
 import { fail } from "../../utils/errors";
 import { AccountRecoveryApprovalPanel } from "../accounts/components/account-recovery-approval-panel";
@@ -43,6 +45,8 @@ import {
     ShieldCheck,
     UserCog,
     UserPlus,
+    ListChecks,
+    Upload,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
@@ -77,9 +81,11 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
     const [managedAccountsLoading, setManagedAccountsLoading] = useState(false);
     const allowedRoles = [["ROLE_RECEPTIONIST", "Receptionist"], ["ROLE_SECURITY", "Security"]];
     const nav: Array<[SettingsSection, typeof Building2, string]> = [
+        ...(role === "System Admin" ? [["setup", ListChecks, "Company setup"] as [SettingsSection, typeof Building2, string]] : []),
         ["company", Building2, "Company profile"], ["identity", Fingerprint, "Identity & access"],
         ["roles", UserCog, "Roles & responsibilities"], ["policy", CalendarDays, "Appointment policy"],
         ["notifications", Bell, "Notifications"], ["privacy", ShieldCheck, "Privacy & retention"],
+        ["imports", Upload, "Safe CSV imports"],
     ];
 
     useEffect(() => {
@@ -166,6 +172,8 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
     return <><PageTitle eyebrow="WORKSPACE ADMINISTRATION" title="BrainServe Connect controls" detail="Company identity, role-scoped access, appointment rules, notifications and privacy settings backed by the Spring service." />
         {role === "System Admin" && <IntegrationStatusPanel />}
         <div className="settings-grid"><article className="settings-nav glass-panel">{nav.map(([id, Icon, label]) => <button type="button" className={section === id ? "active" : ""} key={id} onClick={() => { setSection(id); setError(""); setMessage(""); }}><Icon size={18} />{label}<ChevronRight size={16} /></button>)}</article><div className="identity-settings">
+            {section === "setup" && <CompanySetup role={role} userEmail={userEmail} onConfigure={setSection} />}
+            {section === "imports" && <BulkImports accountScope={`${role}:${userEmail}`} />}
             {section === "company" && settingPanel("Company profile", "ORGANIZATION IDENTITY", "These values drive the public visitor experience and official support details.", ["COMPANY.NAME", "COMPANY.EMAIL_DOMAIN", "COMPANY.HQ_ADDRESS", "COMPANY.SUPPORT_EMAIL"])}
             {section === "identity" && <>
                 <article className="panel glass-panel"><div className="panel-heading"><div><span>YOUR STAFF IDENTITY</span><h2>Company login</h2><p>Current login: <strong>{userEmail}</strong>. Your authenticated role is locked to <strong>{role}</strong>.</p></div><LockKeyhole size={22} /></div>{role !== "System Admin" && <form className="inline-account-form" onSubmit={changeOwnEmail}><label>New company email<input name="newEmail" type="email" placeholder="name@brainserve.in" required /></label><label>Current password<input name="currentPassword" type="password" minLength={8} required /></label><button className="button button-secondary"><Fingerprint size={16} /> Update my email</button></form>}</article>
@@ -204,10 +212,9 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
                 managerAssignments={managerAssignments} onChanged={onRoleAssignmentChanged} />}
             {section === "roles" && ["CEO", "System Admin"].includes(role) && <ManagerDepartmentAssignmentPanel
                 departments={departments} assignments={managerAssignments} onChanged={onRoleAssignmentChanged} />}
-            {section === "policy" && settingPanel("Appointment and QR pass policy", "VISITOR WORKFLOW", "Booking duration, same-day lead time, advance window and signed pass validity are enforced by backend services.", ["APPOINTMENT.SLOT_MINUTES", "APPOINTMENT.MAX_ADVANCE_DAYS", "APPOINTMENT.MIN_LEAD_MINUTES", "APPOINTMENT.CHECK_IN_EARLY_MINUTES", "APPOINTMENT.QR_EXPIRY_MINUTES_AFTER_END"])}
+            {section === "policy" && settingPanel("Appointment and QR pass policy", "VISITOR WORKFLOW", "Booking duration, lead time, advance window, interview approval and signed pass validity are enforced by backend services. The office time zone preference must match the running service before setup is ready. To change the running clock, update the deployment’s time zone and restart the service.", ["COMPANY.OFFICE_ZONE", "APPOINTMENT.SLOT_MINUTES", "APPOINTMENT.MAX_ADVANCE_DAYS", "APPOINTMENT.MIN_LEAD_MINUTES", "APPOINTMENT.CHECK_IN_EARLY_MINUTES", "APPOINTMENT.QR_EXPIRY_MINUTES_AFTER_END", "APPROVAL.INTERVIEW.REQUIRES_HR"])}
             {section === "notifications" && <>{settingPanel("Notification delivery", "EMAIL & ALERTS", "Control transactional booking, approval and security alert email.", ["NOTIFICATION.APPOINTMENT_EMAIL_ENABLED", "NOTIFICATION.APPROVAL_EMAIL_ENABLED", "NOTIFICATION.SECURITY_ALERT_EMAIL_ENABLED"])}<article className="panel glass-panel"><div className="panel-heading"><div><span>BRAINSERVE CONNECT INTERNAL CALLS</span><h2>Prioritized, role-controlled conversations</h2><p>Unread and urgent requests rise first. Department-bound routes are restricted to the sender’s assigned department.</p></div><MessageSquare size={22} /></div><div className="notification-route-grid"><span><strong>CEO</strong><ChevronRight size={14} />Manager · HR Admin · Team Lead · Receptionist</span><span><strong>Manager</strong><ChevronRight size={14} />CEO · same-department HR · Receptionist</span><span><strong>HR Admin</strong><ChevronRight size={14} />CEO · same-department Team Lead and Employee · Receptionist</span><span><strong>Team Lead</strong><ChevronRight size={14} />same-department HR · Receptionist</span><span><strong>Employee</strong><ChevronRight size={14} />same-department HR</span><span><strong>Receptionist</strong><ChevronRight size={14} />CEO · Manager · HR Admin · Team Lead</span></div></article></>}
             {section === "privacy" && <>{settingPanel("Privacy and consent", "DATA GOVERNANCE", "Apply the consent version used across the service. Dataset retention is managed in the governed lifecycle below.", ["PRIVACY.CONSENT_VERSION"])}{role === "System Admin" && <DataGovernancePanel />}</>}
             {message && <div className="success-banner"><CheckCircle2 size={17} /> {message}</div>}{error && <div className="login-error" role="alert">{error}</div>}
         </div></div></>;
 }
-
