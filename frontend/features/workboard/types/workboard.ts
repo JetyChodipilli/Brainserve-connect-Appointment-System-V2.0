@@ -32,7 +32,7 @@ export type WorkInsight = { auditRecordId: string | null; workTaskId: string; we
 export type WorkTaskWorkflowState = { workTaskId: string; auditStatus: WorkInsight["auditStatus"] };
 
 export type WorkboardScope = "TODAY" | "CARRY_FORWARD" | "HISTORY" | "ALL";
-export type WorkboardQuickFilter = "ALL" | "MY_ACTIONS" | "DUE_TODAY" | "OVERDUE_DELIVERY" | "AWAITING_MY_REVIEW" | "RETURNED_FOR_REWORK";
+export type WorkboardQuickFilter = "ALL" | "MY_ACTIONS" | "DUE_TODAY" | "OVERDUE_DELIVERY" | "AWAITING_MY_REVIEW" | "RETURNED_FOR_REWORK" | "BLOCKED";
 export type WorkboardSort = "DUE_DATE" | "UPDATED_AT" | "TITLE" | "PRIORITY";
 export type WorkboardCriteria = { scope: WorkboardScope; quickFilter: WorkboardQuickFilter; query: string;
   status: "ALL" | WorkTask["status"]; branch: string; sort: WorkboardSort };
@@ -41,7 +41,7 @@ export type WorkboardAction = "start" | "complete" | "approve" | "request-change
 export type WorkboardLane = "DELIVERY" | "REVIEW" | "REWORK" | "CLOSED";
 export type WorkboardItem = WorkTask & { assigneeName: string; auditStatus: WorkInsight["auditStatus"];
   auditRecordId: string | null; auditVersion: number | null; updatedAt: string; submissionVersion: number | null;
-  priority: null; blocked: null; allowedActions: WorkboardAction[]; nextActor: string | null; lane: WorkboardLane };
+  priority: WorkPriority | null; blocked: boolean | null; allowedActions: WorkboardAction[]; nextActor: string | null; lane: WorkboardLane };
 export type WorkboardPage = { policyVersion: "workboard.v1"; generatedAt: string; officeZone: string; officeDate: string;
   scope: "OWN" | "DEPARTMENT"; departmentId: string | null; number: number; size: number; totalElements: number;
   totalPages: number; counts: { scopes: Record<WorkboardScope, number>; quickFilters: Record<WorkboardQuickFilter, number> };
@@ -51,3 +51,11 @@ export type WorkboardDetail = { item: WorkboardItem; history: { id: string; titl
 export type SavedWorkboardFilter = WorkboardCriteria & { id: string; name: string };
 export type WorkboardPreferences = { revision: number; layout: "LIST" | "BOARD"; density: "COMPACT" | "COMFORTABLE";
   savedFilters: SavedWorkboardFilter[] };
+
+export type WorkPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+export type WorkChecklistItem = { id: string; title: string; position: number; required: boolean; completed: boolean };
+export type WorkEvidence = { id: string; documentId: string; filename: string; contentType: string; sizeBytes: number; sha256: string; createdAt: string };
+export type WorkBlocker = { id: string; reason: string; contactUserId: string | null; raisedAt: string; resolvedAt: string | null; raisedBy: string; resolvedBy: string | null; resolutionReason?: string | null };
+export type WorkSubmission = { version: number; submittedAt: string; acceptedAt: string | null; acceptedByRole: string | null; checklist: WorkChecklistItem[]; evidence: WorkEvidence[] };
+export type WorkPlanning = { taskId: string; taskVersion: number; priority: WorkPriority; originalDueDate: string | null; originalDueDateKnown?: boolean; dueDate: string; estimateMinutes: number | null; evidenceRequired: boolean; checklist: WorkChecklistItem[]; blockers: WorkBlocker[]; evidence: WorkEvidence[]; submissions: WorkSubmission[]; submissionsTruncated?: boolean; blockersTruncated?: boolean; contactOptions: { id: string; name: string }[]; permissions: { manage: boolean; progress: boolean; blocker: boolean; resolveBlocker: boolean; upload: boolean } };
+export type WorkPlanningUpdate = { expectedVersion: number; priority: WorkPriority; estimateMinutes: number | null; evidenceRequired: boolean; dueDate: string; reason: string; checklist: { id: string; title: string; required: boolean }[] };

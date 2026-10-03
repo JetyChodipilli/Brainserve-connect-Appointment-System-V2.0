@@ -144,13 +144,13 @@ export function apiRequest<T>(path: string, init: RequestInit = {}, retry = true
   return request;
 }
 
-async function performApiRequest<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+async function performApiRequest<T>(path: string, init: RequestInit = {}, retry = true, binary = false): Promise<T> {
   const generation = authSessionGeneration;
   if (!API_BASE_URL) {
     throw new Error("BrainServe Connect is not connected to its secure backend.");
   }
   const headers = new Headers(init.headers);
-  headers.set("Accept", "application/json");
+  headers.set("Accept", binary ? "application/octet-stream" : "application/json");
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   const controller = new AbortController();
@@ -175,7 +175,7 @@ async function performApiRequest<T>(path: string, init: RequestInit = {}, retry 
     if (response.status === 401 && retry && refreshToken && !path.endsWith("/auth/refresh") && !path.endsWith("/auth/login")) {
       if (await refreshAccessToken()) {
         requireCurrentSession(generation);
-        return performApiRequest<T>(path, init, false);
+        return performApiRequest<T>(path, init, false, binary);
       }
     }
     if (!response.ok) {
@@ -185,6 +185,7 @@ async function performApiRequest<T>(path: string, init: RequestInit = {}, retry 
       if (problem.errorCode === "MFA_REQUIRED" && !path.startsWith("/auth/")) expireAuthSession();
       throw new ApiError(response.status, problem);
     }
+    if (binary) { const blob = await response.blob(); requireCurrentSession(generation); return blob as T; }
     const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
     if (response.status === 204 || !contentType.includes("json")) return undefined as T;
     const value = await response.json() as T;
@@ -698,3 +699,5 @@ changeMyEmail(currentPassword: string, newEmail: string) {
     });
   },
 };
+
+export function apiDownload(path: string, signal?: AbortSignal): Promise<Blob> { return performApiRequest<Blob>(path, { signal, cache: "no-store" }, true, true); }

@@ -26,6 +26,9 @@ smoke() {
     [ "${status}" = 404 ]
 }
 smoke
+# Work evidence exercises the actual scanner and private object store, with
+# synthetic principals/data only. This script already requires a disposable stack.
+node scripts/verify-work-evidence-staging.mjs
 # Stop writes before measuring/dumping. Recovery happens in a separate database.
 "${compose[@]}" stop backend
 "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve -v ON_ERROR_STOP=1 -c "create table sprint1_recovery_probe(id integer primary key, evidence text not null); insert into sprint1_recovery_probe values (1, '\''zero-wait'\''), (2, '\''scoped-access'\'');"'
@@ -43,6 +46,7 @@ grep -q '^52:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^53:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^54:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^55:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^56:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 restored="$("${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select string_agg(id || chr(58) || evidence, chr(44) order by id) from sprint1_recovery_probe"')"
 [ "${restored}" = '1:zero-wait,2:scoped-access' ]
 cat > "${evidence}/restore-compose.yml" <<'YAML'
@@ -57,5 +61,5 @@ smoke
 # migration or volume deletion; this establishes the first verified fallback.
 "${compose[@]}" up -d --no-build --force-recreate --wait --wait-timeout 180 backend frontend
 smoke
-printf 'Release: %s\nTLS and API authorization: passed\nV55 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nV56 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

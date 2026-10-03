@@ -5,7 +5,7 @@ export const defaultCriteria: WorkboardCriteria = { scope: "TODAY", quickFilter:
 export const defaultPreferences: WorkboardPreferences = { revision: 0, layout: "LIST", density: "COMPACT", savedFilters: [] };
 export const periodLabels: Record<WorkboardScope, string> = { TODAY: "Today", CARRY_FORWARD: "Open carry-forward", HISTORY: "History", ALL: "All worksheets" };
 export const quickFilterLabels: Record<WorkboardQuickFilter, string> = { ALL: "All actions", MY_ACTIONS: "My actions", DUE_TODAY: "Due today",
-  OVERDUE_DELIVERY: "Overdue delivery", AWAITING_MY_REVIEW: "Awaiting my review", RETURNED_FOR_REWORK: "Returned for rework" };
+  OVERDUE_DELIVERY: "Overdue delivery", AWAITING_MY_REVIEW: "Awaiting my review", RETURNED_FOR_REWORK: "Returned for rework", BLOCKED: "Blocked" };
 export function workActorName(value: string) { return value.replace(/^ROLE_/, "").replaceAll("_", " ").replace(/\b[A-Z]{2,}\b/g, (word) => ["HR", "CEO"].includes(word) ? word : word[0] + word.slice(1).toLowerCase()); }
 
 // Demo-only: production counts, eligibility, dates and pagination always come from the server.
@@ -17,6 +17,7 @@ export function previewWorkboardPage(items: WorkboardItem[], criteria: Workboard
         return scope === "ALL" || (scope === "TODAY" ? isToday : !isToday && (scope === "CARRY_FORWARD" ? outstanding : !outstanding));
     };
     const inQuick = (item: WorkboardItem, quick: WorkboardQuickFilter) => quick === "ALL"
+        || (quick === "BLOCKED" && item.blocked === true)
         || (quick === "MY_ACTIONS" && item.allowedActions.length > 0)
         || (quick === "DUE_TODAY" && item.dueDate === today)
         || (quick === "OVERDUE_DELIVERY" && item.dueDate < today && ["ASSIGNED", "IN_PROGRESS", "CHANGES_REQUESTED", "INSIGHT_REWORK_REQUESTED"].includes(item.status))
@@ -29,7 +30,7 @@ export function previewWorkboardPage(items: WorkboardItem[], criteria: Workboard
     const filtered = period.filter((item) => inQuick(item, criteria.quickFilter)).sort((a, b) => {
         const compare = criteria.sort === "DUE_DATE" ? a.dueDate.localeCompare(b.dueDate)
             : criteria.sort === "UPDATED_AT" ? b.updatedAt.localeCompare(a.updatedAt)
-                : criteria.sort === "TITLE" ? a.title.localeCompare(b.title) : 0;
+                : criteria.sort === "TITLE" ? a.title.localeCompare(b.title) : ({ LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 }[b.priority ?? "NORMAL"] - { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 }[a.priority ?? "NORMAL"]);
         return compare || a.id.localeCompare(b.id);
     });
     return { policyVersion: "workboard.v1", generatedAt: new Date().toISOString(), officeDate: today, officeZone: "Asia/Kolkata",

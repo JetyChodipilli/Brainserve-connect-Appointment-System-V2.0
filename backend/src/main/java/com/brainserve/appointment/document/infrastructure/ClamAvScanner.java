@@ -31,10 +31,16 @@ public class ClamAvScanner {
                 output.writeInt(length); output.write(bytes, offset, length); offset += length;
             }
             output.writeInt(0); output.flush();
-            String response = new String(new BufferedInputStream(socket.getInputStream()).readAllBytes(), StandardCharsets.UTF_8);
-            if (response.contains("FOUND"))
+            var input = new BufferedInputStream(socket.getInputStream());
+            var reply = new java.io.ByteArrayOutputStream();
+            int next;
+            while ((next = input.read()) != -1 && next != 0 && reply.size() < 1024) reply.write(next);
+            String response = reply.toString(StandardCharsets.UTF_8);
+            if (next != 0)
+                throw new BusinessException("MALWARE_SCAN_FAILED", "The uploaded file could not be verified", HttpStatus.SERVICE_UNAVAILABLE);
+            if (response.matches("stream: .+ FOUND"))
                 throw new BusinessException("MALWARE_DETECTED", "The uploaded file failed security scanning", HttpStatus.UNPROCESSABLE_ENTITY);
-            if (!response.contains("OK"))
+            if (!response.equals("stream: OK"))
                 throw new BusinessException("MALWARE_SCAN_FAILED", "The uploaded file could not be verified", HttpStatus.SERVICE_UNAVAILABLE);
         } catch (IOException ex) {
             throw new BusinessException("MALWARE_SCANNER_UNAVAILABLE", "Secure file scanning is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);

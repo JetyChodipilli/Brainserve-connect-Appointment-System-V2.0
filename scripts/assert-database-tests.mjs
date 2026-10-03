@@ -8,6 +8,7 @@ for (const name of [
   "com.brainserve.appointment.reporting.application.AdministrationDashboardIntegrationTest",
   "com.brainserve.appointment.bulkimport.application.Sprint4PostgresIntegrationTest",
   "com.brainserve.appointment.workinsight.application.Sprint5PostgresIntegrationTest",
+  "com.brainserve.appointment.worktask.application.Sprint6PostgresIntegrationTest",
   "com.brainserve.appointment.iam.AccountProvisioningIntegrationTest",
   "com.brainserve.appointment.iam.SystemAdminPasswordChangeOtpIntegrationTest",
   "com.brainserve.appointment.iam.PrivilegedSecurityIntegrationTest",

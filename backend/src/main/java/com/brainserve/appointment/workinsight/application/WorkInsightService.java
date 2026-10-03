@@ -160,6 +160,7 @@ public class WorkInsightService {
         } else {
             return retainedInsight(record);
         }
+        tasks.acceptHrDeliveryEvidence(workTaskId);
         events.publishEvent(new WorkInsightEvents.HrAuditSubmitted(hrUserId, manager.managerUserId(),
                 "HR audited worksheet ‘" + task.title() + "’ for " + employee(task).displayName()
                         + " in " + task.departmentBranch()

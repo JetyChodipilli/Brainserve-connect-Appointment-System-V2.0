@@ -38,7 +38,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
-public class DocumentService implements ProfilePhotoStore {
+public class DocumentService implements ProfilePhotoStore, com.brainserve.appointment.document.api.TaskEvidenceStore {
     private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png", "application/pdf");
     private static final String CEO = "ROLE_CEO";
     private static final String HR = "ROLE_HR_ADMIN";
@@ -81,13 +81,17 @@ public class DocumentService implements ProfilePhotoStore {
     private StoredDocument upload(String ownerType, UUID ownerId, String category, MultipartFile file) {
         validate(file);
         try {
-            byte[] bytes = file.getBytes();
+            byte[] bytes;
+            try (var input = file.getInputStream()) { bytes = input.readNBytes((int) Math.min(maxBytes + 1, Integer.MAX_VALUE)); }
+            if (bytes.length == 0 || bytes.length > maxBytes || bytes.length != file.getSize())
+                throw new BusinessException("DOCUMENT_TOO_LARGE", "File exceeds the configured size limit", HttpStatus.PAYLOAD_TOO_LARGE);
             validateSignature(file.getContentType(), bytes);
             scanner.assertClean(bytes);
             String objectKey = ownerType.toLowerCase() + "/" + ownerId + "/" + UUID.randomUUID();
             String digest = sha256(bytes);
             s3.putObject(PutObjectRequest.builder().bucket(bucket).key(objectKey).contentType(file.getContentType())
                     .metadata(java.util.Map.of("sha256", digest)).build(), RequestBody.fromBytes(bytes));
+            registerRollbackCleanup(objectKey);
             StoredDocument stored;
             try {
                 stored = documents.saveAndFlush(new StoredDocument(ownerType.toUpperCase(), ownerId, category.toUpperCase(),
@@ -102,6 +106,55 @@ public class DocumentService implements ProfilePhotoStore {
             return stored;
         } catch (IOException ex) {
             throw new BusinessException("DOCUMENT_READ_FAILED", "The uploaded file could not be read", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @Override
+    @Transactional
+    public EvidenceDocument store(UUID taskId, MultipartFile file) {
+        if (taskId == null) throw new IllegalArgumentException("Task is required");
+        return evidence(upload("WORK_TASK", taskId, "TASK_EVIDENCE", file));
+    }
+
+    @Override
+    @Transactional
+    public Download download(UUID taskId, UUID documentId) {
+        StoredDocument document = get(documentId);
+        if (!"WORK_TASK".equals(document.getOwnerType()) || !"TASK_EVIDENCE".equals(document.getCategory())
+                || !document.getOwnerId().equals(taskId))
+            throw new BusinessException("DOCUMENT_NOT_FOUND", "Document was not found", HttpStatus.NOT_FOUND);
+        if (document.getSizeBytes() <= 0 || document.getSizeBytes() > maxBytes)
+            throw new BusinessException("DOCUMENT_READ_FAILED", "Document could not be verified", HttpStatus.SERVICE_UNAVAILABLE);
+        try (var input = s3.getObject(GetObjectRequest.builder().bucket(bucket).key(document.getObjectKey()).build())) {
+            byte[] bytes = input.readNBytes((int) Math.min(maxBytes + 1, Integer.MAX_VALUE));
+            if (bytes.length != document.getSizeBytes() || bytes.length > maxBytes
+                    || !sha256(bytes).equals(document.getSha256()))
+                throw new BusinessException("DOCUMENT_READ_FAILED", "Document could not be verified", HttpStatus.SERVICE_UNAVAILABLE);
+            audit.record("DOCUMENT_READ", "WORK_TASK", taskId.toString(), "{\"documentId\":\"" + documentId + "\"}");
+            return new Download(evidence(document), bytes);
+        } catch (IOException | software.amazon.awssdk.core.exception.SdkException ex) {
+            throw new BusinessException("DOCUMENT_READ_FAILED", "Document is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+        }
+    }
+
+    private EvidenceDocument evidence(StoredDocument document) {
+        return new EvidenceDocument(document.getId(), safeFilename(document.getOriginalFilename()), document.getContentType(),
+                document.getSizeBytes(), document.getSha256(), document.getCreatedAt());
+    }
+
+    private void registerRollbackCleanup(String objectKey) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCompletion(int status) {
+                            if (status != STATUS_COMMITTED) {
+                                try { s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(objectKey).build()); }
+                                catch (RuntimeException ex) {
+                                    org.slf4j.LoggerFactory.getLogger(DocumentService.class).error("Document rollback storage cleanup failed");
+                                }
+                            }
+                        }
+                    });
         }
     }
 

@@ -116,6 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      BRAINSERVE_DISPOSABLE_STACK: "1"
       RELEASE_ID: ${{ github.sha }}
       STAGING_DOMAIN: localhost
       WRANGLER_SEND_METRICS: "false"

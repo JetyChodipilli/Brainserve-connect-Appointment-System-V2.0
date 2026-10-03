@@ -34,6 +34,8 @@ public interface WorkTaskDirectory {
             String update
     );
 
+    default void acceptHrDeliveryEvidence(UUID workTaskId) {}
+
     TaskSnapshot finalizeInsightApproval(UUID workTaskId);
 
     record TaskSnapshot(

@@ -1030,3 +1030,25 @@ svg {
         forced-color-adjust: none;
     }
 }
+.work-planning { display: grid; gap: 20px; }
+.work-planning section { border-top: 1px solid var(--border); padding-top: 16px; }
+.work-planning-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.work-planning label, .work-planning-dialog label { display: grid; gap: 6px; margin: 12px 0; }
+.work-checklist-row { display: flex !important; align-items: center; gap: 12px !important; min-height: 44px; }
+.work-checklist-row input { width: 20px; height: 20px; flex: none; }
+.work-checklist-row small, .work-evidence-list small { display: block; overflow-wrap: anywhere; }
+.work-evidence-list { padding: 0; list-style: none; }
+.work-evidence-list li { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 0; }
+.work-evidence-list li > div { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.work-planning details { margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.work-planning summary { cursor: pointer; min-height: 32px; }
+.work-planning-dialog form { padding: 24px; display: grid; gap: 12px; }
+.work-planning-dialog header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+.work-checklist-edit { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.work-planning-dialog input, .work-planning-dialog textarea, .work-planning-dialog select { max-width: 100%; min-width: 0; }
+@media (max-width: 480px) { .work-planning-heading { align-items: stretch; flex-direction: column; } .work-planning-dialog form { padding: 16px; } .work-drawer-tabs { flex-wrap: wrap; } }
+.work-checklist-edit > label:has(input[type='checkbox']) { display: flex; align-items: center; gap: 10px; }
+.work-planning-dialog input[type='checkbox'] { width: 20px; height: 20px; padding: 0; flex: none; }
+.work-planning .work-evidence-list details { margin: 4px 0 0; padding: 4px 8px; font-size: 12px; }
+.work-planning .work-evidence-list details summary { min-height: 24px; }
+.work-evidence-list li > button { align-self: flex-start; }
