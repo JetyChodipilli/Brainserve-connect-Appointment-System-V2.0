@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { WorkspaceSetting } from "../types/api";
 
 const jobId = "11111111-1111-4111-8111-111111111111";
 const paged = (content: unknown[]) => ({ content, number: 0, size: 50, totalElements: content.length, totalPages: content.length ? 1 : 0, last: true });
@@ -21,7 +22,11 @@ const makeJob = (kind = "DEPARTMENTS", count = 2): Job => ({ id: jobId, kind, du
 async function fixture(page: Page, role = "ROLE_SYSTEM_ADMIN") {
     const state = { setup: makeSetup(), job: makeJob(), options: role === "ROLE_RECEPTIONIST" ? ["VISITORS"] : role === "ROLE_HR_ADMIN" ? ["EMPLOYEES"] : ["DEPARTMENTS"],
         status: 200, conflict: false, delayPreview: false, lostExecution: false, partialExecution: false,
-        previewCalls: 0, completeCalls: 0, jobReads: 0, jobReadDelay: 0, executions: [] as { checksum: string; idempotencyKey: string }[], requests: [] as string[] };
+        previewCalls: 0, completeCalls: 0, jobReads: 0, jobReadDelay: 0, executions: [] as { checksum: string; idempotencyKey: string }[], requests: [] as string[],
+        policySettings: [
+            { key: "COMPANY.OFFICE_ZONE", value: "UTC", type: "STRING", description: "Configured company office ZoneId", version: 1 },
+            { key: "APPROVAL.INTERVIEW.REQUIRES_HR", value: "true", type: "BOOLEAN", description: "Require HR approval for interviews", version: 1 },
+        ] as WorkspaceSetting[], savedSettings: [] as { key: string; value: string }[] };
     const profile = { userId: "22222222-2222-4222-8222-222222222222", employeeId: null, email: "sprint4@example.invalid", fullName: "Sprint 4 Reviewer",
         roles: [role], permissions: ["SYSTEM_CONFIGURE", "EMPLOYEE_CREATE", "VISITOR_REGISTER", "DEPARTMENT_MANAGE", "REPORT_VIEW"], forcePasswordChange: false };
     await page.addInitScript(() => { sessionStorage.setItem("brainserve.connect.access-token", "sprint4-access"); sessionStorage.setItem("brainserve.connect.refresh-token", "sprint4-refresh"); });
@@ -29,6 +34,18 @@ async function fixture(page: Page, role = "ROLE_SYSTEM_ADMIN") {
         const path = new URL(route.request().url()).pathname, method = route.request().method(); state.requests.push(path);
         if (path.endsWith("/auth/me") || path.endsWith("/profile/me")) return route.fulfill({ json: profile });
         if (path.endsWith("/auth/security")) return route.fulfill({ json: { mfaRequired: true, mfaEnrolled: true, mfaVerified: true, stepUpRequired: false } });
+        if (path.includes("/system-settings") || path.includes("/workspace-settings")) {
+            if (method === "PUT") {
+                const key = decodeURIComponent(path.split("/").at(-1)!);
+                const body = route.request().postDataJSON(); expect(Object.keys(body)).toEqual(["value"]);
+                const current = state.policySettings.find(setting => setting.key === key)!;
+                const updated = { ...current, value: body.value, version: current.version + 1 };
+                state.policySettings = state.policySettings.map(setting => setting.key === key ? updated : setting);
+                state.savedSettings.push({ key, value: body.value });
+                return route.fulfill({ json: updated });
+            }
+            return route.fulfill({ json: state.policySettings });
+        }
         if (path.includes("/company-setup")) {
             if (method === "PUT") {
                 if (state.conflict) { state.conflict = false; return route.fulfill({ status: 409, json: { detail: "Setup revision changed" } }); }
@@ -92,6 +109,26 @@ test("setup resumes its persisted step, exposes blockers, handles revision confl
     await expect(setup.getByRole("button", { name: "Complete company setup" })).toBeDisabled();
     state.setup = { ...makeSetup(true), revision: state.setup.revision + 1, currentStep: "review" }; await setup.getByRole("button", { name: "Refresh checklist" }).click();
     await setup.getByRole("button", { name: "Complete company setup" }).click(); await expect(setup).toContainText("Currently ready"); expect(state.completeCalls).toBe(1);
+});
+
+test("setup links to editable office time zone and interview approval without changing the runtime clock", async ({ page }) => {
+    const state = await fixture(page); await settings(page); await page.getByRole("button", { name: "Company setup", exact: true }).click();
+    const setup = page.getByRole("region", { name: "Company setup" });
+    await setup.getByRole("button", { name: /^4\. Appointment policy/ }).click();
+    await setup.getByRole("button", { name: "Open Appointment policy", exact: true }).click();
+    await expect(page.getByText("The office time zone preference must match the running service", { exact: false })).toBeVisible();
+    const zone = page.getByRole("textbox", { name: "Office time zone", exact: true });
+    await expect(zone).toHaveValue("UTC"); await zone.fill("Asia/Kolkata");
+    await zone.locator("..").getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(() => state.savedSettings).toEqual([{ key: "COMPANY.OFFICE_ZONE", value: "Asia/Kolkata" }]);
+    await expect(zone.locator("..").getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await page.getByRole("checkbox", { name: "Require HR approval for interviews", exact: true }).uncheck();
+    await expect.poll(() => state.savedSettings).toHaveLength(2);
+    expect(state.savedSettings[1]).toEqual({ key: "APPROVAL.INTERVIEW.REQUIRES_HR", value: "false" });
+    expect(state.requests).toContain("/api/v1/system-settings/COMPANY.OFFICE_ZONE");
+    await page.getByRole("button", { name: "Company setup", exact: true }).click();
+    await expect(setup).toContainText("Runtime office timezone: Asia/Kolkata");
+    expect(state.setup.officeZone).toBe("Asia/Kolkata");
 });
 
 test("templates, review pagination, exact confirmation and error CSV complete a safe import", async ({ page }) => {
