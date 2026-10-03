@@ -72,7 +72,7 @@ async function call(person, path, method = 'GET', value, expected = 200) {
 }
 const [leadPerson, employeePerson, otherPerson] = principals;
 const tomorrow = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
-const created = (await call(leadPerson, '/work-tasks', 'POST', { employeeId: workerEmployee, title: 'Synthetic scanner and storage verification', description: 'Disposable evidence only; no customer data', dueDate: tomorrow }, 201)).json;
+const created = (await call(leadPerson, '/work-tasks', 'POST', { employeeId: workerEmployee, title: 'Synthetic scanner and storage verification', description: 'Disposable evidence only; no customer data', dueDate: tomorrow }, 200)).json;
 const taskPath = `/work-tasks/${created.id}`;
 let planning = (await call(employeePerson, `${taskPath}/planning`)).json;
 const checklistId = id();

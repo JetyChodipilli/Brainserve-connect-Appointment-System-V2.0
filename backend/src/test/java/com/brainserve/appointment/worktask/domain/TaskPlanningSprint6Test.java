@@ -10,6 +10,15 @@ import static org.assertj.core.api.Assertions.*;
 
 class TaskPlanningSprint6Test {
     private DepartmentWorkTask task(String role){return new DepartmentWorkTask(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"HR_ADMIN",role,"Delivery","Complete instructions","Department",LocalDate.of(2026,10,3));}
+    @Test void jsonSnapshotEqualityPreventsASecondCommitTimeDirtyVersionIncrement() throws Exception {
+        var mapper=new ObjectMapper().registerModule(new JavaTimeModule());var state=new TaskPlanningState();
+        state.checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Required",0,true,true));state.capture(1,Instant.now());state.touch();
+        var persisted=mapper.readValue(mapper.writeValueAsString(state),TaskPlanningState.class);
+        assertThat(state).isEqualTo(persisted);assertThat(state.hashCode()).isEqualTo(persisted.hashCode());
+        state.touch();assertThat(state).isNotEqualTo(persisted);
+        var afterFlush=mapper.readValue(mapper.writeValueAsString(state),TaskPlanningState.class);
+        assertThat(state).isEqualTo(afterFlush);assertThat(state).isEqualTo(mapper.readValue(mapper.writeValueAsString(afterFlush),TaskPlanningState.class));
+    }
     @Test void requiredChecklistCannotBeBypassedByDomainCompletion(){var task=task("EMPLOYEE");task.getPlanning().checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Required",0,true,false));assertThatThrownBy(()->task.complete("Attempt")).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("WORK_TASK_CHECKLIST_REQUIRED");assertThat(task.getSubmissionVersion()).isNull();assertThat(task.getStatus()).isEqualTo(WorkTaskStatus.ASSIGNED);}
     @Test void evidenceRequirementFailsWithoutCreatingASubmission(){var task=task("EMPLOYEE");task.updatePlanning("HIGH",30,true,task.getDueDate());assertThatThrownBy(()->task.complete("Attempt")).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("WORK_TASK_EVIDENCE_REQUIRED");assertThat(task.getPlanning().submissions).isEmpty();}
     @Test void optionalIncompleteChecklistDoesNotBlockDeliveryOrImplicitlyBecomeComplete(){var task=task("EMPLOYEE");task.getPlanning().checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Optional",0,false,false));task.complete("Submitted");assertThat(task.getPlanning().submissions.getFirst().checklist().getFirst().completed()).isFalse();assertThat(task.getPlanning().submissions.getFirst().acceptedAt()).isNull();}

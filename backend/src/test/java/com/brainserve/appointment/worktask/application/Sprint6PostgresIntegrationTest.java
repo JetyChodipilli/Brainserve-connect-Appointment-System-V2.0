@@ -48,6 +48,9 @@ class Sprint6PostgresIntegrationTest {
     @org.springframework.test.context.bean.override.mockito.MockitoBean software.amazon.awssdk.services.s3.S3Client s3;
     @org.springframework.test.context.bean.override.mockito.MockitoBean com.brainserve.appointment.document.infrastructure.ClamAvScanner scanner;
     @Autowired com.brainserve.appointment.document.application.DocumentService documents;
+    @Autowired jakarta.persistence.EntityManager entityManager;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired com.brainserve.appointment.worktask.infrastructure.DepartmentWorkTaskRepository repository;
     @Autowired TaskPlanningService planning;
     @Autowired CurrentAccountAuthority authority; @Autowired ObjectMapper mapper;
     static final UUID DEPT=id(101), OTHER_DEPT=id(102), EMP=id(201), LEAD_EMP=id(202), HR_EMP=id(203), MANAGER_EMP=id(204), CEO_EMP=id(205), OTHER_EMP=id(206);
@@ -84,6 +87,18 @@ class Sprint6PostgresIntegrationTest {
         var raised=planning.raise(USER,task.getId(),new TaskPlanningService.Raise(tick.taskVersion(),"Waiting for dependency",null));
         assertThat(raised.blockers()).hasSize(1);assertThat(raised.blockers().getFirst().contactUserId()).isEqualTo(LEAD);
         assertThat(planning.get(USER,task.getId()).taskVersion()).isEqualTo(raised.taskVersion());
+    }
+    @Test void equalJsonSnapshotsDoNotAdvanceVersionOnReadsOrUnchangedOrmFlushes() {
+        var task=create("Stable JSON revision");UUID check=UUID.randomUUID();var p=configure(task.getId(),false,List.of(new TaskPlanningService.Definition(check,"Same definition",false)));
+        long persisted=p.taskVersion();
+        assertThat(planning.get(USER,task.getId()).taskVersion()).isEqualTo(persisted);assertThat(planning.get(LEAD,task.getId()).taskVersion()).isEqualTo(persisted);
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            var loaded=repository.findById(task.getId()).orElseThrow();entityManager.flush();entityManager.flush();
+            assertThat(loaded.getVersion()).isEqualTo(persisted);
+        });
+        assertThat(planning.get(USER,task.getId()).taskVersion()).isEqualTo(persisted);
+        var noop=planning.update(LEAD,task.getId(),new TaskPlanningService.Update(persisted,"NORMAL",null,false,today(),"Confirm unchanged requirements",List.of(new TaskPlanningService.Definition(check,"Same definition",false))));
+        assertThat(noop.taskVersion()).isEqualTo(persisted+1);assertThat(planning.get(USER,task.getId()).taskVersion()).isEqualTo(noop.taskVersion());
     }
     @Test void checklistAndEvidenceRequirementsApplyToLegacyCompletionWithoutExpectedVersion() {
         var task=create("Mandatory delivery");UUID check=UUID.randomUUID();var p=configure(task.getId(),true,List.of(new TaskPlanningService.Definition(check,"Required",true)));

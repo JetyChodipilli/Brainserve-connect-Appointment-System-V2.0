@@ -9,10 +9,22 @@ import java.util.UUID;
 
 /** Retained immutable submission values, independently of the editable next-delivery draft. */
 public class TaskPlanningState {
+    public long revision;
     public List<ChecklistItem> checklist = new ArrayList<>();
     public List<Evidence> evidence = new ArrayList<>();
     public List<Blocker> blockers = new ArrayList<>();
     public List<Submission> submissions = new ArrayList<>();
+    public void touch() { revision++; }
+    // Hibernate compares the JSON value against a deserialized snapshot at each flush.
+    // Structural equality prevents unchanged snapshots from becoming dirty again at commit.
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof TaskPlanningState state)) return false;
+        return revision == state.revision && java.util.Objects.equals(checklist,state.checklist)
+                && java.util.Objects.equals(evidence,state.evidence) && java.util.Objects.equals(blockers,state.blockers)
+                && java.util.Objects.equals(submissions,state.submissions);
+    }
+    @Override public int hashCode() { return java.util.Objects.hash(revision,checklist,evidence,blockers,submissions); }
     public void requireSubmission(boolean evidenceRequired) {
         if (checklist.stream().anyMatch(i -> i.required() && !i.completed()))
             throw new BusinessException("WORK_TASK_CHECKLIST_REQUIRED", "Complete every required checklist item before submission", HttpStatus.UNPROCESSABLE_ENTITY);

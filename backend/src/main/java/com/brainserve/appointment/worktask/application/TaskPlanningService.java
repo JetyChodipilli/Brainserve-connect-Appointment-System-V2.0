@@ -121,8 +121,11 @@ public class TaskPlanningService {
     }
     private Planning finish(UUID actor,DepartmentWorkTask task,Access before) {
         if(!before.equals(access(actor,task)))deny();
-        // JSON collection changes also advance the same task revision used by legacy delivery writers.
-        em.lock(task,LockModeType.PESSIMISTIC_FORCE_INCREMENT);tasks.flush();return view(actor,task,before);
+        // Flush the JSON/scalar mutation before reading the revision. Combining a forced
+        // increment with a dirty entity schedules another increment during transaction commit,
+        // making the response stale immediately. A changed planning value uses normal @Version.
+        task.getPlanning().touch();
+        tasks.flush();return view(actor,task,before);
     }
     private Access access(UUID actor,DepartmentWorkTask task) {
         var current=authority.requireActive(actor);
