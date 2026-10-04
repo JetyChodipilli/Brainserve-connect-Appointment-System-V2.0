@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
-public class DepartmentWorkTaskService implements WorkTaskDirectory {
+public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer {
     private static final String HR = "ROLE_HR_ADMIN";
     private static final String TEAM_LEAD = "ROLE_TEAM_LEAD";
     private static final String EMPLOYEE = "ROLE_EMPLOYEE";
@@ -50,6 +50,12 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
     private final ManagerDirectory managers;
     private final CurrentAccountAuthority authority;
     private final EntityManager entityManager;
+    private com.brainserve.appointment.notification.api.RecurringWorkNotifications recurringNotifications;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void recurringNotifications(com.brainserve.appointment.notification.api.RecurringWorkNotifications notifications) {
+        this.recurringNotifications = notifications;
+    }
 
     public DepartmentWorkTaskService(DepartmentWorkTaskRepository tasks, EmployeeDirectory employees,
                                      TeamLeadDirectory teamLeads, OrganizationDirectory organization,
@@ -79,7 +85,60 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                 "Only the assigned HR or Team Lead can create department work", HttpStatus.FORBIDDEN);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Workspace routineWorkspace(UUID actor) {
+        Workspace workspace = workspace(actor);
+        return new com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Workspace(workspace.departmentId(), workspace.departmentName(),
+                workspace.eligibleAssignees().stream().map(a -> new com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.EligibleAssignee(a.employeeId(),a.displayName(),a.role())).toList());
+    }
+
+    @Override
+    public void validateScheduled(UUID actor, com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Command command) {
+        var current = requirePermission(actor,"WORK_TASK_CREATE");
+        var scope = authority.requireWorkScope(actor);
+        requireCurrentAuthority(current,scope.authority());
+        if (!scope.departmentId().equals(command.departmentId())
+                || !Set.of(HR,TEAM_LEAD).contains(current.role())) {
+            throw new BusinessException("WORK_TASK_CREATE_DENIED","The routine creator no longer has this department assignment",HttpStatus.FORBIDDEN);
+        }
+        if (command.employeeId().equals(current.employeeId())) throw new BusinessException("WORK_TASK_SELF_ASSIGNMENT_NOT_ALLOWED","A routine cannot assign work to its creator",HttpStatus.UNPROCESSABLE_ENTITY);
+        var activeLead=teamLeads.activeForDepartment(scope.departmentId()).orElseThrow(() -> new BusinessException(
+                "WORK_TASK_TEAM_LEAD_REQUIRED","Assign an active Team Lead before creating recurring work",HttpStatus.UNPROCESSABLE_ENTITY));
+        var leadScope=authority.requireWorkScope(activeLead.teamLeadUserId());
+        if(!TEAM_LEAD.equals(leadScope.authority().role()) || !scope.departmentId().equals(leadScope.departmentId())
+                || !activeLead.teamLeadEmployeeId().equals(leadScope.authority().employeeId())) throw new BusinessException(
+                "WORK_TASK_TEAM_LEAD_REQUIRED","The current review Team Lead must remain active in this department",HttpStatus.UNPROCESSABLE_ENTITY);
+        var candidate = workspace(actor).eligibleAssignees().stream()
+                .filter(a -> a.employeeId().equals(command.employeeId()) && a.role().equals(command.assigneeRule()))
+                .findFirst().orElseThrow(() -> new BusinessException("WORK_TASK_ASSIGNEE_ROLE_REQUIRED",
+                        "The scheduled assignee needs an active login with the exact template role in this department",HttpStatus.UNPROCESSABLE_ENTITY));
+        var recipient = staff.activeByEmployeeId(candidate.employeeId()).orElseThrow(() -> new BusinessException(
+                "WORK_TASK_ASSIGNEE_LOGIN_REQUIRED","The scheduled assignee needs an active login",HttpStatus.UNPROCESSABLE_ENTITY));
+        var recipientAuthority = authority.requireActive(recipient.userId());
+        if (!("ROLE_" + command.assigneeRule()).equals(recipientAuthority.role())) throw new BusinessException(
+                "WORK_TASK_ASSIGNEE_ROLE_REQUIRED","The scheduled assignee's role changed",HttpStatus.UNPROCESSABLE_ENTITY);
+        requireUnchangedScope(actor,scope);
+    }
+
+    @Override
+    @Transactional
+    public UUID createScheduled(UUID actor, com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Command command) {
+        validateScheduled(actor,command);
+        if (recurringNotifications == null) throw new IllegalStateException("Recurring notification outbox is not available");
+        var current = authority.requireWorkScope(actor);
+        CreateCommand values=new CreateCommand(command.employeeId(),command.title(),command.instructions(),command.dueDate());
+        DepartmentWorkTask created=HR.equals(current.authority().role())?createByHr(actor,values,command):createByTeamLead(actor,values,command);
+        requireUnchangedScope(actor,current);
+        return created.getId();
+    }
+
     private DepartmentWorkTask createByTeamLead(UUID teamLeadUserId, CreateCommand command) {
+        return createByTeamLead(teamLeadUserId,command,null);
+    }
+
+    private DepartmentWorkTask createByTeamLead(UUID teamLeadUserId, CreateCommand command,
+            com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Command recurring) {
         TeamLeadDirectory.Assignment lead = teamLeads.requireForUser(teamLeadUserId);
         OrganizationDirectory.ActiveDepartment department = organization.requireActiveDepartment(lead.departmentId());
         requireEmployeeInDepartment(command.employeeId(), lead.departmentId());
@@ -92,10 +151,15 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                 .orElseThrow(() -> new BusinessException("WORK_TASK_EMPLOYEE_LOGIN_REQUIRED",
                         "The selected person must have an active Employee login", HttpStatus.UNPROCESSABLE_ENTITY));
         return saveAndNotify(teamLeadUserId, TEAM_LEAD_ASSIGNER, EMPLOYEE_ASSIGNEE,
-                lead, department, recipient, command);
+                lead, department, recipient, command,recurring);
     }
 
     private DepartmentWorkTask createByHr(UUID hrUserId, CreateCommand command) {
+        return createByHr(hrUserId,command,null);
+    }
+
+    private DepartmentWorkTask createByHr(UUID hrUserId, CreateCommand command,
+            com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Command recurring) {
         DepartmentHrDirectory.Assignment hr = departmentHrs.requireForUser(hrUserId);
         OrganizationDirectory.ActiveDepartment department = organization.requireActiveDepartment(hr.departmentId());
         TeamLeadDirectory.Assignment lead = teamLeads.activeForDepartment(hr.departmentId())
@@ -119,24 +183,31 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
                     "HR can assign department work only to an Employee or the active Team Lead",
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
-        return saveAndNotify(hrUserId, HR_ASSIGNER, assigneeRole, lead, department, recipient, command);
+        return saveAndNotify(hrUserId, HR_ASSIGNER, assigneeRole, lead, department, recipient, command,recurring);
     }
 
     private DepartmentWorkTask saveAndNotify(UUID actorUserId, String assignedByRole, String assigneeRole,
                                              TeamLeadDirectory.Assignment lead,
                                              OrganizationDirectory.ActiveDepartment department,
                                              StaffCommunicationDirectory.StaffMember recipient,
-                                             CreateCommand command) {
-        DepartmentWorkTask created = tasks.saveAndFlush(new DepartmentWorkTask(
+                                             CreateCommand command,
+                                             com.brainserve.appointment.worktask.api.ScheduledWorkMaterializer.Command recurring) {
+        DepartmentWorkTask created = new DepartmentWorkTask(
                 lead.departmentId(), command.employeeId(), lead.teamLeadUserId(), actorUserId,
                 assignedByRole, assigneeRole, command.title(), command.description(), department.name(),
-                command.dueDate()));
+                command.dueDate());
+        if(recurring!=null) for(var item:recurring.checklist())
+            created.getPlanning().checklist.add(new com.brainserve.appointment.worktask.domain.TaskPlanningState.ChecklistItem(
+                    UUID.randomUUID(),item.title(),created.getPlanning().checklist.size(),item.required(),false));
+        // Manual and recurring worksheets share this first insert and original-deadline trigger.
+        tasks.saveAndFlush(created);
         String reviewer = EMPLOYEE_ASSIGNEE.equals(assigneeRole)
                 ? " Your Team Lead will review the completed delivery before HR audit."
                 : " Submit the completed delivery directly to HR audit; self-approval is not permitted.";
-        events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(actorUserId, recipient.userId(),
-                "New " + department.name() + " task sheet assigned: " + command.title() + ". Due "
-                        + command.dueDate() + ". Open Work Board to review and start it." + reviewer));
+        String message="New " + department.name() + " task sheet assigned: " + command.title() + ". Due "
+                + command.dueDate() + ". Open Work Board to review and start it." + reviewer;
+        if(recurring==null) events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(actorUserId,recipient.userId(),message));
+        else recurringNotifications.enqueue(recurring.eventKey(),actorUserId,recipient.userId(),staff.requireActive(actorUserId).fullName(),recipient.fullName(),message);
         audit(created, "ASSIGNED");
         return created;
     }

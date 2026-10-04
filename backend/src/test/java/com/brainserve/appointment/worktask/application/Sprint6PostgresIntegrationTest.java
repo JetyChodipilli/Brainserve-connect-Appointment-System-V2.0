@@ -74,7 +74,7 @@ class Sprint6PostgresIntegrationTest {
     }
     @Test void migrationDefaultsRetainUnknownOriginalCoverageAndDoNotInventLegacySnapshots() {
         Flyway flyway=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).load();flyway.validate();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("59");assertThat(flyway.migrate().migrationsExecuted).isZero();
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("60");assertThat(flyway.migrate().migrationsExecuted).isZero();
         var task=create("Legacy boundary");jdbc.update("update department_work_task set original_due_date_known=false,submission_version=null,status='COMPLETED' where id=?",task.getId());
         var p=planning.get(USER,task.getId());assertThat(p.priority()).isEqualTo("NORMAL");assertThat(p.originalDueDateKnown()).isFalse();assertThat(p.submissions()).isEmpty();
     }

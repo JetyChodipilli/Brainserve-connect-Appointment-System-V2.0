@@ -12,6 +12,7 @@ for (const name of [
   "com.brainserve.appointment.Sprint7ActivityPostgresIntegrationTest",
   "com.brainserve.appointment.Sprint7DraftsPostgresIntegrationTest",
   "com.brainserve.appointment.Sprint7SearchPostgresIntegrationTest",
+  "com.brainserve.appointment.Sprint8RecurrencePostgresIntegrationTest",
   "com.brainserve.appointment.iam.AccountProvisioningIntegrationTest",
   "com.brainserve.appointment.iam.SystemAdminPasswordChangeOtpIntegrationTest",
   "com.brainserve.appointment.iam.PrivilegedSecurityIntegrationTest",

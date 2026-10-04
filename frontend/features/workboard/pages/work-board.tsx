@@ -14,6 +14,7 @@ import { useWorkboard } from "../hooks/use-workboard";
 import { workTaskStatusLabel } from "../utils/work-utils";
 import { periodLabels, quickFilterLabels, workActorName } from "../utils/workboard-model";
 import type { WorkboardProps } from "../types/props";
+import { RoutineWorkspace } from "../../work-routines/routine-workspace";
 
 export function WorkBoard(props: WorkboardProps) {
     const { role, decideAppointment, onNavigate, initialTaskId } = props;
@@ -49,6 +50,7 @@ export function WorkBoard(props: WorkboardProps) {
         <PageTitle eyebrow="DEPARTMENT TASK SHEETS" title={role === "HR Admin" ? "Department work board" : role === "Team Lead" ? "Team task sheets" : role === "Manager" ? "Department work oversight" : "My task sheets"}
             detail={role === "HR Admin" ? "Assign department work and audit submitted delivery before Manager and CEO review." : role === "Team Lead" ? "Assign employee work, review delivery and complete the worksheets HR assigns to you." : role === "Manager" ? "Follow department delivery and review HR-audited work in Work oversight." : "Your own worksheets, current delivery and reviewer feedback in one place."}
             action={role === "Manager" ? <button className="button button-primary" onClick={() => onNavigate("insights")}><ShieldCheck size={17} />Open work oversight</button> : ["HR Admin", "Team Lead"].includes(role) && <button className="button button-primary" disabled={!board.canCreateTask} onClick={() => { setCreateDirty(false); setShowCreate(true); }}><FileText size={17} />Create task sheet</button>} />
+        {(role === "HR Admin" || role === "Team Lead") && <RoutineWorkspace role={role} identityKey={`${role}:${props.userEmail}`} />}
         <div className="work-notification-note glass-panel"><MessageSquare size={19} /><span><strong>Visitor updates stay in Notifications</strong><small>Task delivery and visitor routing continue through the internal message service.</small></span></div>
         <section className="workboard-filters glass-panel" aria-label="Worksheet filters">
             <div className="workboard-period-header"><div className="workboard-periods" role="group" aria-label="Choose worksheet period">{(Object.keys(periodLabels) as WorkboardScope[]).map((scope) => <button key={scope} type="button" aria-pressed={queueScope === scope} className={queueScope === scope ? "active" : ""} onClick={() => setQueueScope(scope)}>{periodLabels[scope]}<b>{counts?.scopes[scope] ?? "—"}</b></button>)}</div>

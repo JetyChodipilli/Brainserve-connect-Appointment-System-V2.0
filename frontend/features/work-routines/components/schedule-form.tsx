@@ -1,0 +1,51 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { WorkDialog } from '../../workboard/components/work-dialog';
+import { officeTimestamp, previewKey, validIsoDate, WEEKDAYS } from '../routine-model';
+import type { RoutineSession, RoutineState } from '../routine-session';
+import { RoutinePagination } from './routine-pagination';
+import styles from '../routines.module.css';
+export function RoutineScheduleForm({ state, session, onClose }: { state: RoutineState; session: RoutineSession; onClose: () => void }) {
+    const [holidayDate, setHolidayDate] = useState(''), errorRef = useRef<HTMLDivElement>(null), error = state.errors.schedule;
+    useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
+    const draft = state.scheduleDraft; if (!draft || !state.context) return null;
+    const fields = draft.fields, busy = state.busy.includes('mutation'), previewBusy = state.busy.includes('preview'), locked = busy || draft.unknown;
+    const template = draft.template, options = [...(state.templates?.items ?? [])];
+    if (template && !options.some(item => item.id === template.id)) options.unshift(template);
+    const eligible = state.context.eligibleAssignees.filter(person => person.role === template?.assigneeRule);
+    const preview = state.preview?.key === previewKey(fields, template?.version) ? state.preview.value : null;
+    const change = (values: Partial<typeof fields>) => session.changeSchedule({ ...fields, ...values });
+    return <WorkDialog className={`work-create-dialog ${styles.dialog}`} titleId="routine-schedule-title" onClose={onClose}>
+        <form className={styles.form} onSubmit={event => { event.preventDefault(); void session.saveSchedule(); }}>
+            <header className={styles.heading}><div><span className={styles.eyebrow}>OFFICE CALENDAR</span><h2 id="routine-schedule-title">Create routine schedule</h2><p>{state.context.departmentName} · {state.context.officeZone}. Preview accepted dates before creating this schedule.</p></div><button type="button" className="button button-secondary" disabled={locked} onClick={onClose}>Close schedule form</button></header>
+            {error && <div role="alert" tabIndex={-1} ref={errorRef} className={styles.error}>{error}</div>}
+            {state.errors.workspace && <div role="alert" className={styles.error}>{state.errors.workspace}<button type="button" className="button button-secondary" disabled={locked || state.busy.includes('templates')} onClick={() => void session.loadTemplates()}>Retry template options</button></div>}
+            {draft.unknown && <p className={styles.callout}>The creation response was not confirmed. Retry the same request to check its receipt; the form stays fixed until confirmed.</p>}
+            {busy && <p role="status">Creating routine schedule…</p>}
+            <fieldset disabled={locked} className={styles.fieldset}>
+                <div className={styles.grid}><label>Routine template<select data-initial-focus required value={fields.templateId} onChange={event => change({ templateId: event.target.value, employeeId: '' })}><option value="">Select a department template</option>{options.map(item => <option key={item.id} value={item.id}>{item.title} · v{item.version}</option>)}</select></label>
+                    <label>Routine assignee<select required value={fields.employeeId} disabled={!template} onChange={event => change({ employeeId: event.target.value })}><option value="">Choose an eligible {template?.assigneeRule === 'TEAM_LEAD' ? 'Team Lead' : 'Employee'}</option>{eligible.map(person => <option key={person.employeeId} value={person.employeeId}>{person.displayName}</option>)}</select></label></div>
+                <RoutinePagination label="Templates" data={state.templates} page={state.templatePage} busy={state.busy.includes('templates')} onPage={page => void session.loadTemplates(page)} />
+                {template && <details className={styles.templateSummary}><summary>Review template v{template.version} · due after {template.dueOffsetDays} calendar days</summary><p>{template.instructions}</p><ul>{template.checklist.map((item, i) => <li key={i}>{item.title}{item.required ? ' · Required' : ' · Optional'}</li>)}</ul></details>}
+                {template && eligible.length === 0 && <p className={styles.callout}>No current eligible assignee matches this template role. Update department eligibility before scheduling.</p>}
+                <div className={styles.grid}><label>Repeat frequency<select value={fields.frequency} onChange={event => { const frequency = event.target.value as typeof fields.frequency; change({ frequency, weekdays: frequency === 'WEEKLY' ? [1] : [], monthDay: frequency === 'MONTHLY' ? 1 : null }); }}><option value="DAILY">Daily</option><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label>
+                    <label>Repeat every<input required type="number" min={1} max={12} step={1} value={Number.isNaN(fields.interval) ? '' : fields.interval} onChange={event => change({ interval: event.target.value === '' ? NaN : Number(event.target.value) })} /><small>{fields.frequency === 'DAILY' ? 'Days' : fields.frequency === 'WEEKLY' ? 'Weeks, aligned to Monday of the start week' : 'Months, aligned to the start month'}</small></label>
+                    <label>Schedule start date<input required type="date" min={state.context.officeDate} value={fields.startDate} onChange={event => change({ startDate: event.target.value })} /></label>
+                    <label>Schedule end date (optional)<input type="date" min={fields.startDate} value={fields.endDate ?? ''} onChange={event => change({ endDate: event.target.value || null })} /><small>Inclusive, within five years of the start date.</small></label>
+                    <label>Office local time<input required type="time" value={fields.localTime} onChange={event => change({ localTime: event.target.value })} /><small>Wall-clock time in {state.context.officeZone}.</small></label>
+                    {fields.frequency === 'MONTHLY' && <label>Day of month<input required type="number" min={1} max={31} step={1} value={fields.monthDay === null || Number.isNaN(fields.monthDay) ? '' : fields.monthDay} onChange={event => change({ monthDay: event.target.value === '' ? null : Number(event.target.value) })} /><small>Short months use the last day; later months retain your chosen day.</small></label>}</div>
+                {fields.frequency === 'WEEKLY' && <fieldset className={styles.weekdays}><legend>Weekdays</legend>{WEEKDAYS.map((day, index) => <label key={day} className={styles.checkbox}><input type="checkbox" checked={fields.weekdays.includes(index + 1)} onChange={event => change({ weekdays: event.target.checked ? [...fields.weekdays, index + 1] : fields.weekdays.filter(value => value !== index + 1) })} />{day}</label>)}</fieldset>}
+                <div className={styles.grid}><label>Weekend policy<select value={fields.weekendPolicy} onChange={event => change({ weekendPolicy: event.target.value as typeof fields.weekendPolicy })}><option value="SKIP">Skip Saturday and Sunday</option><option value="INCLUDE">Include weekends</option></select></label>
+                    <label>Holiday policy<select value={fields.holidayPolicy} onChange={event => change({ holidayPolicy: event.target.value as typeof fields.holidayPolicy })}><option value="SKIP">Skip listed holiday dates</option><option value="INCLUDE">Include listed holiday dates</option></select></label></div>
+                <section className={styles.section}><h3>Explicit holiday dates · {fields.holidays.length}/366</h3><p>Only dates listed here count as holidays; there is no automatic holiday calendar.</p><div className={styles.holidayAdd}><label>Holiday date<input type="date" value={holidayDate} onChange={event => setHolidayDate(event.target.value)} /></label><button type="button" className="button button-secondary" disabled={!validIsoDate(holidayDate) || fields.holidays.includes(holidayDate) || fields.holidays.length >= 366} onClick={() => { change({ holidays: [...fields.holidays, holidayDate].sort() }); setHolidayDate(''); }}>Add holiday date</button></div>
+                    <ul className={styles.holidays}>{fields.holidays.map(date => <li key={date}><span>{date}</span><button type="button" className="button button-secondary" onClick={() => change({ holidays: fields.holidays.filter(value => value !== date) })}>Remove holiday {date}</button></li>)}</ul></section>
+            </fieldset>
+            <section className={styles.preview} aria-label="Routine occurrence preview" aria-busy={previewBusy}><div className={styles.heading}><h3>Next accepted office dates</h3><button type="button" className="button button-secondary" disabled={locked || previewBusy} onClick={() => void session.previewSchedule()}>{previewBusy ? 'Previewing dates…' : 'Preview routine dates'}</button></div>
+                {previewBusy && <p role="status">Calculating accepted dates in the office calendar…</p>}
+                {!preview && !previewBusy && <p>Preview required. Changing any schedule field clears the previous preview.</p>}
+                {preview && <><p>{preview.policyText}</p><p>Office zone: {preview.officeZone}. Due offsets count calendar days. Daylight-saving gaps advance by the gap; overlaps use the earlier offset.</p>{preview.occurrences.length === 0 ? <p role="status">No accepted occurrences within this schedule’s end date and five-year horizon.</p> : <ol className={styles.previewDates}>{preview.occurrences.map(item => <li key={item.occurrenceDate}><strong>{item.occurrenceDate}</strong><span>{officeTimestamp(item.scheduledAt, preview.officeZone)}</span><span>Due {item.dueDate}</span></li>)}</ol>}</>}
+            </section>
+            <footer className={styles.actions}><p>Creator and assignee eligibility are checked again for every occurrence. Blocked work appears in schedule history.</p><button type="submit" className="button button-primary" disabled={busy || previewBusy || !preview || preview.occurrences.length === 0}>{busy ? 'Creating schedule…' : draft.unknown ? 'Retry same schedule request' : 'Create routine schedule'}</button></footer>
+        </form>
+    </WorkDialog>;
+}
