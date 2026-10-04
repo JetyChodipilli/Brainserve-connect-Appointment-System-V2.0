@@ -76,7 +76,8 @@ public class FormDraftService {
         JsonNode value=mapper.valueToTree(result);var receipt=mapper.createObjectNode().put("formType",form.name());
         if(value.hasNonNull("id"))receipt.set("recordId",value.get("id"));if(value.hasNonNull("referenceNumber"))receipt.set("referenceNumber",value.get("referenceNumber"));
         if(form==Form.COMPANY_PROFILE)receipt.put("saved",true);
-        Instant now=Instant.now();jdbc.update("update owned_form_draft set submitted_at=?,receipt=?::jsonb,fields_ciphertext=? where owner_id=? and form_type=? and context_key=?",Timestamp.from(now),json(receipt),encrypted(Map.of()),owner,form.name(),context);
+        // PostgreSQL stores microseconds; the first response must equal the persisted replay.
+        Instant now=Instant.now().truncatedTo(ChronoUnit.MICROS);jdbc.update("update owned_form_draft set submitted_at=?,receipt=?::jsonb,fields_ciphertext=? where owner_id=? and form_type=? and context_key=?",Timestamp.from(now),json(receipt),encrypted(Map.of()),owner,form.name(),context);
         return new Receipt(row.submissionKey(),now,receipt);
     }
     private void validateVisitFinal(Map<String,String> fields){if(fields==null||!VISIT_FINAL.containsAll(fields.keySet())||fields.values().stream().anyMatch(v->v==null||v.length()>1000)||json(fields).getBytes(StandardCharsets.UTF_8).length>8000)throw invalid();}

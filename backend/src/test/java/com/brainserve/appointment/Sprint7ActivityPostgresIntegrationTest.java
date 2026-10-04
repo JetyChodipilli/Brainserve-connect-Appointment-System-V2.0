@@ -85,9 +85,9 @@ class Sprint7ActivityPostgresIntegrationTest {
         assertCode(()->activity.comments(USER,task.getId(),0,50),"ACCOUNT_INACTIVE");
         assertCode(()->activity.create(USER,task.getId(),request("Removed account",UUID.randomUUID())),"ACCOUNT_INACTIVE");
         jdbc.update("update iam_user_account set enabled=true where id=?",USER);
-        jdbc.update("update department_team_lead set active=false where team_lead_user_id=?",LEAD);
+        jdbc.update("update department_team_lead set active=false,ended_at=now(),ended_by_user_id=?,version=version+1 where team_lead_user_id=?",ADMIN,LEAD);
         assertCode(()->activity.comments(LEAD,task.getId(),0,50),"ACCOUNT_INACTIVE");
-        jdbc.update("update department_team_lead set active=true where team_lead_user_id=?",LEAD);
+        jdbc.update("update department_team_lead set active=true,ended_at=null,ended_by_user_id=null,version=version+1 where team_lead_user_id=?",LEAD);
         tasks.complete(USER,EMP,task.getId(),"Delivered");tasks.approve(LEAD,task.getId(),"Approved");
         var reviewed=insights.markAudited(HR,task.getId());insights.decideByManager(MANAGER,reviewed.auditRecordId(),true,"Reviewed");
         assertThat(activity.comments(CEO,task.getId(),0,50).canComment()).isFalse();
