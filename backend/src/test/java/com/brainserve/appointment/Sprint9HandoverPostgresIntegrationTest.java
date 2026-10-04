@@ -103,7 +103,8 @@ class Sprint9HandoverPostgresIntegrationTest {
         assertThat(history.fromEmployeeId()).isEqualTo(EMP); assertThat(history.toEmployeeId()).isEqualTo(NEW_EMP);
         assertThat(history.actorUserId()).isEqualTo(LEAD); assertThat(history.reason()).isEqualTo("Controlled assignment change");
         assertThat(history.assignmentRevision()).isEqualTo(1); assertThat(history.occurredAt()).isNotNull();
-        assertThat(history.effectiveAt()).isNotAfter(Instant.now());
+        assertThat(history.effectiveAt()).isEqualTo(history.occurredAt());
+        assertThat(history.effectiveAt().isAfter(Instant.now())).isFalse();
         assertThat(date("select original_due_date from work_original_commitment where work_task_id=?",task.getId())).isEqualTo(original);
         assertThatThrownBy(()->jdbc.update("update department_work_task set original_employee_id=? where id=?",NEW_EMP,task.getId())).hasMessageContaining("immutable");
         assertThatThrownBy(()->jdbc.update("update work_original_commitment set original_due_date=original_due_date+1 where work_task_id=?",task.getId())).hasMessageContaining("immutable");
