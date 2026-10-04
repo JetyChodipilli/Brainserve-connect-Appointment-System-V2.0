@@ -92,6 +92,10 @@ jobs:
           java -version
           mvn -version
 
+      - name: Verify recurrence calendar behavior
+        working-directory: .
+        run: node scripts/check-recurrence-calendar.mjs
+
       - name: Compile and test backend
         env:
           ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

@@ -139,6 +139,60 @@ await call(leadPerson, `${draftPath}?expectedRevision=${draft.revision}`, 'DELET
 await call(leadPerson, draftPath, 'PUT', { schemaVersion: 1, expectedRevision: 0, fields: { employeeId: workerEmployee, title: 'Synthetic Sprint 7 retained draft', description: 'Encrypted recovery fixture', dueDate: tomorrow } });
 assert.ok(Number(sql('select count(*) from task_comment_revision;')) >= 2);
 console.log('SPRINT7_SCOPED_SEARCH_COMMENTS_DRAFT_RECEIPT_VERIFIED');
+// Exercise the real recurrence scheduler and durable notification transaction.
+const routines = '/work-routines';
+const routineContextResponse = await call(leadPerson, `${routines}/context`);
+assert.equal(routineContextResponse.headers['cache-control'], 'no-store');
+const routineContext = routineContextResponse.json;
+const templateBody = { requestId: id(), title: 'Synthetic daily reconciliation', instructions: 'Complete the retained required checklist for the scheduled occurrence.', checklist: [{ title: 'Reconcile synthetic totals', required: true }], assigneeRule: 'EMPLOYEE', dueOffsetDays: 2 };
+const routineTemplate = (await call(leadPerson, `${routines}/templates`, 'POST', templateBody)).json;
+assert.equal((await call(leadPerson, `${routines}/templates`, 'POST', templateBody)).json.id, routineTemplate.id);
+await call(leadPerson, `${routines}/templates`, 'POST', { ...templateBody, title: 'Changed request must conflict' }, 409);
+assert.equal((await call(leadPerson, `${routines}/templates/${routineTemplate.id}`)).json.instructions, templateBody.instructions);
+await call(employeePerson, `${routines}/templates`, 'GET', undefined, [401, 403]);
+const scheduleBody = { requestId: id(), templateId: routineTemplate.id, employeeId: workerEmployee, frequency: 'DAILY', interval: 1, startDate: routineContext.officeDate, endDate: routineContext.officeDate, localTime: '00:00', weekdays: [], monthDay: null, weekendPolicy: 'INCLUDE', holidayPolicy: 'INCLUDE', holidays: [] };
+const preview = (await call(leadPerson, `${routines}/preview`, 'POST', scheduleBody)).json;
+assert.equal(preview.officeZone, routineContext.officeZone);
+assert.equal(preview.occurrences.length, 1);
+assert.equal(preview.occurrences[0].occurrenceDate, routineContext.officeDate);
+const routineSchedule = (await call(leadPerson, `${routines}/schedules`, 'POST', scheduleBody)).json;
+assert.equal((await call(leadPerson, `${routines}/schedules`, 'POST', scheduleBody)).json.id, routineSchedule.id);
+let occurrence;
+for (let attempt = 0; attempt < 100; attempt++) {
+  const history = (await call(leadPerson, `${routines}/schedules/${routineSchedule.id}/occurrences`)).json;
+  occurrence = history.items.find(item => item.occurrenceDate === routineContext.officeDate);
+  if (occurrence) break;
+  await new Promise(resolve => setTimeout(resolve, 500));
+}
+assert.ok(occurrence, 'Actual scheduler must materialize the due occurrence');
+assert.equal(occurrence.status, 'CREATED');
+assert.ok(occurrence.taskId);
+const retryPath = `${routines}/schedules/${routineSchedule.id}/occurrences/${occurrence.occurrenceDate}/retry`;
+for (const replay of await Promise.all([call(leadPerson, retryPath, 'POST', { expectedVersion: occurrence.version }), call(leadPerson, retryPath, 'POST', { expectedVersion: occurrence.version })])) {
+  assert.equal(replay.json.taskId, occurrence.taskId);
+}
+assert.equal(sql(`select count(*) from work_routine_occurrence where schedule_id='${routineSchedule.id}';`), '1');
+assert.equal(sql(`select count(*) from work_routine_notice_receipt r join internal_call_notification n on n.id=r.notification_id where r.event_key='routine:${routineSchedule.id}:${occurrence.occurrenceDate}';`), '1');
+const scheduledTaskPath = `/work-tasks/${occurrence.taskId}`;
+let scheduledPlanning = (await call(employeePerson, `${scheduledTaskPath}/planning`)).json;
+assert.equal(scheduledPlanning.checklist.length, 1);
+assert.equal(scheduledPlanning.checklist[0].title, templateBody.checklist[0].title);
+assert.equal(scheduledPlanning.checklist[0].required, true);
+const scheduledUpload = new FormData();
+scheduledUpload.set('expectedVersion', String(scheduledPlanning.taskVersion));
+scheduledUpload.set('file', new Blob([safe], { type: 'application/pdf' }), 'retained-routine.pdf');
+scheduledPlanning = (await call(employeePerson, `${scheduledTaskPath}/evidence`, 'POST', scheduledUpload)).json;
+const scheduledEvidence = scheduledPlanning.evidence[0];
+await call(leadPerson, `${routines}/templates/${routineTemplate.id}`, 'PUT', { ...templateBody, expectedVersion: routineTemplate.version, instructions: 'Changed only for future scheduled work.', checklist: [{ title: 'Future requirement', required: false }] });
+const currentSchedule = (await call(leadPerson, `${routines}/schedules`)).json.items.find(item => item.id === routineSchedule.id);
+await call(leadPerson, `${routines}/schedules/${routineSchedule.id}/state`, 'POST', { paused: true }, 422);
+const pausedSchedule = (await call(leadPerson, `${routines}/schedules/${routineSchedule.id}/state`, 'POST', { expectedVersion: currentSchedule.version, paused: true })).json;
+assert.equal(pausedSchedule.paused, true);
+await call(leadPerson, `${routines}/schedules/${routineSchedule.id}/state`, 'POST', { expectedVersion: currentSchedule.version, paused: false }, 409);
+assert.equal((await call(employeePerson, `${scheduledTaskPath}/planning`)).json.checklist[0].title, templateBody.checklist[0].title);
+assert.deepEqual((await call(employeePerson, `${scheduledTaskPath}/evidence/${scheduledEvidence.id}/download`)).bytes, safe);
+await call(otherPerson, `${scheduledTaskPath}/planning`, 'GET', undefined, [403, 404]);
+console.log('SPRINT8_RECURRENCE_SNAPSHOT_NOTIFICATION_EVIDENCE_VERIFIED');
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

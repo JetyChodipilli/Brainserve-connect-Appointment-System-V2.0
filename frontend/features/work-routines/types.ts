@@ -1,0 +1,24 @@
+export type RoutineRole = 'EMPLOYEE' | 'TEAM_LEAD';
+export type RoutineFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+export type RoutinePolicy = 'INCLUDE' | 'SKIP';
+export type RoutinePage<T> = { items: T[]; totalElements: number; totalPages: number; page: number; size: number };
+export type RoutineContext = { departmentId: string; departmentName: string; officeZone: string; officeDate: string; eligibleAssignees: { employeeId: string; displayName: string; role: RoutineRole }[] };
+export type TemplateFields = { title: string; instructions: string; checklist: { title: string; required: boolean }[]; assigneeRule: RoutineRole; dueOffsetDays: number };
+export type RoutineTemplate = TemplateFields & { id: string; departmentId: string; version: number; updatedAt: string };
+export type ScheduleDefinition = { templateId: string; employeeId: string; frequency: RoutineFrequency; interval: number; startDate: string; endDate: string | null; localTime: string; weekdays: number[]; monthDay: number | null; weekendPolicy: RoutinePolicy; holidayPolicy: RoutinePolicy; holidays: string[] };
+export type RoutineSchedule = ScheduleDefinition & { id: string; departmentId: string; templateTitle: string; templateVersion: number; assigneeName: string; officeZone: string; paused: boolean; version: number; nextOccurrenceAt: string | null; exceptionsCount: number; createdAt: string };
+export type RoutineOccurrence = { occurrenceDate: string; scheduledAt: string; templateVersion: number; taskId: string | null; status: 'CREATED' | 'BLOCKED'; exceptionCode: string | null; message: string | null; attempts: number; version: number };
+export type RoutinePreview = { officeZone: string; occurrences: { occurrenceDate: string; scheduledAt: string; dueDate: string }[]; policyText: string };
+export type RoutineTransport = {
+    context(signal: AbortSignal): Promise<RoutineContext>;
+    templates(page: number, size: number, signal: AbortSignal): Promise<RoutinePage<RoutineTemplate>>;
+    template(id: string, signal: AbortSignal): Promise<RoutineTemplate>;
+    createTemplate(body: TemplateFields & { requestId: string }, signal: AbortSignal): Promise<RoutineTemplate>;
+    updateTemplate(id: string, body: TemplateFields & { expectedVersion: number }, signal: AbortSignal): Promise<RoutineTemplate>;
+    schedules(page: number, size: number, signal: AbortSignal): Promise<RoutinePage<RoutineSchedule>>;
+    preview(body: ScheduleDefinition, signal: AbortSignal): Promise<RoutinePreview>;
+    createSchedule(body: ScheduleDefinition & { requestId: string }, signal: AbortSignal): Promise<RoutineSchedule>;
+    setState(id: string, expectedVersion: number, paused: boolean, signal: AbortSignal): Promise<RoutineSchedule>;
+    occurrences(id: string, page: number, size: number, signal: AbortSignal): Promise<RoutinePage<RoutineOccurrence>>;
+    retry(id: string, date: string, expectedVersion: number, signal: AbortSignal): Promise<RoutineOccurrence>;
+};
