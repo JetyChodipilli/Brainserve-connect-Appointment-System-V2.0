@@ -40,7 +40,8 @@ class Sprint7SearchPostgresIntegrationTest {
     static final UUID TASK=id(301),SECRET_TASK=id(302),APPOINTMENT=id(401),SECRET_APPOINTMENT=id(402),VISITOR=id(501),RESTRICTED_VISITOR=id(502);
     @BeforeEach void fixture() {
         // Each test class owns its disposable container. No operational database is touched.
-        jdbc.execute("truncate table department_work_task,work_task_audit_record,appointment,visitor,iam_user_account,employee,org_department restart identity cascade");
+        // Retained commitments deliberately have no task FK, so include them in this disposable reset.
+        jdbc.execute("truncate table work_original_commitment,department_work_task,work_task_audit_record,appointment,visitor,iam_user_account,employee,org_department restart identity cascade");
         department(DEPT,"S7_MAIN");department(OTHER_DEPT,"S7_OTHER");
         employee(EMP,DEPT,"Needle Employee");employee(OTHER_EMP,OTHER_DEPT,"Needle SecretEmployee");employee(HR_EMP,DEPT,"HR Reader");employee(LEAD_EMP,DEPT,"Lead Reader");employee(CEO_EMP,DEPT,"CEO Reader");employee(SEC_EMP,DEPT,"Security Reader");employee(RECEPTION_EMP,DEPT,"Reception Reader");
         account(USER,EMP,"ROLE_EMPLOYEE");account(OTHER,OTHER_EMP,"ROLE_EMPLOYEE");account(HR,HR_EMP,"ROLE_HR_ADMIN");account(LEAD,LEAD_EMP,"ROLE_TEAM_LEAD");account(CEO,CEO_EMP,"ROLE_CEO");account(SECURITY,SEC_EMP,"ROLE_SECURITY");account(RECEPTION,RECEPTION_EMP,"ROLE_RECEPTIONIST");account(ADMIN,null,"ROLE_SYSTEM_ADMIN");
