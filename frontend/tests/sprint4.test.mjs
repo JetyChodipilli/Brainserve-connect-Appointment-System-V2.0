@@ -107,7 +107,7 @@ test("preview deployment never sends setup or import requests including attempte
 
 test("selection, auth-change and unmount invalidate all late file/read/mutation results", () => {
     const refs = [], effects = [], listeners = new Map(); let index = 0;
-    const react = { useRef(initial) { return refs[index++] ??= { current: initial }; }, useEffect(effect) { effects.push(effect()); } };
+    const react = { useCallback: fn => fn, useMemo: fn => fn(), useRef(initial) { return refs[index++] ??= { current: initial }; }, useEffect(effect) { effects.push(effect()); } };
     const window = { addEventListener(name, callback) { listeners.set(name, callback); }, removeEventListener(name) { listeners.delete(name); } };
     const scope = modules({ react, window })("features/setup-imports/use-operation-scope.ts").useOperationScope();
     const first = scope.request(), second = scope.request(); assert.equal(first.current(), true);

@@ -7,6 +7,8 @@ public interface InternalNotificationGateway {
 
     void sendWorkTaskUpdate(UUID senderUserId, UUID recipientUserId, String message);
 
+    void sendTaskCommentUpdate(UUID senderUserId, UUID recipientUserId, UUID taskId, UUID commentId);
+
     void notifyHrOfWorkTaskUpdate(UUID actorUserId, UUID departmentId, String message);
 
     void notifyManagerOfWorkInsightAudit(UUID hrUserId, UUID managerUserId, String message);

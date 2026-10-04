@@ -10,7 +10,7 @@ import { useOperationScope, useSessionRevision } from "./use-operation-scope";
 import styles from "./setup-imports.module.css";
 
 const guidance: Record<string, string> = {
-    company: "Use Company profile to enter the actual company name, official email domain, address and support email.",
+    company: "Use Company profile to draft the actual company name, official email domain, address and support email. Restore or discard a saved draft, then explicitly apply the reviewed company profile.",
     departments: "Create real departments with the department CSV template. Ask the CEO to assign each department’s HR Admin and Manager through Organization and the approval ledger.",
     roles: "Use Identity & access to provision the single CEO through the governed approval flow. HR Admin and Manager invitations and department ownership remain subject to CEO approval.",
     policy: "Review appointment rules in Appointment policy. The office timezone below is the running deployment’s timezone; changing a stored preference does not change the running service.",

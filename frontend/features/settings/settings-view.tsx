@@ -13,6 +13,7 @@ import {
     type WorkspaceSetting,
 } from "../../services/brainserve-api";
 import { PageTitle } from "../../components/ui/page-title";
+import { CompanyProfileDraft } from "../drafts/company-profile-draft";
 import { CompanySetup } from "../setup-imports/company-setup";
 import { BulkImports } from "../setup-imports/bulk-imports";
 import { type Department, type Employee, type Role, type SettingsSection } from "../../types/workspace";
@@ -174,7 +175,7 @@ export function SettingsView({ role, userEmail, accounts, departments, employees
         <div className="settings-grid"><article className="settings-nav glass-panel">{nav.map(([id, Icon, label]) => <button type="button" className={section === id ? "active" : ""} key={id} onClick={() => { setSection(id); setError(""); setMessage(""); }}><Icon size={18} />{label}<ChevronRight size={16} /></button>)}</article><div className="identity-settings">
             {section === "setup" && <CompanySetup role={role} userEmail={userEmail} onConfigure={setSection} />}
             {section === "imports" && <BulkImports accountScope={`${role}:${userEmail}`} />}
-            {section === "company" && settingPanel("Company profile", "ORGANIZATION IDENTITY", "These values drive the public visitor experience and official support details.", ["COMPANY.NAME", "COMPANY.EMAIL_DOMAIN", "COMPANY.HQ_ADDRESS", "COMPANY.SUPPORT_EMAIL"])}
+            {section === "company" && <CompanyProfileDraft key={`${role}:${userEmail}:${settings.length}`} settings={settings} accountScope={`${role}:${userEmail}`} editable={canEdit("COMPANY.NAME")} onSaved={async (fields) => { if (isBackendConfigured) setSettings(await (role === "System Admin" ? brainServeApi.systemSettings() : brainServeApi.workspaceSettings())); else setSettings((items) => items.map((item) => fields[item.key] === undefined ? item : { ...item, value: fields[item.key] })); }} />}
             {section === "identity" && <>
                 <article className="panel glass-panel"><div className="panel-heading"><div><span>YOUR STAFF IDENTITY</span><h2>Company login</h2><p>Current login: <strong>{userEmail}</strong>. Your authenticated role is locked to <strong>{role}</strong>.</p></div><LockKeyhole size={22} /></div>{role !== "System Admin" && <form className="inline-account-form" onSubmit={changeOwnEmail}><label>New company email<input name="newEmail" type="email" placeholder="name@brainserve.in" required /></label><label>Current password<input name="currentPassword" type="password" minLength={8} required /></label><button className="button button-secondary"><Fingerprint size={16} /> Update my email</button></form>}</article>
                 <PasswordChangeCard />

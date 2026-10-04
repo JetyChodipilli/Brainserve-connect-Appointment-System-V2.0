@@ -1,5 +1,8 @@
 "use client";
 
+import { useFormDraft, draftBlocksSubmit } from "../../drafts/use-form-draft";
+import type { DraftFields } from "../../drafts/draft-session";
+import { nextBusinessDays } from "../../../lib/appointments";
 import { organizationApi } from "../../organization/api/organization-api";
 import { workboardApi as brainServeApi } from "../api/workboard-api";
 import { ApiError, isBackendConfigured, isWorkspaceUpdateLeader } from "../../../lib/api-client";
@@ -51,6 +54,9 @@ export function useWorkboard({ role, refreshKey, userEmail, employees, staffAcco
     const preferenceSequence = useRef(0);
     const selectedRef = useRef(expandedTaskId);
     const scopeKey = `${role}:${userEmail.toLowerCase()}`;
+    const [createFields, setCreateFields] = useState<DraftFields>({ employeeId: "", title: "", description: "", dueDate: nextBusinessDays(3)[0] });
+    const createDraft = useFormDraft("TASK_CREATE", "new", scopeKey, showCreate, createFields);
+    const actionDraft = useFormDraft("TASK_UPDATE", actionDialog ? `${actionDialog.task.id}~${actionDialog.action}` : "inactive", scopeKey, Boolean(actionDialog), { note: actionNote, taskVersion: String(actionDialog?.task.version ?? 0) });
     const scopeRef = useRef(scopeKey);
     useLayoutEffect(() => { scopeRef.current = scopeKey; }, [scopeKey]);
     const hasLoadedTasksRef = useRef(false);
@@ -67,6 +73,7 @@ export function useWorkboard({ role, refreshKey, userEmail, employees, staffAcco
         loadController.current?.abort(); detailController.current?.abort(); preferencesController.current?.abort();
         setTasks([]); setServerPage(null); setDetail(null); setExpandedTaskId(null); setActionDialog(null); setActionNote(""); setInitialActionNote("");
         setWorkspace(null); setScopeDepartments([]); setPendingHrAuditTaskIds(new Set()); setWorkflowStateByTaskId(new Map());
+        setCreateFields({ employeeId: "", title: "", description: "", dueDate: nextBusinessDays(3)[0] });
         setPreferences(defaultPreferences); setPreferenceError(""); setShowCreate(false); setBusy(""); setPreferenceBusy(false);
         setError(""); setMessage(""); setConflict(false); hasLoadedTasksRef.current = false;
         setLoadError(""); setRefreshWarning(""); setDetailError(""); setLoading(false);
@@ -340,6 +347,23 @@ export function useWorkboard({ role, refreshKey, userEmail, employees, staffAcco
         writeDemoWorkTasks(all);
         setTasks((items) => items.map((item) => item.id === updated.id ? updated : item));
     };
+    const confirmCreatedDraft = async () => {
+        const generation = lifecycle.current, owner = scopeKey;
+        try {
+            await load(); if (generation !== lifecycle.current || owner !== scopeRef.current) return;
+            await createDraft.session.discard(); if (generation !== lifecycle.current || owner !== scopeRef.current) return;
+            setCreateFields({ employeeId: "", title: "", description: "", dueDate: nextBusinessDays(3)[0] });
+            setShowCreate(false); setMessage("Task sheet creation confirmed.");
+        } catch (reason) { failAction(reason, "Creation is confirmed. Reload the workboard to view the worksheet."); }
+    };
+    const confirmActionDraft = async () => {
+        const generation = lifecycle.current, owner = scopeKey;
+        try {
+            await reloadAfterAction(); if (generation !== lifecycle.current || owner !== scopeRef.current) return;
+            await actionDraft.session.discard(); if (generation !== lifecycle.current || owner !== scopeRef.current) return;
+            setActionDialog(null); setActionNote(""); setMessage("Worksheet update confirmed.");
+        } catch (reason) { failAction(reason, "Submission is confirmed. Reload the worksheet to view its current stage."); }
+    };
     const createTask = async (event: FormEvent<HTMLFormElement>) => {
         const generation = lifecycle.current, owner = scopeKey;
         event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
@@ -347,7 +371,19 @@ export function useWorkboard({ role, refreshKey, userEmail, employees, staffAcco
             description: String(data.get("description")).trim(), dueDate: String(data.get("dueDate")) };
         setBusy("create"); setError(""); setMessage("");
         try {
-            const created = isBackendConfigured ? await brainServeApi.createWorkTask(payload) : (() => {
+            if (isBackendConfigured) {
+                if (draftBlocksSubmit(createDraft.state.phase)) return false;
+                createDraft.session.setFields(payload);
+                const receipt = await createDraft.session.submit();
+                if (!receipt || generation !== lifecycle.current || owner !== scopeRef.current) return false;
+                await load();
+                if (generation !== lifecycle.current || owner !== scopeRef.current) return false;
+                await createDraft.session.discard();
+                setCreateFields({ employeeId: "", title: "", description: "", dueDate: nextBusinessDays(3)[0] });
+                form.reset(); setShowCreate(false);
+                setMessage("Task sheet created and the selected department member was notified."); return true;
+            }
+            const created = (() => {
                 const selectedEmployee = employees.find((item) => (item.uuid ?? item.id) === payload.employeeId);
                 const actorAccount = readDemoAccounts().find((account) => account.email.toLowerCase() === userEmail.toLowerCase());
                 const selectedIsTeamLead = payload.employeeId === assignedTeamLead?.teamLeadEmployeeId;
@@ -572,6 +608,20 @@ export function useWorkboard({ role, refreshKey, userEmail, employees, staffAcco
         if (conflict || ("allowedActions" in task && !(task as WorkboardItem).allowedActions.includes(action))) {
             setError("This action is no longer available. Reload the current worksheet before retrying."); return;
         }
+        if (isBackendConfigured) {
+            if (draftBlocksSubmit(actionDraft.state.phase)) return;
+            const request = scopeKey, generation = lifecycle.current;
+            setBusy(`${task.id}:${action}`); setError("");
+            try {
+                actionDraft.session.setFields({ note: actionNote, taskVersion: String(task.version) });
+                const receipt = await actionDraft.session.submit();
+                if (!receipt || request !== scopeRef.current || generation !== lifecycle.current) return;
+                await reloadAfterAction();
+                if (request !== scopeRef.current || generation !== lifecycle.current) return;
+                await actionDraft.session.discard(); setActionDialog(null); setActionNote(""); setMessage("Worksheet update submitted and confirmed.");
+            } finally { if (request === scopeRef.current && generation === lifecycle.current) setBusy(""); }
+            return;
+        }
         const succeeded = action === "insight-rework" ? await assignInsightRework(task, actionNote)
             : action === "revise-rework" ? await reviseReworkSubmission(task, actionNote)
                 : action === "hr-rework" ? await requestHrTaskRework(task, actionNote)
@@ -688,7 +738,7 @@ export function useWorkboard({ role, refreshKey, userEmail, employees, staffAcco
         setActionDialog((value) => value && value.task.id === current ? { ...value, task: updated.item } : value); setConflict(false);
         setError(actionDialog && !updated.item.allowedActions.includes(actionDialog.action) ? "This action is no longer available. Your unsaved note is kept." : "");
     };
-    return { tasks: dataScope === scopeKey ? tasks : [], showCreate: dataScope === scopeKey && showCreate, setShowCreate,
+    return { confirmCreatedDraft, confirmActionDraft, createFields, setCreateFields, createDraft, actionDraft, tasks: dataScope === scopeKey ? tasks : [], showCreate: dataScope === scopeKey && showCreate, setShowCreate,
         query: dataScope === scopeKey ? query : "", setQuery, statusFilter: dataScope === scopeKey ? statusFilter : "ALL", setStatusFilter,
         branchFilter: dataScope === scopeKey ? branchFilter : "ALL", setBranchFilter,
         queueScope, setQueueScope, quickFilter, setQuickFilter, sort, setSort, page, setPage, size, setSize, criteria, applyCriteria, resetCriteria: () => applyCriteria(defaultCriteria),
