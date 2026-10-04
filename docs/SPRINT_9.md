@@ -36,6 +36,8 @@ The selected period is an inclusive range of office dates, bounded to 366 days. 
 | WORK12 | Open work created before office today, counted once |
 | WORK13 | Distinct task/audit-cycle final CEO approval events |
 
+Retained planning timestamps support both persisted epoch seconds and ISO values without rewriting source snapshots. Stage transitions observe the final transaction state; temporary audit states and assignment transfers cannot create decision durations. A real decision with an unknown legacy entry contributes excluded coverage rather than an invented duration.
+
 WORK07 uses immutable `work_original_commitment` cutoffs. Employee evidence is accepted by the Team Lead; direct Team Lead evidence is accepted by HR. Final CEO closure is measured separately. Changing the current due date cannot improve the original commitment result. Late and unfinished due tasks remain in its denominator. Rework and handover invalidate current acceptance. Retained records without reliable original commitments are excluded with declared coverage.
 
 Authorized daily and department trends, record pages and bounded CSV exports use the same scope, filters and metric version. CSV fields are escaped against spreadsheet formulas. A record-level action rechecks current worksheet policy. Responses and private exports are not cached by the browser. Role or account changes cancel pending requests and clear retained data.

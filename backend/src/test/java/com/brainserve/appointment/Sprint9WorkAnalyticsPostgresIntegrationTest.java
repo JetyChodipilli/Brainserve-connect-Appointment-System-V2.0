@@ -104,6 +104,14 @@ class Sprint9WorkAnalyticsPostgresIntegrationTest {
         assertThat(json(analytics.context(CEO)).path("scope").asText()).isNotBlank();
     }
 
+    @Test void retainedPlanningInstantsAcceptRealEpochAndIsoFormatsWithoutChangingSnapshots() {
+        Instant at=Instant.parse("2026-10-04T10:15:30.125Z");
+        assertThat(jdbc.queryForObject("select work_planning_instant(?::jsonb)",Timestamp.class,"1791108930.125").toInstant()).isEqualTo(at);
+        assertThat(jdbc.queryForObject("select work_planning_instant(?::jsonb)",Timestamp.class,"\"2026-10-04T10:15:30.125Z\"").toInstant()).isEqualTo(at);
+        for(String invalid:List.of("null","\"unknown\"","\"infinity\"","1e300","{}"))
+            assertThat(jdbc.queryForObject("select work_planning_instant(?::jsonb)",Timestamp.class,invalid)).isNull();
+    }
+
     @Test void mixedLifecycleReconcilesStockDeliveryReviewSubmissionCarryAndFinalFlowDefinitions() {
         var overdue=create(EMP,"Overdue carry",today().minusDays(1));
         jdbc.update("update department_work_task set created_at=? where id=?",Timestamp.from(today().minusDays(2).atStartOfDay(OFFICE).toInstant()),overdue.getId());
@@ -149,7 +157,7 @@ class Sprint9WorkAnalyticsPostgresIntegrationTest {
         submit(LEAD,LEAD_EMP,direct.getId(),"Direct Lead delivered");as(HR,()->insights.markAudited(HR,direct.getId()));
         ratio(summary(HR,today(),today()),"WORK07",2,2);
         assertThat(count("select count(*) from work_task_audit_record where audit_status='CEO_APPROVED'")).isZero();
-        as(LEAD,()->tasks.requestChanges(LEAD,employee.getId(),"Revise accepted Employee evidence"));
+        as(HR,()->insights.requestHrRework(HR,employee.getId(),"Revise accepted Employee evidence"));
         ratio(summary(HR,today(),today()),"WORK07",1,2);
         as(HR,()->insights.requestHrRework(HR,direct.getId(),"Revise direct Lead evidence"));
         ratio(summary(HR,today(),today()),"WORK07",0,2);
@@ -339,6 +347,7 @@ class Sprint9WorkAnalyticsPostgresIntegrationTest {
         as(HR,()->insights.requestHrRework(HR,task.getId(),"Revise the delivery"));
         assertThat(jdbc.queryForObject("select work_current_review_stage(?)",String.class,task.getId())).isEqualTo("TEAM_LEAD");
         assertThat(count("select count(*) from work_review_stage_event where work_task_id=? and previous_stage='HR_ADMIN'",task.getId())).isEqualTo(1);
+        assertThat(count("select count(*) from work_review_stage_event where work_task_id=? and stage='MANAGER'",task.getId())).isZero();
         as(LEAD,()->insights.assignRework(LEAD,task.getId(),"Apply the HR correction"));
         assertThat(jdbc.queryForObject("select work_current_review_stage(?)",String.class,task.getId())).isNull();
         submit(USER,EMP,task.getId(),"Corrected delivery");
@@ -348,6 +357,17 @@ class Sprint9WorkAnalyticsPostgresIntegrationTest {
         assertThat(jdbc.queryForObject("select work_current_review_stage(?)",String.class,task.getId())).isEqualTo("HR_ADMIN");
         as(HR,()->insights.markAudited(HR,task.getId()));
         assertThat(jdbc.queryForObject("select work_current_review_stage(?)",String.class,task.getId())).isEqualTo("MANAGER");
+    }
+
+    @Test void actualLegacyDecisionRetainsUnknownEntryCoverageInsteadOfInventingAReviewDuration() {
+        var task=create(EMP,"Legacy queue decision coverage",today());submit(USER,EMP,task.getId(),"Waiting for Lead");
+        jdbc.execute("truncate work_review_stage_event");
+        accept(task.getId());
+        JsonNode result=summary(HR,today(),today()),lead=stage(result,"TEAM_LEAD");
+        assertThat(lead.path("sampleCount").asLong()).isZero();
+        assertThat(lead.path("coverageTotal").asLong()).isEqualTo(1);
+        assertThat(lead.path("coverageKnown").asLong()).isZero();
+        assertThat(lead.path("medianSeconds").isNull()).isTrue();
     }
 
     @Test void unresolvedReviewAgeUsesKnownCurrentEntryAndDoesNotInventMissingLegacyEntry() {

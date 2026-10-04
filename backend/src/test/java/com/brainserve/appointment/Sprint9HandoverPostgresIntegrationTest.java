@@ -282,7 +282,7 @@ class Sprint9HandoverPostgresIntegrationTest {
 
     @Test void notificationDatabaseFailureRollsBackAssignmentRevisionHistoryAndOutboxThenRecovers() {
         var task=create("Atomic handover");var before=handovers.get(LEAD,task.getId());drain();
-        jdbc.execute("create function sprint9_reject_handover_notice() returns trigger language plpgsql as $$ begin raise exception 'sprint9 injected notice outage' using errcode='08006'; end $$");
+        jdbc.execute("create function sprint9_reject_handover_notice() returns trigger language plpgsql as $$ begin raise exception 'sprint9 injected notice outage' using errcode='P0001'; end $$");
         jdbc.execute("create trigger sprint9_reject_handover_notice before insert on internal_call_notification for each row execute function sprint9_reject_handover_notice()");
         try {
             assertThatThrownBy(()->transfer(LEAD,task.getId(),NEW_EMP)).hasStackTraceContaining("sprint9 injected notice outage");
