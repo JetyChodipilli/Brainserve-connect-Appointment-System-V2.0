@@ -45,8 +45,10 @@ insert into iam_refresh_token_session(id,user_id,token_hash,family_id,expires_at
   const permissions = roleSource.match(new RegExp(`${person.role}\\(EnumSet\\.of\\(([\\s\\S]*?)\\)\\)`))?.[1].match(/[A-Z][A-Z_]+/g);
   assert.ok(permissions?.length, 'Cannot determine actual role authorities');
   const now = Math.floor(Date.now() / 1000);
+  const mfaVerifiedAt = Number(sql(`select floor(extract(epoch from mfa_verified_at)) from iam_refresh_token_session where user_id='${person.user}' and family_id='${person.family}';`));
+  assert.ok(Number.isSafeInteger(mfaVerifiedAt) && mfaVerifiedAt > 0, 'Synthetic token must use its persisted MFA proof');
   const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
-  const parts = [encode({ alg: 'HS256', typ: 'JWT' }), encode({ iss: 'brainserve-appointment-service', sub: person.user, iat: now, exp: now + 3600, sid: person.family, employeeId: person.employee, mfaVerifiedAt: now, authorities: [person.role, ...permissions] })];
+  const parts = [encode({ alg: 'HS256', typ: 'JWT' }), encode({ iss: 'brainserve-appointment-service', sub: person.user, iat: now, exp: now + 3600, sid: person.family, employeeId: person.employee, mfaVerifiedAt, authorities: [person.role, ...permissions] })];
   person.token = `${parts.join('.')}.${createHmac('sha256', config.JWT_SECRET).update(parts.join('.')).digest('base64url')}`;
 }
 sql(`insert into department_team_lead(id,department_id,team_lead_user_id,team_lead_employee_id,active,assigned_by_user_id,assigned_at,${auditColumns}) values('${id()}','${department}','${lead}','${leadEmployee}',true,'${lead}',now(),${auditValues});`);
