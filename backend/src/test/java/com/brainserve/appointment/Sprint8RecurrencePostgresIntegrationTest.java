@@ -183,7 +183,7 @@ class Sprint8RecurrencePostgresIntegrationTest {
     @ParameterizedTest(name = "fresh worker authorization: {0}")
     @ValueSource(strings = {"creator-terminated", "creator-moved", "creator-disabled", "creator-role", "creator-permission",
             "creator-assignment", "department-disabled", "assignee-terminated", "assignee-moved", "assignee-disabled",
-            "assignee-role", "assignee-multiple-roles"})
+            "assignee-role", "assignee-archived"})
     void everyOccurrenceReadsCurrentCreatorAndAssigneePolicyAndRetryRecovers(String change) {
         var template = template(LEAD, "Fresh policy worksheet", "Captured before policy changes", 2);
         var schedule = daily(LEAD, template.id(), EMP, today, today);
@@ -667,15 +667,16 @@ class Sprint8RecurrencePostgresIntegrationTest {
             case "assignee-moved" -> jdbc.update("update employee set department_id=? where id=?", OTHER_DEPT, EMP);
             case "assignee-disabled" -> jdbc.update("update iam_user_account set enabled=false where id=?", USER);
             case "assignee-role" -> jdbc.update("update iam_user_role set role_name='ROLE_MANAGER' where user_id=?", USER);
-            case "assignee-multiple-roles" -> jdbc.update("insert into iam_user_role(user_id,role_name) values(?,'ROLE_TEAM_LEAD')", USER);
+            case "assignee-archived" -> jdbc.update("update iam_user_account set archived=true,archived_at=now(),enabled=false where id=?", USER);
             default -> throw new IllegalArgumentException(change);
         }
     }
     private void restorePolicy() {
         jdbc.update("update employee set status='ACTIVE',department_id=? where id in (?,?)", DEPT, LEAD_EMP, EMP);
-        jdbc.update("update iam_user_account set enabled=true where id in (?,?)", LEAD, USER);
-        jdbc.update("delete from iam_user_role where user_id in (?,?)", LEAD, USER);
-        jdbc.update("insert into iam_user_role(user_id,role_name) values(?,'ROLE_TEAM_LEAD'),(?,'ROLE_EMPLOYEE')", LEAD, USER);
+        jdbc.update("update iam_user_account set enabled=true,archived=false,archived_at=null where id in (?,?)", LEAD, USER);
+        // Preserve the database's exactly-one-role invariant during fixture recovery.
+        jdbc.update("update iam_user_role set role_name='ROLE_TEAM_LEAD' where user_id=?", LEAD);
+        jdbc.update("update iam_user_role set role_name='ROLE_EMPLOYEE' where user_id=?", USER);
         jdbc.update("delete from iam_user_permission_deny where user_id=?", LEAD);
         jdbc.update("update department_team_lead set active=true,ended_at=null,ended_by_user_id=null where team_lead_user_id=?", LEAD);
         jdbc.update("update org_department set active=true where id=?", DEPT);

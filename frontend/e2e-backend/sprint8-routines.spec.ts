@@ -65,10 +65,15 @@ async function fixture(page: Page, role: 'TEAM_LEAD' | 'HR_ADMIN' = 'TEAM_LEAD')
             return route.fulfill({ status: 404, json: { detail: 'Unmocked routine path' } });
         }
         if (['/auth/me', '/profile/me'].includes(path)) return route.fulfill({ json: profile });
+        if (path === '/team-leads/me/workspace') return route.fulfill({ json: {
+            assignment: { assignmentId: '77777777-7777-4777-8777-777777777777', departmentId, teamLeadUserId: userId, teamLeadEmployeeId: leadId, fullName: profile.fullName, email: profile.email },
+            department, employees: springPage([{ id: employeeId, employeeNumber: 'EMP-8', departmentId, displayName: 'Scoped Worker', officialEmail: 'worker@example.invalid', designation: 'Engineer', status: 'ACTIVE' }, { id: leadId, employeeNumber: 'LEAD-8', departmentId, displayName: profile.fullName, officialEmail: profile.email, designation: 'Lead', status: 'ACTIVE' }]),
+        } });
         if (path === '/employees') return route.fulfill({ json: springPage([{ id: employeeId, employeeNumber: 'EMP-8', departmentId, displayName: 'Scoped Worker', officialEmail: 'worker@example.invalid', designation: 'Engineer', status: 'ACTIVE' }, { id: leadId, employeeNumber: 'LEAD-8', departmentId, displayName: 'Scoped Routine Owner', officialEmail: profile.email, designation: 'Lead', status: 'ACTIVE' }]) });
         if (['/departments', '/departments/visible'].includes(path)) return route.fulfill({ json: [department] });
         if (['/appointments', '/admin/staff-accounts'].includes(path)) return route.fulfill({ json: springPage([]) });
         if (path === '/work-tasks') return route.fulfill({ json: [] });
+        if (path === '/dashboard/summary') return route.fulfill({ json: { awaitingApproval: 0, activeVisits: 0, totalEmployees: 2, activeEmployees: 2, scope: 'DEPARTMENT', departmentId } });
         if (path === '/work-tasks/workspace') return route.fulfill({ json: { departmentId, departmentName: 'Engineering', departmentCode: 'ENG', eligibleAssignees: [{ employeeId, displayName: 'Scoped Worker', designation: 'Engineer', role: 'EMPLOYEE' }] } });
         if (path === '/workboard/preferences') return route.fulfill({ json: { revision: 0, layout: 'LIST', density: 'COMPACT', savedFilters: [] } });
         if (path === '/workboard') return route.fulfill({ json: { policyVersion: 'workboard.v1', generatedAt: now, officeZone: 'Europe/London', officeDate: '2026-10-04', scope: 'DEPARTMENT', departmentId, number: 0, size: 20, totalElements: 0, totalPages: 0, counts: { scopes: { TODAY: 0, CARRY_FORWARD: 0, HISTORY: 0, ALL: 0 }, quickFilters: { ALL: 0, MY_ACTIONS: 0, DUE_TODAY: 0, OVERDUE_DELIVERY: 0, AWAITING_MY_REVIEW: 0, RETURNED_FOR_REWORK: 0 } }, laneCounts: { DELIVERY: 0, REVIEW: 0, REWORK: 0, CLOSED: 0 }, items: [] } });
@@ -77,6 +82,7 @@ async function fixture(page: Page, role: 'TEAM_LEAD' | 'HR_ADMIN' = 'TEAM_LEAD')
         return route.fulfill({ json: [] });
     });
     await page.goto('/');
+    await expect(page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true })).toBeAttached();
     const menu = page.getByRole('button', { name: 'Open navigation' }); if (await menu.isVisible()) await menu.click();
     await page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Work routines', exact: true })).toBeVisible();
@@ -108,7 +114,10 @@ for (const width of [360, 768, 1440]) test(`routine forms preserve labels, keybo
     await dialog.getByLabel('Office local time', { exact: true }).fill('10:30'); await expect(dialog.getByRole('button', { name: 'Create routine schedule', exact: true })).toBeDisabled();
     await dialog.getByLabel('Repeat frequency', { exact: true }).selectOption('MONTHLY'); await dialog.getByLabel('Day of month', { exact: true }).fill('31');
     await dialog.getByRole('button', { name: 'Preview routine dates', exact: true }).click(); await expect(dialog.getByRole('region', { name: 'Routine occurrence preview' })).toContainText('Office zone: Europe/London');
-    if (screenshots) await page.screenshot({ path: `${screenshots}/sprint8-routines-${width}.png`, fullPage: true });
+    if (screenshots) {
+        await dialog.evaluate(element => { element.scrollTop = 0; });
+        await page.screenshot({ path: `${screenshots}/sprint8-routines-${width}.png` });
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.keyboard.press('Escape'); await expect(page.getByRole('dialog', { name: 'Keep unsaved routine changes?' })).toBeVisible();
@@ -136,7 +145,7 @@ test('template creation, checklist and full current-version comparison retain fi
 
 test('pause/resume and paginated exception history use current versions and confirm one retry receipt', async ({ page }) => {
     const state = await fixture(page); await open(page); state.conflictState = true;
-    await page.getByRole('button', { name: 'Pause schedule Weekly office review', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Schedule changed'); await expect(page.getByRole('button', { name: 'Pause schedule Weekly office review', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Pause schedule Weekly office review', exact: true }).click(); await expect(page.getByRole('region', { name: 'Department work routines', exact: true }).getByRole('alert')).toContainText('Schedule changed'); await expect(page.getByRole('button', { name: 'Pause schedule Weekly office review', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Reload routine schedules', exact: true }).click(); await page.getByRole('button', { name: 'Pause schedule Weekly office review', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Resume schedule Weekly office review', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'View history & exceptions for Weekly office review', exact: true }).click(); const dialog = page.getByRole('dialog', { name: 'Routine history: Weekly office review' });
@@ -150,7 +159,7 @@ test('pause/resume and paginated exception history use current versions and conf
 });
 
 test('loading, empty, preview validation and service-error recovery are visible', async ({ page }) => {
-    const state = await fixture(page); state.contextError = true; await page.getByRole('button', { name: 'Work routines', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Routine context unavailable');
+    const state = await fixture(page); state.contextError = true; await page.getByRole('button', { name: 'Work routines', exact: true }).click(); await expect(page.getByRole('region', { name: 'Department work routines', exact: true }).getByRole('alert')).toContainText('Routine context unavailable');
     state.contextError = false; state.templates = []; state.schedules = []; await page.getByRole('button', { name: 'Retry routine workspace' }).click(); await expect(page.getByRole('region', { name: 'Routine templates', exact: true })).toContainText('No routine templates yet'); await expect(page.getByRole('region', { name: 'Routine schedules', exact: true })).toContainText('No routine schedules yet');
     state.templates = [{ ...template }]; await page.getByRole('button', { name: 'Reload routine templates', exact: true }).click(); const dialog = await scheduleForm(page);
     await dialog.getByLabel('Repeat frequency', { exact: true }).selectOption('WEEKLY'); await dialog.getByLabel('Monday', { exact: true }).uncheck(); await dialog.getByRole('button', { name: 'Preview routine dates', exact: true }).click(); await expect(dialog.getByRole('alert')).toContainText('Choose at least one weekday'); await expect(dialog.getByRole('alert')).toBeFocused();
