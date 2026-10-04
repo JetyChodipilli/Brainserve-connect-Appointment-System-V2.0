@@ -381,6 +381,8 @@ class Sprint9WorkAnalyticsPostgresIntegrationTest {
         assertThat(knownStage.path("oldestUnresolvedSeconds").asDouble()).isCloseTo(120,within(0.00001));
         assertThat(knownStage.path("medianSeconds").isNull()).isTrue();assertThat(knownStage.path("p95Seconds").isNull()).isTrue();
         assertThat(knownStage.path("coverageKnown").asLong()).isEqualTo(1);
+        assertThat(card(known,"WORK08").path("coverageKnown").asLong()).isEqualTo(1);
+        assertThat(card(known,"WORK08").path("excluded").asLong()).isZero();
         jdbc.execute("truncate work_review_stage_event");
         JsonNode unknown=json(fixed.summary(HR,from,to,null)),unknownStage=stage(unknown,"TEAM_LEAD");
         assertThat(unknownStage.path("unresolved").asLong()).isEqualTo(1);assertThat(unknownStage.path("oldestUnresolvedSeconds").isNull()).isTrue();

@@ -32,6 +32,7 @@ WHERE ((t.assignee_role='EMPLOYEE' AND t.status IN ('APPROVED','ACKNOWLEDGED'))
     OR (t.assignee_role='TEAM_LEAD' AND s->>'acceptedByRole'='HR_ADMIN'))
   AND ((t.assignment_revision=0 AND s->>'assignmentRevision' IS NULL)
     OR (pg_input_is_valid(s->>'assignmentRevision','bigint') AND (s->>'assignmentRevision')::bigint=t.assignment_revision))
+
 GROUP BY t.id,t.submission_version;
 
 -- Actual transition facts from this release forward. There is deliberately no
@@ -101,7 +102,7 @@ BEGIN
     legacy_previous:=CASE OLD.audit_status WHEN 'PENDING_MANAGER_APPROVAL' THEN 'MANAGER'
       WHEN 'PENDING_CEO_APPROVAL' THEN 'CEO' ELSE NULL END;
     IF task.status='INSIGHT_REWORK_REQUESTED' AND legacy_previous IS DISTINCT FROM
-      CASE task.insight_review_source WHEN 'HR' THEN 'HR_ADMIN' WHEN 'MANAGER' THEN 'MANAGER' WHEN 'CEO' THEN 'CEO' END THEN
+      (CASE task.insight_review_source WHEN 'HR' THEN 'HR_ADMIN' WHEN 'MANAGER' THEN 'MANAGER' WHEN 'CEO' THEN 'CEO' END) THEN
      legacy_previous:=NULL;
     END IF;
    END IF;
@@ -121,7 +122,7 @@ BEGIN
      AND (task.status<>'INSIGHT_REWORK_REQUESTED' OR previous.stage=CASE task.insight_review_source WHEN 'HR' THEN 'HR_ADMIN' WHEN 'MANAGER' THEN 'MANAGER' WHEN 'CEO' THEN 'CEO' END)
      AND (previous.submission_version IS NOT DISTINCT FROM task.submission_version AND previous.audit_cycle=cycle
       OR (next_stage IS NULL AND task.status='CHANGES_REQUESTED' AND previous.stage='TEAM_LEAD')
-      OR (next_stage IS NULL AND task.status='INSIGHT_REWORK_REQUESTED' AND previous.stage=CASE task.insight_review_source WHEN 'HR' THEN 'HR_ADMIN' WHEN 'MANAGER' THEN 'MANAGER' WHEN 'CEO' THEN 'CEO' END))
+      OR (task.status='INSIGHT_REWORK_REQUESTED' AND previous.stage=CASE task.insight_review_source WHEN 'HR' THEN 'HR_ADMIN' WHEN 'MANAGER' THEN 'MANAGER' WHEN 'CEO' THEN 'CEO' END))
      THEN previous.stage ELSE NULL END,
    clock_timestamp(),task.assignment_revision,task.submission_version,cycle,CASE WHEN TG_TABLE_NAME='department_work_task' THEN 'TASK' ELSE 'AUDIT' END);
  END IF;
