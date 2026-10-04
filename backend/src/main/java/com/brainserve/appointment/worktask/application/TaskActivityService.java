@@ -21,7 +21,8 @@ import java.sql.*;
 import java.time.Instant;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
-import java.security.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 @Service
 public class TaskActivityService {
