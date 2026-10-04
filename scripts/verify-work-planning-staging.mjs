@@ -89,8 +89,9 @@ export async function verifyWorkPlanningStaging({ call, sql, leadPerson, employe
   assert.equal(records.metricVersion, context.metricVersion);
   assert.equal(records.totalElements, accepted.denominator);
   assert.ok(records.items.some(item => item.id === taskId));
-  const exported = await call(leadPerson, `/work-analytics/WORK07/export.csv?${filters}&metricVersion=${context.metricVersion}`);
+  const exported = await call(leadPerson, `/work-analytics/WORK07/export.csv?${filters}&metricVersion=${context.metricVersion}`, 'GET', undefined, 200, 'text/csv');
   assert.equal(exported.headers['cache-control'], 'no-store');
+  assert.ok(exported.headers['content-type']?.startsWith('text/csv'));
   assert.ok(exported.bytes.toString('utf8').includes(taskId));
   assert.ok(exported.bytes.toString('utf8').includes(context.metricVersion));
   await call(leadPerson, `/work-analytics/summary?${filters}&departmentId=00000000-0000-0000-0000-000000000009`, 'GET', undefined, [403, 404]);

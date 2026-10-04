@@ -54,8 +54,8 @@ insert into iam_refresh_token_session(id,user_id,token_hash,family_id,expires_at
 }
 sql(`insert into department_team_lead(id,department_id,team_lead_user_id,team_lead_employee_id,active,assigned_by_user_id,assigned_at,${auditColumns}) values('${id()}','${department}','${lead}','${leadEmployee}',true,'${lead}',now(),${auditValues});`);
 const ca = readFileSync(join(process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence', 'staging-ca.crt'));
-async function call(person, path, method = 'GET', value, expected = 200) {
-  let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: 'application/json' };
+async function call(person, path, method = 'GET', value, expected = 200, accept = 'application/json') {
+  let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: accept };
   if (value instanceof FormData) {
     const encoded = new Request('https://localhost', { method: 'POST', body: value });
     body = Buffer.from(await encoded.arrayBuffer()); headers['Content-Type'] = encoded.headers.get('content-type');
