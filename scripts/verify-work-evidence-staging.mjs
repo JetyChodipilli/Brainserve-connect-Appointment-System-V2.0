@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { embeddedTestPdf } from './fixtures/work-evidence-pdf.mjs';
+import { verifyWorkPlanningStaging } from './verify-work-planning-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -193,6 +194,8 @@ assert.equal((await call(employeePerson, `${scheduledTaskPath}/planning`)).json.
 assert.deepEqual((await call(employeePerson, `${scheduledTaskPath}/evidence/${scheduledEvidence.id}/download`)).bytes, safe);
 await call(otherPerson, `${scheduledTaskPath}/planning`, 'GET', undefined, [403, 404]);
 console.log('SPRINT8_RECURRENCE_SNAPSHOT_NOTIFICATION_EVIDENCE_VERIFIED');
+await verifyWorkPlanningStaging({ call, sql, leadPerson, employeePerson, otherPerson,
+  taskId: created.id, evidence, safe, workerEmployee, strangerEmployee, tomorrow });
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

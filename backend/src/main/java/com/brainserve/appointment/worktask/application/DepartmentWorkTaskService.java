@@ -379,7 +379,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
                     "Only a Team Lead worksheet assigned by HR can use this rework update",
                     HttpStatus.CONFLICT);
         }
-        task.reviseInsightReworkSubmission(update);
+        task.reviseInsightReworkSubmission(update,teamLeadUserId,staff.requireActive(teamLeadUserId).fullName());
         publishHrNotification(teamLeadUserId, task,
                 "Team Lead updated and resubmitted rework for worksheet ‘" + task.getTitle()
                         + "’. It is ready for HR re-audit.");
@@ -415,6 +415,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
         requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(userId, currentScope));
         DepartmentWorkTask task = requireProgressScope(userId, employeeId, taskId);
         task.start(update);
+        task.getPlanning().markDraftAuthor(task.getEmployeeId(),userId,staff.requireActive(userId).fullName());
         notifyProgress(userId, task, "started", update);
         audit(task, "IN_PROGRESS");
         tasks.flush();
@@ -435,7 +436,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
         requireProgressScope(userId, employeeId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
         requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(userId, currentScope));
         DepartmentWorkTask task = requireProgressScope(userId, employeeId, taskId);
-        task.complete(update);
+        task.complete(update,userId,staff.requireActive(userId).fullName());
         if (TEAM_LEAD_ASSIGNEE.equals(task.getAssigneeRole())) {
             publishHrNotification(userId, task,
                     "Team Lead completed HR-assigned worksheet ‘" + task.getTitle()
@@ -465,7 +466,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
         requireEmployeeScope(employeeId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
         requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(employeeUserId, currentScope));
         DepartmentWorkTask task = requireEmployeeScope(employeeId, taskId);
-        task.reviseEmployeeReworkSubmission(update);
+        task.reviseEmployeeReworkSubmission(update,employeeUserId,staff.requireActive(employeeUserId).fullName());
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(employeeUserId,
                 task.getTeamLeadUserId(),
                 "Employee updated and resubmitted rework for worksheet ‘" + task.getTitle()

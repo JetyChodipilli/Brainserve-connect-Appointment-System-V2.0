@@ -143,6 +143,7 @@ public class TaskActivityService {
         String value=jdbc.queryForObject("select planning_state::text from department_work_task where id=?",String.class,task);
         TaskPlanningState state=read(value,new TypeReference<TaskPlanningState>(){});
         var values=new LinkedHashMap<UUID,Evidence>();state.evidence.forEach(e->values.put(e.id(),e));state.submissions.subList(Math.max(0,state.submissions.size()-50),state.submissions.size()).forEach(s->s.evidence().forEach(e->values.putIfAbsent(e.id(),e)));
+        state.retainedDrafts.subList(Math.max(0,state.retainedDrafts.size()-50),state.retainedDrafts.size()).forEach(s->s.evidence().forEach(e->values.putIfAbsent(e.id(),e)));
         return List.copyOf(values.values());
     }
     private List<Evidence> attachments(UUID task,List<UUID> ids) {

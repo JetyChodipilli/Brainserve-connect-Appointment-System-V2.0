@@ -96,6 +96,10 @@ jobs:
         working-directory: .
         run: node scripts/check-recurrence-calendar.mjs
 
+      - name: Verify work metric arithmetic and export safety
+        working-directory: .
+        run: node scripts/check-work-metrics.mjs
+
       - name: Compile and test backend
         env:
           ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

@@ -19,7 +19,7 @@ function modules(overrides = {}) {
         if (cache.has(filename)) return cache.get(filename);
         const exports = {};
         cache.set(filename, exports);
-        const source = ts.transpileModule(readFileSync(filename, "utf8"), { compilerOptions: {
+        const source = ts.transpileModule(readFileSync(filename, "utf8"), { fileName: filename, compilerOptions: {
             target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
             esModuleInterop: true,
         } }).outputText;

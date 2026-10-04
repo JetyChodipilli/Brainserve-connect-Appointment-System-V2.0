@@ -169,7 +169,7 @@ class AdministrationDashboardIntegrationTest {
         assertThat(records(CEO, "WORK07", DAY, DAY, 500, 7).totalElements()).isEqualTo(20);
     }
 
-    @Test void submittedApprovedAcknowledgedAndManagerDecidedWorkIsNotFinalAcceptance() {
+    @Test void statusAndManagerDecisionsCannotManufactureEvidenceAcceptance() {
         for (String status : List.of("COMPLETED", "APPROVED", "ACKNOWLEDGED")) {
             UUID id = UUID.randomUUID(); task(id, "INTERMEDIATE-" + status, DAY, "ASSIGNED");
             jdbc.update("update department_work_task set status = ?, updated_at = '2026-05-02T12:00:00Z' where id = ?", status, id);
@@ -199,7 +199,7 @@ class AdministrationDashboardIntegrationTest {
         assertThat(futureCard.reason()).contains("Preliminary");
     }
 
-    @Test void latestFinalDecisionAndReworkRespectHistoricalCutoff() {
+    @Test void currentEvidenceAcceptanceAndReworkRespectOriginalCutoff() {
         UUID reopened = UUID.randomUUID(); task(reopened, "REOPENED", DAY, "ASSIGNED");
         finalAcceptance(reopened, Instant.parse("2026-05-02T08:00:00Z"));
         jdbc.update("update department_work_task set status = 'INSIGHT_REWORK_REQUESTED', updated_at = '2026-05-02T10:00:00Z' where id = ?", reopened);
@@ -207,8 +207,17 @@ class AdministrationDashboardIntegrationTest {
         finalAcceptance(reopened, Instant.parse("2026-05-02T12:00:00Z"));
         assertThat(card(cards(CEO, DAY, DAY), "WORK07").value()).isEqualTo(100d);
         jdbc.update("update department_work_task set status = 'INSIGHT_REWORK_REQUESTED', updated_at = '2026-05-03T08:00:00Z' where id = ?", reopened);
-        assertThat(card(cards(CEO, DAY, DAY), "WORK07").value()).isEqualTo(100d);
+        assertThat(card(cards(CEO, DAY, DAY), "WORK07").value()).isZero();
         assertThat(card(cards(CEO, DAY, DAY.plusDays(1)), "WORK07").value()).isZero();
+    }
+
+    @Test void employeeEvidenceAcceptanceCountsBeforeFinalCeoClosure() {
+        UUID id = UUID.randomUUID(); task(id, "EVIDENCE-BEFORE-CLOSURE", DAY, "ASSIGNED");
+        evidenceAcceptance(id, Instant.parse("2026-05-02T12:00:00Z"));
+        assertThat(card(cards(CEO, DAY, DAY), "WORK07").value()).isEqualTo(100d);
+        assertThat(jdbc.queryForObject("select count(*) from audit_event_history where event_type='WORK_INSIGHT_CEO_APPROVED'", Long.class)).isZero();
+        audit("WORK_INSIGHT_CEO_APPROVED", "WORK_TASK_AUDIT", UUID.randomUUID(), id, Instant.parse("2026-05-03T12:00:00Z"));
+        assertThat(card(cards(CEO, DAY, DAY), "WORK07").value()).isEqualTo(100d);
     }
 
     @Test void currentActorRoleEnabledArchiveAndEffectiveOverridesAreRereadInOneTransaction() {
@@ -375,8 +384,16 @@ class AdministrationDashboardIntegrationTest {
                 + "values (?, ?, 'Fixture Visitor', ?, ?, ?, 'fixture', '2020-01-01T00:00:00Z', 'fixture', '2020-01-01T00:00:00Z', 'fixture')", UUID.randomUUID(), id, id.toString().substring(0, 20), checkin.atOffset(ZoneOffset.UTC), checkedOut ? checkin.plusSeconds(1).atOffset(ZoneOffset.UTC) : null);
     }
     void finalAcceptance(UUID id, Instant at) {
-        jdbc.update("update department_work_task set status = 'APPROVED', updated_at = ? where id = ?", at.minusSeconds(1).atOffset(ZoneOffset.UTC), id);
+        evidenceAcceptance(id, at);
         audit("WORK_INSIGHT_CEO_APPROVED", "WORK_TASK_AUDIT", UUID.randomUUID(), id, at);
+    }
+    void evidenceAcceptance(UUID id, Instant at) {
+        jdbc.update("update department_work_task set status='APPROVED', approved_at=?, updated_at=?, "
+                + "planning_state=jsonb_set(planning_state,'{submissions}',coalesce(planning_state->'submissions','[]'::jsonb) || jsonb_build_array(jsonb_build_object("
+                + "'version',coalesce(submission_version,0)+1,'submittedAt',?::text,'acceptedAt',?::text,'acceptedByRole','TEAM_LEAD',"
+                + "'checklist','[]'::jsonb,'evidence','[]'::jsonb,'assignmentRevision',assignment_revision,'authorshipKnown',false,'currentlyAccepted',false))), "
+                + "submission_version=coalesce(submission_version,0)+1 where id=?",
+                at.atOffset(ZoneOffset.UTC),at.atOffset(ZoneOffset.UTC),at.minusSeconds(60).toString(),at.toString(),id);
     }
     void audit(String type, String targetType, UUID target, UUID workTask, Instant at) {
         jdbc.update("insert into audit_event(id, occurred_at, actor_id, event_type, target_type, target_id, outcome, details_json) values (?, ?, ?, ?, ?, ?, 'SUCCESS', ?::jsonb)",

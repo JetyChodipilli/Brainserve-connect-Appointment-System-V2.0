@@ -113,7 +113,7 @@ public class AdministrationDashboardService {
         if (!actor.permissions().contains(metric.permission())) return empty(metric, "RESTRICTED", "Your current permissions restrict this measurement");
         if (metric.id().equals("OPS04")) return dependencyCard(metric, dependencies());
         if (metric.id().equals("OPS09")) {
-            return value(metric, null, "PARTIAL", "Live source queries with partial coverage: workflow journeys, stage deadlines and verified backup/restore evidence are unavailable. Freshness is measured from this read; retained original deadlines and final-decision histories also have declared legacy gaps.",
+            return value(metric, null, "PARTIAL", "Live source queries with partial coverage: workflow journeys, stage deadlines and verified backup/restore evidence are unavailable. Freshness is measured from this read; retained original deadlines and submission acceptance histories also have declared legacy gaps.",
                     asOf, 30, null, null, null, null, false);
         }
         if (metric.unavailableReason() != null) return empty(metric, "UNAVAILABLE", metric.unavailableReason());
@@ -135,7 +135,7 @@ public class AdministrationDashboardService {
             numeric = 100d * stats.accepted() / stats.count();
             long known = Objects.requireNonNull(jdbc.queryForObject("select count(*) from department_work_task t join work_original_commitment c on c.work_task_id = t.id", params, Long.class));
             coverage = known + excluded == 0 ? null : 100d * known / (known + excluded);
-            reason = "Full original-date due cohort; late, unfinished and future due tasks remain in the denominator. Acceptance must precede the original end-of-office-day deadline and period/as-of cutoff; later rework invalidates acceptance. "
+            reason = "Full original-date due cohort; late, unfinished and future due tasks remain in the denominator. Current delivery evidence must be accepted by the Lead for Employee work or HR for direct Lead work before the original office-day deadline and period/as-of cutoff; rework or handover invalidates the current acceptance. "
                     + excluded + " retained tasks have unknown original deadlines and are excluded; coverage describes all retained work.";
             if (range.to().plusDays(1).atStartOfDay(officeZone).toInstant().isAfter(asOf)) reason += " Preliminary: the selected cohort has not fully elapsed.";
         } else if (metric.id().equals("WORK03")) {
@@ -188,25 +188,16 @@ public class AdministrationDashboardService {
                     + "and t.due_date < :today and t.created_at <= :asOf", null);
             case "WORK07" -> new QueryPlan("""
                     select t.id::text id, t.title label, 'Original due date: ' || c.original_due_date::text
-                        || '; acceptance: ' || coalesce(approval.occurred_at::text, 'unfinished / unknown') detail,
+                        || '; current evidence acceptance: ' || coalesce(acceptance.accepted_at::text, 'unfinished / unknown') detail,
                         t.status::text status, (c.original_due_date + 1)::timestamp at time zone :officeZone occurred_at,
                         'ORIGINAL_DUE_COHORT' kind, 0::double precision measure,
-                        approval.occurred_at is not null
-                            and approval.occurred_at < (c.original_due_date + 1)::timestamp at time zone :officeZone
-                            and not exists (select 1 from workboard_activity_event reopened
-                                where reopened.work_task_id = t.id and reopened.occurred_at <= :asOf and reopened.occurred_at < :end
-                                  and reopened.occurred_at >= approval.occurred_at
-                                  and reopened.current_status not in ('APPROVED','ACKNOWLEDGED')
-                                  and reopened.event_type = 'STATUS_CHANGED'
-                                  and not coalesce((reopened.details_json->>'backfilled')::boolean, false)
-                                  and reopened.actor_id not like 'flyway%') accepted
+                        acceptance.accepted_at is not null
+                            and acceptance.accepted_at <= :asOf and acceptance.accepted_at < :end
+                            and acceptance.accepted_at < (c.original_due_date + 1)::timestamp at time zone :officeZone accepted
                     from department_work_task t join work_original_commitment c on c.work_task_id = t.id
-                    left join lateral (select e.id, e.occurred_at from audit_event_history e
-                        where e.details_json->>'workTaskId' = t.id::text and e.event_type = 'WORK_INSIGHT_CEO_APPROVED'
-                          and e.target_type = 'WORK_TASK_AUDIT' and e.outcome = 'SUCCESS' and e.occurred_at <= :asOf and e.occurred_at < :end
-                          and e.actor_id not like 'flyway%'
-                        order by e.occurred_at desc, e.id desc limit 1) approval on true
+                    left join reporting_work_current_acceptance acceptance on acceptance.work_task_id=t.id
                     where c.original_due_date >= :from and c.original_due_date <= :to and c.committed_at <= :asOf
+                      and t.created_at <= :asOf
                     """, "select count(*) from department_work_task t where not exists (select 1 from work_original_commitment c where c.work_task_id = t.id)");
             case "IAM03" -> new QueryPlan("select u.id::text id, u.full_name label, 'CEO account approval' detail, u.account_status::text status, u.created_at occurred_at, 'ACCOUNT' kind, 0::double precision measure, false accepted "
                     + "from iam_user_account u join iam_user_role r on r.user_id = u.id where not u.archived and u.account_status = 'PENDING_APPROVAL' and r.role_name = 'ROLE_CEO' and u.created_at <= :asOf", null);

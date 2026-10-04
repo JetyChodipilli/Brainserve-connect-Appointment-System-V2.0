@@ -65,9 +65,11 @@ bash ops/staging/verify.sh
 The script validates Compose, builds and tags images, waits for the full stack,
 checks HTTPS and product HTML, requires 401 for an anonymous dashboard request,
 requires 404 for external actuator access, exercises scanned private work evidence,
-stops writes, creates a checksummed dump,
+scoped discussion/drafts, recurrence receipts, controlled handover and original-deadline
+analytics, stops writes, creates a checksummed dump,
 restores a separate database, compares every successful Flyway version/checksum,
-verifies synthetic restored rows, starts the application against the restore, and
+compares full retained row digests including authored transfer snapshots, notice receipts,
+review stages and original commitments, starts the application against the restore, and
 reapplies the pinned images against the original staging database. It never deletes
 or overwrites a database. `STAGING_RECOVERY_VERIFIED` appears only after every check.
 
@@ -75,7 +77,10 @@ The evidence probe refuses existing accounts and requires both explicit disposab
 opt-in and localhost. It creates synthetic scoped principals, exercises real HTTPS,
 PostgreSQL, MinIO and ClamAV, rejects invalid bytes and malware, verifies fail-closed
 scanner outage, immutable submission acceptance, authorized byte downloads and
-permission revocation. Seeded sessions exercise request authorization; this probe
+permission revocation. The handover probe removes the previous Employee's current
+access, preserves scanned evidence and original authorship, requires a fresh submission
+from the new assignee, and reconciles cohort records/CSV against the displayed metric.
+Seeded sessions exercise request authorization; this probe
 does not test interactive login or MFA enrollment. Never run it on a staff host.
 
 The CI cleanup deletes **only the disposable runner's volumes**. Do not copy that

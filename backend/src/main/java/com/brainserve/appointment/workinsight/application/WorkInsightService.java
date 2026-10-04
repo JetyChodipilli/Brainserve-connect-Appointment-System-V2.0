@@ -55,6 +55,13 @@ public class WorkInsightService {
     private final CurrentAccountAuthority authority;
     private final TeamLeadDirectory teamLeads;
     private final WorkboardQueryService workboard;
+    private jakarta.persistence.EntityManager entityManager;
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void currentWriterLocks(jakarta.persistence.EntityManager entityManager,org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this.entityManager=entityManager;this.jdbc=jdbc;
+    }
 
     public WorkInsightService(WorkTaskDirectory tasks, WorkTaskAuditRecordRepository audits,
                               EmployeeDirectory employees, StaffCommunicationDirectory staff,
@@ -145,6 +152,7 @@ public class WorkInsightService {
     @Transactional
     public Insight markAudited(UUID hrUserId, UUID workTaskId, Long expectedTaskVersion) {
         requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
+        lockCurrentPolicy(hrUserId,workTaskId);
         tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
         requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
 
@@ -155,6 +163,7 @@ public class WorkInsightService {
         WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId).orElse(null);
         if (record == null) {
             record = audits.saveAndFlush(newRecord(task, hrUserId));
+            if(entityManager!=null) entityManager.refresh(record);
         } else if (record.getAuditStatus() == WorkInsightStatus.REWORK_ASSIGNED) {
             record.resubmit(hrUserId, task.status());
         } else {
@@ -166,7 +175,7 @@ public class WorkInsightService {
                         + " in " + task.departmentBranch()
                         + ". Manager verification is required before CEO approval."));
         audit.record("WORK_INSIGHT_HR_AUDITED", "WORK_TASK_AUDIT", record.getId().toString(),
-                "{\"workTaskId\":\"" + task.id() + "\"}");
+                decisionDetails(record));
         return retainedInsight(record);
     }
 
@@ -178,14 +187,18 @@ public class WorkInsightService {
     @Transactional
     public Insight requestHrRework(UUID hrUserId, UUID workTaskId, String reason, Long expectedTaskVersion) {
         requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
+        lockCurrentPolicy(hrUserId,workTaskId);
         tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
         requireCurrent(hrUserId, HR, "WORK_INSIGHT_AUDIT", workTaskId);
 
         requireRole(hrUserId, HR, "Only HR can return an Insights worksheet for rework");
         TaskSnapshot task = requireAuditReadyTask(workTaskId);
         departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
-        WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId)
-                .orElseGet(() -> audits.saveAndFlush(newRecord(task, hrUserId)));
+        WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId).orElse(null);
+        if(record==null) {
+            record=audits.saveAndFlush(newRecord(task,hrUserId));
+            if(entityManager!=null) entityManager.refresh(record);
+        }
         record.requestHrRework(hrUserId, reason);
         TaskSnapshot reworked = tasks.requestInsightRework(workTaskId, "HR", reason);
         record.syncTaskStatus(reworked.status());
@@ -206,6 +219,7 @@ public class WorkInsightService {
     @Transactional
     public Insight assignRework(UUID teamLeadUserId, UUID workTaskId, String guidance, Long expectedTaskVersion) {
         requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
+        lockCurrentPolicy(teamLeadUserId,workTaskId);
         tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
         requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
 
@@ -242,6 +256,7 @@ public class WorkInsightService {
     @Transactional
     public Insight reviseReworkSubmission(UUID teamLeadUserId, UUID workTaskId, String update, Long expectedTaskVersion) {
         requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
+        lockCurrentPolicy(teamLeadUserId,workTaskId);
         tasks.requireTaskForMutation(workTaskId, expectedTaskVersion);
         requireCurrent(teamLeadUserId, TEAM_LEAD, "WORK_TASK_REVIEW", workTaskId);
 
@@ -273,7 +288,7 @@ public class WorkInsightService {
     @Transactional
     public Insight decideByManager(UUID managerUserId, UUID recordId, boolean approved, String remarks) {
         requireRole(managerUserId, MANAGER, "Only the assigned Manager can decide a work audit");
-        WorkTaskAuditRecord record = requireRecord(recordId);
+        WorkTaskAuditRecord record = lockedDecisionRecord(managerUserId,recordId,MANAGER,"WORK_INSIGHT_MANAGER_APPROVE");
         managers.requireAssignedReviewer(record.getDepartmentId(), managerUserId);
         record.decideByManager(managerUserId, approved, remarks);
         if (!approved) {
@@ -295,7 +310,7 @@ public class WorkInsightService {
         audit.record(approved ? "WORK_INSIGHT_MANAGER_APPROVED"
                         : "WORK_INSIGHT_MANAGER_REWORK_REQUESTED",
                 "WORK_TASK_AUDIT", record.getId().toString(),
-                "{\"workTaskId\":\"" + record.getWorkTaskId() + "\"}");
+                decisionDetails(record));
         return retainedInsight(record);
     }
 
@@ -312,7 +327,7 @@ public class WorkInsightService {
                 "Only the CEO can decide a work audit"
         );
 
-        WorkTaskAuditRecord record = requireRecord(recordId);
+        WorkTaskAuditRecord record = lockedDecisionRecord(ceoUserId,recordId,CEO,"WORK_INSIGHT_CEO_APPROVE");
         record.decideByCeo(ceoUserId, approved, remarks);
 
         TaskSnapshot task;
@@ -400,9 +415,7 @@ public class WorkInsightService {
                         : "WORK_INSIGHT_CEO_REWORK_REQUESTED",
                 "WORK_TASK_AUDIT",
                 record.getId().toString(),
-                "{\"workTaskId\":\""
-                        + record.getWorkTaskId()
-                        + "\"}"
+                decisionDetails(record)
         );
 
         return retainedInsight(record);
@@ -410,6 +423,49 @@ public class WorkInsightService {
     private WorkTaskAuditRecord requireRecord(UUID recordId) {
         return audits.findById(recordId).orElseThrow(() -> new BusinessException(
                 "WORK_INSIGHT_NOT_FOUND", "The weekly work audit was not found", HttpStatus.NOT_FOUND));
+    }
+    private WorkTaskAuditRecord lockedDecisionRecord(UUID actor,UUID id,String role,String permission) {
+        WorkTaskAuditRecord record=requireRecord(id);
+        requireDecisionAuthority(actor,record,role,permission);
+        lockCurrentPolicy(actor,record.getWorkTaskId());
+        tasks.requireTaskForMutation(record.getWorkTaskId(),null);
+        // A handover may have removed this audit while the decision waited for the task.
+        // Refresh, rather than returning the persistence context's former-owner snapshot.
+        if(entityManager!=null) {
+            try {entityManager.refresh(record,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);}
+            catch(jakarta.persistence.EntityNotFoundException ex) {throw new BusinessException("WORK_INSIGHT_NOT_FOUND","The weekly work audit was not found",HttpStatus.NOT_FOUND);}
+        }
+        requireDecisionAuthority(actor,record,role,permission);
+        return record;
+    }
+    private void requireDecisionAuthority(UUID actor,WorkTaskAuditRecord record,String role,String permission) {
+        var current=authority.requireActive(actor);
+        if(!role.equals(current.role())||!current.permissions().contains(permission)) throw new BusinessException("WORK_INSIGHT_ROLE_REQUIRED","Your current role or permissions do not allow this decision",HttpStatus.FORBIDDEN);
+        if(!CEO.equals(role)) {
+            var scope=authority.requireWorkScope(actor);
+            if(!scope.authority().equals(current)||!scope.departmentId().equals(record.getDepartmentId())) throw new BusinessException("WORK_INSIGHT_SCOPE_DENIED","This audit is outside your current department assignment",HttpStatus.FORBIDDEN);
+        }
+        if(java.util.Objects.equals(current.employeeId(),tasks.requireTask(record.getWorkTaskId()).employeeId()))
+            throw new BusinessException("WORK_TASK_SELF_REVIEW_NOT_ALLOWED","An assignee cannot review their own delivery",HttpStatus.FORBIDDEN);
+    }
+    private void lockCurrentPolicy(UUID actor,UUID taskId) {
+        if(jdbc==null) return; // Retains the established constructor for isolated legacy tests.
+        UUID department=tasks.requireTask(taskId).departmentId();
+        jdbc.query("select id from org_department where id=? for update",(rs,n)->0,department);
+        jdbc.query("select id from department_hr_assignment where department_id=? order by id for update",(rs,n)->0,department);
+        jdbc.query("select id from department_team_lead where department_id=? order by id for update",(rs,n)->0,department);
+        jdbc.query("select id from department_manager_assignment where department_id=? order by id for update",(rs,n)->0,department);
+        var users=jdbc.query("select id from iam_user_account where id=? or employee_id in(select id from employee where department_id=?) order by id for update",(rs,n)->rs.getObject(1,UUID.class),actor,department);
+        for(UUID user:users) {
+            jdbc.query("select user_id from iam_user_role where user_id=? for update",(rs,n)->0,user);
+            jdbc.query("select user_id from iam_user_permission_grant where user_id=? for update",(rs,n)->0,user);
+            jdbc.query("select user_id from iam_user_permission_deny where user_id=? for update",(rs,n)->0,user);
+        }
+        jdbc.query("select id from employee where department_id=? or id in(select employee_id from iam_user_account where id=?) order by id for update",(rs,n)->0,department,actor);
+    }
+    private String decisionDetails(WorkTaskAuditRecord record) {
+        Long revision=jdbc==null?0L:jdbc.queryForObject("select assignment_revision from work_task_audit_record where id=?",Long.class,record.getId());
+        return "{\"workTaskId\":\""+record.getWorkTaskId()+"\",\"reworkCycle\":"+record.getReworkCycle()+",\"assignmentRevision\":"+revision+"}";
     }
 
     private Insight liveInsight(TaskSnapshot task, WorkTaskAuditRecord record) {
@@ -492,6 +548,7 @@ public class WorkInsightService {
         TaskSnapshot task = tasks.requireTask(taskId);
         if (!scope.departmentId().equals(task.departmentId())) throw new BusinessException("WORK_INSIGHT_SCOPE_DENIED", "This worksheet is outside your current department assignment", HttpStatus.FORBIDDEN);
         if (HR.equals(role)) departmentHrs.requireAssignedReviewer(task.departmentId(), actor);
+        if(HR.equals(role)&&java.util.Objects.equals(current.employeeId(),task.employeeId())) throw new BusinessException("WORK_TASK_SELF_REVIEW_NOT_ALLOWED","An assignee cannot audit their own delivery",HttpStatus.FORBIDDEN);
         if (TEAM_LEAD.equals(role)) {
             var lead = teamLeads.requireForUser(actor);
             if (!lead.departmentId().equals(task.departmentId()) || !actor.equals(task.teamLeadUserId())) {

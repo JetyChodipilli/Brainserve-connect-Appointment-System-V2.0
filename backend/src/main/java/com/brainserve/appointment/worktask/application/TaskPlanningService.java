@@ -77,6 +77,7 @@ public class TaskPlanningService {
         Set<UUID> ids=new HashSet<>(request.completedIds());
         if(ids.size()!=request.completedIds().size()||!task.getPlanning().checklist.stream().map(ChecklistItem::id).collect(java.util.stream.Collectors.toSet()).containsAll(ids)) invalid("Unknown checklist item");
         task.getPlanning().checklist=task.getPlanning().checklist.stream().map(i->new ChecklistItem(i.id(),i.title(),i.position(),i.required(),ids.contains(i.id()))).toList();
+        draftAuthor(actor,task);
         record(id,"CHECKLIST_UPDATED");return finish(actor,task,a);
     }
     @Transactional
@@ -106,18 +107,20 @@ public class TaskPlanningService {
         var d=documents.store(id,file);
         if(!a.equals(access(actor,task)))deny();
         task.getPlanning().evidence.add(new Evidence(UUID.randomUUID(),d.id(),d.filename(),d.contentType(),d.sizeBytes(),d.sha256(),d.createdAt()));
+        draftAuthor(actor,task);
         record(id,"EVIDENCE_UPLOADED");return finish(actor,task,a);
     }
     @Transactional
     public Planning remove(UUID actor,UUID id,UUID evidenceId,long version) {
         DepartmentWorkTask task=lock(actor,id,version);Access a=access(actor,task);if(!a.upload())deny();
         if(!task.getPlanning().evidence.removeIf(e->e.id().equals(evidenceId)))notFound();
+        draftAuthor(actor,task);
         record(id,"EVIDENCE_UNLINKED");return finish(actor,task,a);
     }
     @Transactional
     public TaskEvidenceStore.Download download(UUID actor,UUID id,UUID evidenceId) {
         preauthorize(actor); DepartmentWorkTask task=require(id);Access a=access(actor,task);
-        Evidence evidence=java.util.stream.Stream.concat(task.getPlanning().evidence.stream(),task.getPlanning().submissions.stream().flatMap(s->s.evidence().stream()))
+        Evidence evidence=java.util.stream.Stream.concat(java.util.stream.Stream.concat(task.getPlanning().evidence.stream(),task.getPlanning().submissions.stream().flatMap(s->s.evidence().stream())),task.getPlanning().retainedDrafts.stream().flatMap(s->s.evidence().stream()))
                 .filter(e->e.id().equals(evidenceId)).findFirst().orElseThrow(()->new BusinessException("WORK_TASK_EVIDENCE_NOT_FOUND","Evidence was not found",HttpStatus.NOT_FOUND));
         var result=documents.download(id,evidence.documentId());if(!a.equals(access(actor,task)))deny();unchangedTask(task);record(id,"EVIDENCE_READ");return result;
     }
@@ -143,9 +146,17 @@ public class TaskPlanningService {
     private Planning view(UUID actor,DepartmentWorkTask task,Access a) {
         TaskPlanningState p=task.getPlanning();
         return new Planning(task.getId(),task.getVersion(),task.getPriority(),task.getOriginalDueDate(),task.isOriginalDueDateKnown(),task.getDueDate(),task.getEstimateMinutes(),task.isEvidenceRequired(),
-                List.copyOf(p.checklist),tail(p.blockers,100),List.copyOf(p.evidence),tail(p.submissions,50),p.blockers.size()>100,p.submissions.size()>50,
-                new Permissions(a.manage(),a.progress(),a.blocker(),a.resolveBlocker(),a.upload()),contacts(task));
+                List.copyOf(p.checklist),tail(p.blockers,100),List.copyOf(p.evidence),tail(p.submissions,50).stream().map(s->s.withCurrentAcceptance(currentlyAccepted(task,s))).toList(),p.blockers.size()>100,p.submissions.size()>50,
+                new Permissions(a.manage(),a.progress(),a.blocker(),a.resolveBlocker(),a.upload()),contacts(task),tail(p.retainedDrafts,50),p.retainedDrafts.size()>50);
     }
+    private boolean currentlyAccepted(DepartmentWorkTask task,Submission s) {
+        if(s.acceptedAt()==null||task.getSubmissionVersion()==null||task.getSubmissionVersion()!=s.version()) return false;
+        if(s.assignmentRevision()==null?task.getAssignmentRevision()!=0:s.assignmentRevision()!=task.getAssignmentRevision()) return false;
+        return "EMPLOYEE".equals(task.getAssigneeRole())
+            ? Set.of("APPROVED","ACKNOWLEDGED").contains(task.getStatus().name())&&"TEAM_LEAD".equals(s.acceptedByRole())
+            : Set.of("COMPLETED","APPROVED").contains(task.getStatus().name())&&"HR_ADMIN".equals(s.acceptedByRole());
+    }
+    private void draftAuthor(UUID actor,DepartmentWorkTask task) {task.getPlanning().markDraftAuthor(task.getEmployeeId(),actor,staff.requireActive(actor).fullName());}
     private List<ContactOption> contacts(DepartmentWorkTask task) {
         return staff.activeWithAnyRoleInDepartment(Set.of("ROLE_EMPLOYEE","ROLE_TEAM_LEAD","ROLE_HR_ADMIN","ROLE_MANAGER"),task.getDepartmentId(),200).stream()
                 .map(m->new ContactOption(m.userId(),m.fullName())).toList();
@@ -189,5 +200,5 @@ public class TaskPlanningService {
     public record Permissions(boolean manage,boolean progress,boolean blocker,boolean resolveBlocker,boolean upload){}
     public record ContactOption(UUID id,String name){}
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)
-    public record Planning(UUID taskId,long taskVersion,String priority,LocalDate originalDueDate,boolean originalDueDateKnown,LocalDate dueDate,Integer estimateMinutes,boolean evidenceRequired,List<ChecklistItem> checklist,List<Blocker> blockers,List<Evidence> evidence,List<Submission> submissions,boolean blockersTruncated,boolean submissionsTruncated,Permissions permissions,List<ContactOption> contactOptions){}
+    public record Planning(UUID taskId,long taskVersion,String priority,LocalDate originalDueDate,boolean originalDueDateKnown,LocalDate dueDate,Integer estimateMinutes,boolean evidenceRequired,List<ChecklistItem> checklist,List<Blocker> blockers,List<Evidence> evidence,List<Submission> submissions,boolean blockersTruncated,boolean submissionsTruncated,Permissions permissions,List<ContactOption> contactOptions,List<DraftSnapshot> retainedDrafts,boolean draftsTruncated){}
 }
