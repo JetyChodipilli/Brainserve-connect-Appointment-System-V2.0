@@ -1,3 +1,4 @@
+import { draftFixture } from "./helpers/draft-fixture";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { WorkboardItem, WorkboardPreferences, WorkPlanning } from "../features/workboard/types/workboard";
 
@@ -31,6 +32,7 @@ async function fixture(page: Page, role = "EMPLOYEE") {
             number, size, totalElements: items.length, totalPages: Math.ceil(items.length / size), counts: { scopes: { TODAY: filtered.length, CARRY_FORWARD: 0, HISTORY: 0, ALL: filtered.length }, quickFilters: { ALL: period.length, MY_ACTIONS: period.filter((item) => item.allowedActions.length).length, DUE_TODAY: 0, OVERDUE_DELIVERY: 0, AWAITING_MY_REVIEW: period.filter((item) => item.allowedActions.includes("approve")).length, RETURNED_FOR_REWORK: period.filter((item) => item.lane === "REWORK").length } },
             laneCounts: Object.fromEntries(["DELIVERY", "REVIEW", "REWORK", "CLOSED"].map((lane) => [lane, items.filter((item) => item.lane === lane).length])), items: sorted.slice(number * size, (number + 1) * size) };
     };
+    const handleDraft = draftFixture();
     await page.route("http://backend.invalid/api/v1/**", async (route) => {
         const url = new URL(route.request().url()), endpoint = url.pathname.replace("/api/v1", ""), method = route.request().method();
         if (endpoint.startsWith('/work-tasks/task-000/')) {
@@ -53,6 +55,25 @@ async function fixture(page: Page, role = "EMPLOYEE") {
             }
             return route.fulfill({ json: planning });
         }
+        if (await handleDraft(route, (form, context, fields) => {
+            if (form === "TASK_CREATE") {
+                const body = { ...fields }; state.actions.push({ endpoint: "/work-tasks", body });
+                const created = task(43, { title: body.title, description: body.description, dueDate: body.dueDate, employeeId: body.employeeId, version: 0 });
+                state.items.push(created); return { json: created };
+            }
+            const [id, action] = context.split("~");
+            if (action === "insight-rework" || action === "hr-rework" || action === "revise-rework" && state.profile.roles.includes("ROLE_TEAM_LEAD")) {
+                const endpoint = `/work-insights/tasks/${id}/${action === "insight-rework" ? "assign-rework" : action === "hr-rework" ? "request-rework" : "revise-rework"}`;
+                const body = { [action === "insight-rework" ? "guidance" : action === "hr-rework" ? "reason" : "update"]: fields.note, expectedTaskVersion: Number(fields.taskVersion) };
+                state.actions.push({ endpoint, body }); const item = state.items.find(value => value.id === id)!; item.version++; item.allowedActions = []; item.auditStatus = "PENDING_MANAGER_APPROVAL"; return { json: {} };
+            }
+            const body = { note: fields.note, expectedVersion: Number(fields.taskVersion) };
+            state.actions.push({ endpoint: `/work-tasks/${id}/${action}`, body });
+            const item = state.items.find(value => value.id === id)!;
+            if (state.conflict) { item.version++; item.status = "IN_PROGRESS"; item.allowedActions = ["complete"]; return { status: 409, json: { errorCode: "WORK_TASK_VERSION_CONFLICT", detail: "This worksheet changed. Reload before retrying." } }; }
+            item.version++; item.status = action === "complete" || action === "revise-rework" ? "COMPLETED" : action === "approve" ? "APPROVED" : action === "request-changes" ? "CHANGES_REQUESTED" : "IN_PROGRESS";
+            item.allowedActions = action === "start" ? ["complete"] : []; return { json: item };
+        })) return;
         if (endpoint === "/auth/me") return route.fulfill({ json: state.profile });
         if (endpoint === "/profile/me") return route.fulfill({ json: { ...state.profile, fullName: "Scoped Employee", departmentId: department.id, photoUrl: null } });
         if (endpoint === "/employees") return route.fulfill({ json: paged([{ id: employeeId, employeeNumber: "EMP-001", departmentId: department.id, displayName: "Scoped Employee", officialEmail: profile.email, designation: "Engineer", status: "ACTIVE" }]) });

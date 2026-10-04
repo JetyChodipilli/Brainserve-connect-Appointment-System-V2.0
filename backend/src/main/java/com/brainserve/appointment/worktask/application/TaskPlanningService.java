@@ -6,6 +6,8 @@ import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
 import com.brainserve.appointment.iam.api.StaffCommunicationDirectory;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.brainserve.appointment.worktask.domain.DepartmentWorkTask;
+import com.brainserve.appointment.worktask.api.TaskActivityAccess;
+import com.brainserve.appointment.worktask.api.TaskActivityAccess.Access;
 import com.brainserve.appointment.worktask.domain.TaskPlanningState;
 import com.brainserve.appointment.worktask.domain.TaskPlanningState.*;
 import com.brainserve.appointment.worktask.infrastructure.DepartmentWorkTaskRepository;
@@ -22,7 +24,7 @@ import java.util.*;
 @Service
 public class TaskPlanningService {
     private final DepartmentWorkTaskRepository tasks;
-    private final CurrentAccountAuthority authority;
+    private final TaskActivityAccess taskAccess;
     private final EntityManager em;
     private final AuditService audit;
     private final StaffCommunicationDirectory staff;
@@ -32,8 +34,15 @@ public class TaskPlanningService {
     private final org.springframework.context.ApplicationEventPublisher events;
     public TaskPlanningService(DepartmentWorkTaskRepository tasks, CurrentAccountAuthority authority, EntityManager em,
             AuditService audit, StaffCommunicationDirectory staff, TaskEvidenceStore documents, org.springframework.jdbc.core.JdbcTemplate jdbc, com.fasterxml.jackson.databind.ObjectMapper mapper, org.springframework.context.ApplicationEventPublisher events) {
-        this.tasks=tasks; this.authority=authority; this.em=em; this.audit=audit; this.staff=staff; this.documents=documents; this.jdbc=jdbc; this.mapper=mapper; this.events=events;
+        this(tasks,authority,em,audit,staff,documents,jdbc,mapper,events,new TaskActivityAccess(authority,jdbc));
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    public TaskPlanningService(DepartmentWorkTaskRepository tasks, CurrentAccountAuthority authority, EntityManager em,
+            AuditService audit, StaffCommunicationDirectory staff, TaskEvidenceStore documents, org.springframework.jdbc.core.JdbcTemplate jdbc,
+            com.fasterxml.jackson.databind.ObjectMapper mapper, org.springframework.context.ApplicationEventPublisher events, TaskActivityAccess taskAccess) {
+        this.tasks=tasks; this.taskAccess=taskAccess; this.em=em; this.audit=audit; this.staff=staff; this.documents=documents; this.jdbc=jdbc; this.mapper=mapper; this.events=events;
+    }
+
     @Transactional(readOnly=true)
     public Planning get(UUID actor, UUID id) {
         preauthorize(actor); DepartmentWorkTask task=require(id); var before=access(actor,task); Planning result=view(actor,task,before);
@@ -128,26 +137,9 @@ public class TaskPlanningService {
         tasks.flush();return view(actor,task,before);
     }
     private Access access(UUID actor,DepartmentWorkTask task) {
-        var current=authority.requireActive(actor);
-        if("ROLE_CEO".equals(current.role())) {
-            if(!current.permissions().contains("WORK_INSIGHT_CEO_APPROVE"))deny();
-            if(!Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from work_task_audit_record where work_task_id=? and audit_status in ('PENDING_CEO_APPROVAL','CEO_APPROVED','CEO_REWORK_REQUESTED'))",Boolean.class,task.getId())))notFoundTask();
-            return new Access(current,null,false,false,false,false,false);
-        }
-        var scope=authority.requireWorkScope(actor);
-        if(!scope.authority().equals(current)||!current.permissions().contains("WORK_TASK_READ"))deny();
-        if(!scope.departmentId().equals(task.getDepartmentId()))notFoundTask();
-        boolean lead="ROLE_TEAM_LEAD".equals(current.role())&&actor.equals(task.getTeamLeadUserId());
-        boolean hr="ROLE_HR_ADMIN".equals(current.role());
-        boolean employee="ROLE_EMPLOYEE".equals(current.role())&&"EMPLOYEE".equals(task.getAssigneeRole())&&Objects.equals(current.employeeId(),task.getEmployeeId());
-        boolean ownLead=lead&&"TEAM_LEAD".equals(task.getAssigneeRole())&&Objects.equals(current.employeeId(),task.getEmployeeId());
-        if(!lead&&!hr&&!employee&&!"ROLE_MANAGER".equals(current.role()))notFoundTask();
-        boolean finalClosed=Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from work_task_audit_record where work_task_id=? and audit_status='CEO_APPROVED')",Boolean.class,task.getId()));
-        boolean editable=Set.of("ASSIGNED","IN_PROGRESS","CHANGES_REQUESTED","COMPLETED").contains(task.getStatus().name())&&!finalClosed;
-        boolean manage=!finalClosed&&(lead||hr)&&current.permissions().contains("WORK_TASK_CREATE");
-        boolean progress=editable&&(employee||ownLead)&&current.permissions().contains("WORK_TASK_PROGRESS");
-        return new Access(current,scope,manage,progress,manage||progress,manage,progress);
+        return taskAccess.policy(actor,task.getId(),task.getDepartmentId(),task.getEmployeeId(),task.getTeamLeadUserId(),task.getAssigneeRole(),task.getStatus().name());
     }
+
     private Planning view(UUID actor,DepartmentWorkTask task,Access a) {
         TaskPlanningState p=task.getPlanning();
         return new Planning(task.getId(),task.getVersion(),task.getPriority(),task.getOriginalDueDate(),task.isOriginalDueDateKnown(),task.getDueDate(),task.getEstimateMinutes(),task.isEvidenceRequired(),
@@ -164,10 +156,9 @@ public class TaskPlanningService {
     private void replaceBlocker(DepartmentWorkTask task,Blocker value){List<Blocker> list=task.getPlanning().blockers;for(int i=0;i<list.size();i++)if(list.get(i).id().equals(value.id()))list.set(i,value);}
     private DepartmentWorkTask require(UUID id){return tasks.findById(id).orElseThrow(()->new BusinessException("WORK_TASK_NOT_FOUND","Work task was not found",HttpStatus.NOT_FOUND));}
     private void preauthorize(UUID actor) {
-        var a=authority.requireActive(actor);
-        if("ROLE_CEO".equals(a.role())) {if(!a.permissions().contains("WORK_INSIGHT_CEO_APPROVE"))deny();return;}
-        if(!Set.of("ROLE_EMPLOYEE","ROLE_TEAM_LEAD","ROLE_HR_ADMIN","ROLE_MANAGER").contains(a.role())||!a.permissions().contains("WORK_TASK_READ"))deny();
+        taskAccess.preauthorize(actor);
     }
+
     private void unchangedTask(DepartmentWorkTask task) {
         Long version=jdbc.queryForObject("select version from department_work_task where id=?",Long.class,task.getId());
         if(version==null||version!=task.getVersion())throw new BusinessException("WORK_TASK_VERSION_CONFLICT","This worksheet changed. Reload before continuing",HttpStatus.CONFLICT);
@@ -189,7 +180,6 @@ public class TaskPlanningService {
     private static void invalid(String detail){throw new BusinessException("WORK_TASK_PLANNING_INVALID",detail,HttpStatus.UNPROCESSABLE_ENTITY);}
     private static void deny(){throw new BusinessException("WORK_TASK_PERMISSION_DENIED","Your current permissions do not allow access to this task",HttpStatus.FORBIDDEN);}
     private static void notFound(){throw new BusinessException("WORK_TASK_EVIDENCE_NOT_FOUND","Draft evidence was not found",HttpStatus.NOT_FOUND);}
-    private record Access(CurrentAccountAuthority.Authority authority,CurrentAccountAuthority.WorkScope scope,boolean manage,boolean progress,boolean blocker,boolean resolveBlocker,boolean upload){}
     public record Definition(UUID id,String title,boolean required){}
     public record Update(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.PositiveOrZero Long expectedVersion,String priority,Integer estimateMinutes,boolean evidenceRequired,LocalDate dueDate,String reason,List<Definition> checklist){}
     public record Tick(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.PositiveOrZero Long expectedVersion,List<UUID> completedIds){}

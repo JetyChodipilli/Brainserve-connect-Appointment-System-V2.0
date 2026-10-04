@@ -1,5 +1,8 @@
 "use client";
 
+import { DraftStatus } from "../../drafts/draft-status";
+import { useFormDraft, draftBlocksSubmit, draftLocksFields } from "../../drafts/use-form-draft";
+import type { DraftFields } from "../../drafts/draft-session";
 import { ApiError, brainServeApi, isBackendConfigured } from "../../../services/brainserve-api";
 import {
     appointmentDates,
@@ -18,7 +21,7 @@ import { useModalDialog } from "../../../hooks/use-modal-dialog";
 import { type Department, type Employee, type ReceptionVisitInput } from "../../../types/workspace";
 import { visitorInitials } from "../appointment-utils";
 import { ArrowRight, BadgeCheck, IdCard, MessageSquare, Search, ShieldCheck, UserCog, X } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function VisitRegistrationModal({
                                     employees,
@@ -26,14 +29,19 @@ export function VisitRegistrationModal({
                                     securityMode,
                                     onClose,
                                     onSubmit,
+                                    accountScope = "authenticated-visit",
+                                    onDraftSubmitted,
                                 }: {
+    accountScope?: string;
+    onDraftSubmitted?: () => void;
     employees: Employee[];
     departments: Department[];
     securityMode: boolean;
     onClose: () => void;
     onSubmit: (input: ReceptionVisitInput) => Promise<void>;
 }) {
-    useModalDialog(onClose);
+    const formRef = useRef<HTMLFormElement>(null);
+    const [visitorFields, setVisitorFields] = useState<DraftFields>({ visitorName: "", visitorEmail: "", visitorPhone: "", visitorCompany: "", purpose: "" });
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [visitType, setVisitType] = useState("Interview");
@@ -54,6 +62,26 @@ export function VisitRegistrationModal({
     const [slots, setSlots] = useState<AvailableSlot[]>([]);
     const [slotStart, setSlotStart] = useState("");
     const [loadingSlots, setLoadingSlots] = useState(false);
+    const draft = useFormDraft("VISIT_INTAKE", securityMode ? "security" : "reception", accountScope, true, { ...visitorFields, visitType, hostEmployeeId, routingDepartmentId, requestedEmployeeId, visitDate });
+    const closeSafely = () => { if (!busy && (!["unsaved", "saving", "offline", "unknown", "conflict"].includes(draft.state.phase) || window.confirm("Close this form? Changes that are not saved remain only in this open form."))) onClose(); };
+    useModalDialog(closeSafely);
+    useEffect(() => {
+        const changed = () => { setVisitorFields({ visitorName: "", visitorEmail: "", visitorPhone: "", visitorCompany: "", purpose: "" }); setHostEmployeeId(""); setRoutingDepartmentId(""); setRequestedEmployeeId(""); setSlots([]); setSlotStart(""); formRef.current?.reset(); };
+        window.addEventListener("brainserve:auth-session-changed", changed); window.addEventListener("brainserve:auth-session-expired", changed);
+        return () => { window.removeEventListener("brainserve:auth-session-changed", changed); window.removeEventListener("brainserve:auth-session-expired", changed); };
+    }, []);
+    useEffect(() => {
+        if (!["unsaved", "saving", "offline", "unknown", "conflict"].includes(draft.state.phase)) return;
+        const leaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+        window.addEventListener("beforeunload", leaving); return () => window.removeEventListener("beforeunload", leaving);
+    }, [draft.state.phase]);
+    const restoreDraft = (fields: DraftFields) => {
+        setVisitorFields(Object.fromEntries(["visitorName", "visitorEmail", "visitorPhone", "visitorCompany", "purpose"].map(key => [key, fields[key] ?? ""])));
+        setVisitType(fields.visitType || "Interview"); setVisitDate(fields.visitDate || appointmentDates(8, false)[0]); setRoutingDepartmentId(fields.routingDepartmentId || "");
+        setRequestedEmployeeId(fields.requestedEmployeeId || ""); setHostEmployeeId(fields.hostEmployeeId || ""); setSlots([]); setSlotStart(""); setLoadingSlots(Boolean(fields.hostEmployeeId));
+        // Availability is freshly loaded; identity checks and documents are intentionally entered again.
+        formRef.current?.reset();
+    };
     const requiredCategory = hostCategoryForVisit(visitType);
     const requiredCategories = hostCategoriesForVisit(visitType);
     const inferredCategory = (employee: Employee): PublicHost["category"] => {
@@ -207,7 +235,7 @@ export function VisitRegistrationModal({
             return;
         }
         try {
-            await onSubmit({
+            const input: ReceptionVisitInput = {
                 visitorName: String(data.get("visitorName")),
                 visitorEmail: String(data.get("visitorEmail")),
                 visitorPhone: String(data.get("visitorPhone")),
@@ -228,7 +256,14 @@ export function VisitRegistrationModal({
                     ? String(data.get("identityDocumentLastFour") || "") || null
                     : null,
                 notes: securityMode ? String(data.get("notes") || "") || null : null,
-            });
+            };
+            if (isBackendConfigured) {
+                if (draftBlocksSubmit(draft.state.phase)) return;
+                draft.session.setFields({ ...visitorFields, visitType, hostEmployeeId, routingDepartmentId, requestedEmployeeId, visitDate });
+                const finalFields = { type: appointmentTypeCode(visitType), visitorName: input.visitorName, visitorEmail: input.visitorEmail, visitorPhone: input.visitorPhone, visitorCompany: input.visitorCompany, hostEmployeeId, routingDepartmentId, requestedEmployeeId: input.requestedEmployeeId ?? "", slotStart: input.slotStart, slotEnd: input.slotEnd, purpose: input.purpose, ...(securityMode ? { identityDocumentType: input.identityDocumentType ?? "", identityDocumentLastFour: input.identityDocumentLastFour ?? "", notes: input.notes ?? "" } : {}) };
+                const receipt = await draft.session.submit(finalFields);
+                if (receipt) { await draft.session.discard(); (onDraftSubmitted ?? onClose)(); }
+            } else await onSubmit(input);
         } catch (reason) {
             setError(
                 reason instanceof ApiError
@@ -279,14 +314,14 @@ export function VisitRegistrationModal({
                     <button
                         type="button"
                         className="icon-button"
-                        onClick={onClose}
+                        onClick={closeSafely}
                         aria-label="Close visitor form"
                     >
                         <X size={19} />
                     </button>
                 </header>
-                <form className="visit-modal-form" onSubmit={submit} aria-busy={busy}>
-                    <div className="visit-modal-body">
+                <form ref={formRef} className="visit-modal-form" onSubmit={submit} aria-busy={busy}>
+                    <div className="visit-modal-body"><DraftStatus draft={draft} onRestore={restoreDraft} onConfirmed={() => (onDraftSubmitted ?? onClose)()} />
                         <section className="visit-form-section" aria-labelledby="visit-details-heading">
                             <div className="visit-form-section-heading">
                                 <span>{securityMode ? "WALK-IN DETAILS" : "VISIT DETAILS"}</span>
@@ -297,7 +332,7 @@ export function VisitRegistrationModal({
                                 <label>
                                     Visitor name
                                     <input
-                                        name="visitorName"
+                                        name="visitorName" value={visitorFields.visitorName ?? ""} disabled={draft.enabled && draftLocksFields(draft.state.phase)} onChange={(event) => setVisitorFields((fields) => ({ ...fields, visitorName: event.target.value }))}
                                         required
                                         minLength={2}
                                         maxLength={170}
@@ -307,7 +342,7 @@ export function VisitRegistrationModal({
                                 <label>
                                     Company
                                     <input
-                                        name="visitorCompany"
+                                        name="visitorCompany" value={visitorFields.visitorCompany ?? ""} disabled={draft.enabled && draftLocksFields(draft.state.phase)} onChange={(event) => setVisitorFields((fields) => ({ ...fields, visitorCompany: event.target.value }))}
                                         maxLength={170}
                                         placeholder="Company or Independent"
                                     />
@@ -315,7 +350,7 @@ export function VisitRegistrationModal({
                                 <label>
                                     Visitor email
                                     <input
-                                        name="visitorEmail"
+                                        name="visitorEmail" value={visitorFields.visitorEmail ?? ""} disabled={draft.enabled && draftLocksFields(draft.state.phase)} onChange={(event) => setVisitorFields((fields) => ({ ...fields, visitorEmail: event.target.value }))}
                                         type="email"
                                         required
                                         placeholder="visitor@example.com"
@@ -324,7 +359,7 @@ export function VisitRegistrationModal({
                                 <label>
                                     Mobile number
                                     <input
-                                        name="visitorPhone"
+                                        name="visitorPhone" value={visitorFields.visitorPhone ?? ""} disabled={draft.enabled && draftLocksFields(draft.state.phase)} onChange={(event) => setVisitorFields((fields) => ({ ...fields, visitorPhone: event.target.value }))}
                                         required
                                         minLength={8}
                                         maxLength={32}
@@ -545,7 +580,7 @@ export function VisitRegistrationModal({
                                 <label className="full-field">
                                     Purpose
                                     <textarea
-                                        name="purpose"
+                                        name="purpose" value={visitorFields.purpose ?? ""} disabled={draft.enabled && draftLocksFields(draft.state.phase)} onChange={(event) => setVisitorFields((fields) => ({ ...fields, purpose: event.target.value }))}
                                         required
                                         minLength={5}
                                         maxLength={1000}
@@ -595,14 +630,14 @@ export function VisitRegistrationModal({
                         <button
                             type="button"
                             className="button button-secondary"
-                            onClick={onClose}
+                            onClick={closeSafely}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             className="button button-primary"
-                            disabled={busy || loadingSlots || !slotStart}
+                            disabled={busy || loadingSlots || !slotStart || draft.enabled && draftBlocksSubmit(draft.state.phase)}
                         >
                             <ArrowRight size={17} />{" "}
                             {busy

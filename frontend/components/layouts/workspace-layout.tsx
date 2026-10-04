@@ -1,5 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import { useSessionRevision } from "../../features/setup-imports/use-operation-scope";
+import { UnifiedSearch } from "../../features/search/unified-search";
+import type { SearchOpenRecord } from "../../features/search/types";
+import { RecordDetailDialog } from "../../features/record-details/record-detail-dialog";
 import { WorkBoard, TeamLeadPerformanceView, WorkInsightsView } from "../../features/workboard/routes";
 import ConnectionRecovery from "../shared/connection-recovery";
 import { AccountLifecycleView } from "../../features/accounts/account-lifecycle-view";
@@ -36,7 +41,6 @@ import {
     LogOut,
     Menu,
     RotateCcw,
-    Search,
     ShieldCheck,
     Volume2,
     VolumeX,
@@ -44,7 +48,12 @@ import {
 } from "lucide-react";
 
 export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
-    const { workspaceConnectionFailure, workspaceRetrying, setWorkspaceRetrying, setOperationError, setWorkspaceRevision, sidebarOpen, setSidebarOpen, permittedNav, view, setView, pendingAppointmentCount, unreadNotifications, setPrivacyOpen, profileMenuRef, profileMenuOpen, profilePhotoUrl, profileName, setProfileMenuOpen, soundEnabled, loggingOut, signOut, globalSearch, setGlobalSearch, globalSearchResults, liveState, requestWorkspaceRefresh, lastLiveUpdate, operationError, workspaceRevision, departments, refreshStaffAccounts, approvedRecovery, setApprovedRecovery, appointments, metrics, setVisitModal, decideAppointment, currentEmployee, setSecurityIntakeAppointment, decideReceptionVisit, forwardReceptionVisit, employees, staffAccounts, teamLeadAssignments, managerAssignments, unassignedEmployeeAccounts, setEmployeeAccountId, setEmployeeDepartmentId, setEmployeeModal, changeEmployeeLifecycle, setEmployees, accessRecords, checkInAppointment, checkInByReference, checkInByPass, checkOutAppointment, setUnreadNotifications, departmentSummaries, departmentHrAssignments, createDepartment, toggleDepartment, assignTeamLead, endTeamLeadAssignment, assignDepartmentHr, endDepartmentHr, joinExecutiveDepartment, handleProfileUpdated, refreshRoleAssignments, createStaffAccount, changeStaffEmail, resetStaffPassword, setStaffEnabled, updateStaffPermissions, employeeModal, employeeAccountId, employeeDepartmentId, selectedEmployeeAccount, addEmployee, terminationEmployee, setTerminationEmployee, visitModal, appointmentHosts, registerVisit, securityIntakeAppointment, recordSecurityIntake, privacyOpen } = useWorkspace({ role, userEmail, onLogout });
+    const { workspaceConnectionFailure, workspaceRetrying, setWorkspaceRetrying, setOperationError, setWorkspaceRevision, sidebarOpen, setSidebarOpen, permittedNav, view, setView, pendingAppointmentCount, unreadNotifications, setPrivacyOpen, profileMenuRef, profileMenuOpen, profilePhotoUrl, profileName, setProfileMenuOpen, soundEnabled, loggingOut, signOut, liveState, requestWorkspaceRefresh, lastLiveUpdate, operationError, workspaceRevision, departments, refreshStaffAccounts, approvedRecovery, setApprovedRecovery, appointments, metrics, setVisitModal, decideAppointment, currentEmployee, setSecurityIntakeAppointment, decideReceptionVisit, forwardReceptionVisit, employees, staffAccounts, teamLeadAssignments, managerAssignments, unassignedEmployeeAccounts, setEmployeeAccountId, setEmployeeDepartmentId, setEmployeeModal, changeEmployeeLifecycle, setEmployees, accessRecords, checkInAppointment, checkInByReference, checkInByPass, checkOutAppointment, setUnreadNotifications, departmentSummaries, departmentHrAssignments, createDepartment, toggleDepartment, assignTeamLead, endTeamLeadAssignment, assignDepartmentHr, endDepartmentHr, joinExecutiveDepartment, handleProfileUpdated, refreshRoleAssignments, createStaffAccount, changeStaffEmail, resetStaffPassword, setStaffEnabled, updateStaffPermissions, employeeModal, employeeAccountId, employeeDepartmentId, selectedEmployeeAccount, addEmployee, terminationEmployee, setTerminationEmployee, visitModal, appointmentHosts, registerVisit, securityIntakeAppointment, recordSecurityIntake, privacyOpen } = useWorkspace({ role, userEmail, onLogout });
+
+    const sessionRevision = useSessionRevision();
+    const identityKey = `${role}:${userEmail}:${sessionRevision}`;
+    const [openedRecord, setOpenedRecord] = useState<{ identityKey: string; record: SearchOpenRecord } | null>(null);
+    const [openedTask, setOpenedTask] = useState<{ identityKey: string; id: string; requestKey: string } | null>(null);
 
     if (workspaceConnectionFailure) {
         return <ConnectionRecovery
@@ -75,7 +84,7 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
         </aside>
 
         <section className="app-main" id="workspace-main" tabIndex={-1}>
-            <header className="app-header"><div className="global-search" role="search"><button type="button" className="icon-button menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><Search size={18} /><input aria-label="Search workspace" value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} placeholder="Search people, visits or reference…" />{globalSearch.trim().length >= 2 && <div className="global-search-results glass-panel">{globalSearchResults.map((result) => <button key={result.id} onClick={() => { setView(result.view); setGlobalSearch(""); }}><Search size={14} /><span><strong>{result.title}</strong><small>{result.detail}</small></span><ChevronRight size={14} /></button>)}{globalSearchResults.length === 0 && <div><strong>No matching workspace records</strong><small>Try a name, email or appointment reference.</small></div>}</div>}</div><div className="header-actions"><button type="button" className={`live-status ${isBackendConfigured ? `live-${liveState}` : "live-preview"}`} onClick={requestWorkspaceRefresh} title={lastLiveUpdate ? `Last synchronized ${lastLiveUpdate.toLocaleTimeString("en-IN")}` : "Refresh BrainServe Connect data"}><span />{isBackendConfigured ? liveState === "live" ? "Live" : liveState === "connecting" ? "Connecting" : liveState === "offline" ? "Offline" : "Reconnecting" : "Preview"}<RotateCcw size={13} /></button>{rolePermissions[role].includes("notifications") && <button type="button" className="icon-button notification-button" onClick={() => setView("notifications")} aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}><Bell size={19} />{unreadNotifications > 0 && <span />}</button>}</div></header>
+            <header className="app-header"><div className="global-search"><button type="button" className="icon-button menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><UnifiedSearch key={identityKey} identityKey={identityKey} disabled={!isBackendConfigured} onOpen={(record) => { if (record.type === "worksheets" && record.route === "work" && rolePermissions[role].includes("work")) { setOpenedTask({ identityKey, id: record.id, requestKey: crypto.randomUUID() }); setView("work"); } else { setOpenedRecord({ identityKey, record }); } }} /></div><div className="header-actions"><button type="button" className={`live-status ${isBackendConfigured ? `live-${liveState}` : "live-preview"}`} onClick={requestWorkspaceRefresh} title={lastLiveUpdate ? `Last synchronized ${lastLiveUpdate.toLocaleTimeString("en-IN")}` : "Refresh BrainServe Connect data"}><span />{isBackendConfigured ? liveState === "live" ? "Live" : liveState === "connecting" ? "Connecting" : liveState === "offline" ? "Offline" : "Reconnecting" : "Preview"}<RotateCcw size={13} /></button>{rolePermissions[role].includes("notifications") && <button type="button" className="icon-button notification-button" onClick={() => setView("notifications")} aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}><Bell size={19} />{unreadNotifications > 0 && <span />}</button>}</div></header>
             <div className="app-content">
                 {operationError && <div className="login-error workspace-error" role="alert">{operationError}</div>}
                 {view === "overview" && (
@@ -137,11 +146,11 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                         />
                     )
                 )}
-                {view === "appointments" && <AppointmentsView key={`appointments:${workspaceRevision}`} role={role} appointments={appointments} currentEmployee={currentEmployee}
+                {view === "appointments" && <AppointmentsView key={`appointments:${identityKey}:${workspaceRevision}`} role={role} appointments={appointments} currentEmployee={currentEmployee}
                                                               onCreate={() => setVisitModal(true)} decideAppointment={decideAppointment}
                                                               onSecurityIntake={setSecurityIntakeAppointment} decideReceptionVisit={decideReceptionVisit}
                                                               forwardReceptionVisit={forwardReceptionVisit} />}
-                {view === "work" && <WorkBoard role={role} refreshKey={workspaceRevision} userEmail={userEmail} employees={employees}
+                {view === "work" && <WorkBoard key={openedTask?.identityKey === identityKey ? `${openedTask.id}:${openedTask.requestKey}` : identityKey} initialTaskId={openedTask?.identityKey === identityKey ? openedTask.id : undefined} role={role} refreshKey={workspaceRevision} userEmail={userEmail} employees={employees}
                                                staffAccounts={staffAccounts}
                                                departments={departments} teamLeadAssignments={teamLeadAssignments}
                                                appointments={appointments} decideAppointment={decideAppointment}
@@ -205,11 +214,12 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                                                          onClose={() => setTerminationEmployee(null)} onSubmitted={() => {
             setTerminationEmployee(null); setView("terminations"); setWorkspaceRevision((revision) => revision + 1);
         }} />}
-        {visitModal && <VisitRegistrationModal employees={appointmentHosts.length ? appointmentHosts : employees}
-                                               departments={departments} securityMode={role === "Security"}
-                                               onClose={() => setVisitModal(false)} onSubmit={registerVisit} />}
+        {visitModal && <VisitRegistrationModal key={identityKey} employees={appointmentHosts.length ? appointmentHosts : employees}
+                                               departments={departments} securityMode={role === "Security"} accountScope={identityKey}
+                                               onDraftSubmitted={() => { setVisitModal(false); requestWorkspaceRefresh(); }} onClose={() => setVisitModal(false)} onSubmit={registerVisit} />}
         {securityIntakeAppointment && <SecurityIntakeModal appointment={securityIntakeAppointment}
                                                            onClose={() => setSecurityIntakeAppointment(null)} onSubmit={recordSecurityIntake} />}
+        {openedRecord?.identityKey === identityKey && <RecordDetailDialog key={`${identityKey}:${openedRecord.record.type}:${openedRecord.record.id}`} record={openedRecord.record} onClose={() => { setOpenedRecord(null); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Workspace search"]')?.focus()); }} />}
         {privacyOpen && <PrivacyCentreModal onClose={() => setPrivacyOpen(false)} />}
     </main>;
 }

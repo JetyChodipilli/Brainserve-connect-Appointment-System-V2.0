@@ -40,7 +40,13 @@ node scripts/verify-work-evidence-staging.mjs
 "${compose[@]}" exec -T postgres sh -c 'PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" sh /tmp/restore-logical.sh /tmp/sprint1-backup brainserve_restore_sprint1'
 for database in brainserve brainserve_restore_sprint1; do
     "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -Atc "select version || chr(58) || checksum from flyway_schema_history where success order by installed_rank"' sh "${database}" > "${evidence}/${database}-schema.txt"
+    "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -At' sh "${database}" > "${evidence}/${database}-sprint7-data.txt" <<'SQL'
+select 'drafts',count(*),md5(coalesce(string_agg(row_to_json(t)::text, '|' order by owner_id,form_type,context_key),'')) from owned_form_draft t
+union all select 'comments',count(*),md5(coalesce(string_agg(row_to_json(t)::text, '|' order by id),'')) from task_comment t
+union all select 'revisions',count(*),md5(coalesce(string_agg(row_to_json(t)::text, '|' order by id),'')) from task_comment_revision t;
+SQL
 done
+cmp "${evidence}/brainserve-sprint7-data.txt" "${evidence}/brainserve_restore_sprint1-sprint7-data.txt"
 cmp "${evidence}/brainserve-schema.txt" "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^50:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^51:' "${evidence}/brainserve_restore_sprint1-schema.txt"
@@ -49,6 +55,9 @@ grep -q '^53:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^54:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^55:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^56:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^57:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^58:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^59:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 restored="$("${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select string_agg(id || chr(58) || evidence, chr(44) order by id) from sprint1_recovery_probe"')"
 [ "${restored}" = '1:zero-wait,2:scoped-access' ]
 cat > "${evidence}/restore-compose.yml" <<'YAML'
@@ -63,5 +72,5 @@ smoke
 # migration or volume deletion; this establishes the first verified fallback.
 "${compose[@]}" up -d --no-build --force-recreate --wait --wait-timeout 180 backend frontend
 smoke
-printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nV56 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nV59 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

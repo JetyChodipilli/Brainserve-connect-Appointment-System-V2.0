@@ -1,0 +1,15 @@
+.dialog { position: fixed; inset: 0; margin: auto; width: min(820px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; border: 1px solid var(--line); border-radius: 20px; background: #fff8f9; color: var(--ink); box-shadow: 0 24px 80px #22171a33; }
+.dialog::backdrop { background: #22171a66; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px; border-bottom: 1px solid var(--line); }
+.header div { min-width: 0; }
+.header small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.header h2 { font: 500 28px/1.2 Georgia, serif; margin: 8px 0; overflow-wrap: anywhere; }
+.header p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.header button { flex-shrink: 0; min-width: 44px; min-height: 44px; }
+.content { padding: 22px; }
+.status { text-transform: capitalize; font-weight: 700; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 28px; }
+.facts dt { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+.facts dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.dialog :global(button:focus-visible) { outline: 3px solid var(--red-700, #741321); outline-offset: 3px; }
+@media (max-width: 540px) { .header, .content { padding: 16px; } .facts { grid-template-columns: 1fr; } .header h2 { font-size: 24px; } }

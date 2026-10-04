@@ -42,6 +42,7 @@ public class InternalCallNotificationService implements InternalNotificationGate
     private static final String SECURITY = "ROLE_SECURITY";
     private static final String SYSTEM_ADMIN = "ROLE_SYSTEM_ADMIN";
     private final ZoneId officeZone;
+    private final com.brainserve.appointment.worktask.api.TaskActivityAccess taskActivityAccess;
 
     private final InternalCallNotificationRepository notifications;
     private final StaffCommunicationDirectory staff;
@@ -66,6 +67,16 @@ public class InternalCallNotificationService implements InternalNotificationGate
                                            @Value("${brainserve.notification.internal-call-retry-seconds:30}")
                                            long deliveryRetrySeconds,
                                            TransactionOperations transactions) {
+        this(notifications,staff,kafka,topic,departmentHrs,managers,employees,essentialLogs,officeZone,deliveryRetrySeconds,transactions,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public InternalCallNotificationService(InternalCallNotificationRepository notifications, StaffCommunicationDirectory staff,
+            KafkaTemplate<String, InternalCallEvent> kafka, @Value("${brainserve.notification.internal-call-topic}") String topic,
+            DepartmentHrDirectory departmentHrs, ManagerDirectory managers, EmployeeDirectory employees, EssentialLogService essentialLogs,
+            @Value("${brainserve.appointment.office-zone:Asia/Kolkata}") String officeZone,
+            @Value("${brainserve.notification.internal-call-retry-seconds:30}") long deliveryRetrySeconds, TransactionOperations transactions,
+            com.brainserve.appointment.worktask.api.TaskActivityAccess taskActivityAccess) {
+        this.taskActivityAccess=taskActivityAccess;
         this.notifications = notifications; this.staff = staff; this.kafka = kafka; this.topic = topic;
         this.departmentHrs = departmentHrs;
         this.managers = managers;
@@ -144,6 +155,22 @@ public class InternalCallNotificationService implements InternalNotificationGate
                 "Work task updates are limited to HR, the assigned Employee and Team Lead", HttpStatus.FORBIDDEN);
         persistAndPublish(sender, recipient, message, InternalCallNotification.MessagePriority.NORMAL,
                 InternalCallNotification.MessageCategory.WORK);
+    }
+
+    /** Participant-only body-free comment hint. Delivery remains QUEUED until its stored receipt changes. */
+    @Override
+    @Transactional
+    public void sendTaskCommentUpdate(UUID senderUserId, UUID recipientUserId, UUID taskId, UUID commentId) {
+        if (senderUserId.equals(recipientUserId)) return;
+        var senderScope=taskActivityAccess.require(senderUserId,taskId);
+        var recipientScope=taskActivityAccess.require(recipientUserId,taskId);
+        if ("ROLE_CEO".equals(senderScope.access().authority().role()) || "ROLE_CEO".equals(recipientScope.access().authority().role()))
+            com.brainserve.appointment.worktask.api.TaskActivityAccess.denied();
+        var sender=staff.requireActive(senderUserId);var recipient=staff.requireActive(recipientUserId);
+        persistAndPublish(sender,recipient,"Comment added to worksheet "+taskId+". Open Workboard to view it. Reference "+commentId+".",
+                InternalCallNotification.MessagePriority.NORMAL,InternalCallNotification.MessageCategory.WORK);
+        taskActivityAccess.revalidate(senderUserId,senderScope);
+        taskActivityAccess.revalidate(recipientUserId,recipientScope);
     }
 
     @Override

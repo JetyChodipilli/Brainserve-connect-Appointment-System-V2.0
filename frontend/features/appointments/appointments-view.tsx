@@ -1,5 +1,7 @@
 "use client";
 
+import { AppointmentTimelineDialog } from "../record-details/record-detail-dialog";
+import { useSessionRevision } from "../setup-imports/use-operation-scope";
 import { isBackendConfigured } from "../../services/brainserve-api";
 import { officeToday } from "../../lib/appointments";
 import { PageTitle } from "../../components/ui/page-title";
@@ -49,6 +51,8 @@ export function AppointmentsView({
     ) => Promise<void>;
     forwardReceptionVisit: (id: string) => Promise<void>;
 }) {
+    const sessionRevision = useSessionRevision();
+    const [history, setHistory] = useState<{ id: string; title: string; session: number } | null>(null);
     const [filter, setFilter] = useState("All");
     const [query, setQuery] = useState("");
     const todayAppointments = appointments.filter((item) =>
@@ -90,6 +94,7 @@ export function AppointmentsView({
     const employeeCards = role === "Employee" ? filtered : [];
     return (
         <>
+            {history?.session === sessionRevision && <AppointmentTimelineDialog appointmentId={history.id} title={history.title} onClose={() => setHistory(null)} />}
             <PageTitle
                 eyebrow="TODAY'S APPOINTMENTS"
                 title={
@@ -334,6 +339,7 @@ export function AppointmentsView({
                         </div>
                         <StatusPill status={item.status} />
                         <div className="row-actions">
+                            {isBackendConfigured && <button type="button" className="button" onClick={() => setHistory({ id: item.id, title: item.referenceNumber ?? item.visitor, session: sessionRevision })}>History</button>}
                             {role === "Security" && item.status === "Awaiting Security" && (
                                 <button
                                     className="button button-approve"

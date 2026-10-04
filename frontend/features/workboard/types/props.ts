@@ -4,6 +4,7 @@ import type { Appointment, Department, Employee, Role, View } from "../../../typ
 export type WorkboardProps = {
     role: Role; userEmail: string; employees: Employee[]; departments: Department[];
     refreshKey: number;
+    initialTaskId?: string;
     staffAccounts: StaffAccount[];
     teamLeadAssignments: TeamLeadAssignment[]; appointments: Appointment[];
     decideAppointment: (id: string, decision: "approve" | "reject") => Promise<void>;

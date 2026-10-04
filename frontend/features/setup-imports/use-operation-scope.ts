@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function useSessionRevision() {
     const [revision, setRevision] = useState(0);
@@ -15,16 +15,16 @@ export function useSessionRevision() {
 // Selection changes invalidate reads, file decoding and mutations before another result can paint.
 export function useOperationScope() {
     const generation = useRef(0), controllers = useRef(new Set<AbortController>());
-    const invalidate = () => { generation.current++; controllers.current.forEach((controller) => controller.abort()); controllers.current.clear(); };
+    const invalidate = useCallback(() => { generation.current++; controllers.current.forEach((controller) => controller.abort()); controllers.current.clear(); }, []);
     useEffect(() => {
         window.addEventListener("brainserve:auth-session-changed", invalidate);
         window.addEventListener("brainserve:auth-session-expired", invalidate);
         return () => { invalidate(); window.removeEventListener("brainserve:auth-session-changed", invalidate); window.removeEventListener("brainserve:auth-session-expired", invalidate); };
-    }, []);
-    const request = () => {
+    }, [invalidate]);
+    const request = useCallback(() => {
         const token = generation.current, controller = new AbortController(); controllers.current.add(controller);
         return { signal: controller.signal, current: () => token === generation.current && !controller.signal.aborted,
             finish: () => controllers.current.delete(controller) };
-    };
-    return { request, invalidate };
+    }, []);
+    return useMemo(() => ({ request, invalidate }), [request, invalidate]);
 }

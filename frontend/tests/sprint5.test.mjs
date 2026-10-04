@@ -13,10 +13,12 @@ function modules(overrides = {}) {
     return function load(path) {
         const filename = resolve(root, path); if (cache.has(filename)) return cache.get(filename);
         const exports = {}; cache.set(filename, exports);
-        const code = ts.transpileModule(readFileSync(filename, "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+        const code = ts.transpileModule(readFileSync(filename, "utf8"), { fileName: filename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
         vm.runInNewContext(code, { exports, process: { env: {} }, AbortController, URLSearchParams, TextDecoder, Date, Intl, Error, Map, Set, console,
             window: overrides.window, document: overrides.document, localStorage: overrides.window?.localStorage,
             require(name) {
+                if (name.endsWith("drafts/use-form-draft") && overrides.drafts) return overrides.drafts;
+                if (name.endsWith("drafts/use-form-draft") && overrides.react) return { useFormDraft: () => ({ state: { phase: "ready" }, session: { setFields() {} }, enabled: false }), draftBlocksSubmit: () => false };
                 if (name === "react" && overrides.react) return overrides.react;
                 if (name.includes("lib/api-client") && overrides.api) return overrides.api;
                 if (name.endsWith("workboard-api") && overrides.workboardApi) return { workboardApi: overrides.workboardApi };
@@ -100,7 +102,13 @@ function harness(apiPatch = {}) {
     const api = { workboard: async (criteria, page, size, signal) => { calls.push({ criteria: plain(criteria), page, signal }); return { ...pageOf(source), number: page, size }; },
         workboardPreferences: async () => plain(model.defaultPreferences), workboardDetail: async (id) => ({ item: source.find((value) => value.id === id) ?? item(id), history: [], historyTruncated: false }), ...apiPatch };
     // This deterministic runner supplies its own hook dispatcher rather than a React component render.
-    const runWorkboardHook = modules({ react, window, document, api: { isBackendConfigured: true, isWorkspaceUpdateLeader: () => true, ApiError }, workboardApi: api, organizationApi: { visibleDepartments: async () => [] } })("features/workboard/hooks/use-workboard.ts").useWorkboard;
+    const draftState = { phase: "ready" }, pending = { fields: {} };
+    const drafts = { useFormDraft: () => ({ state: draftState, enabled: true, session: {
+        setFields(fields) { pending.fields = fields; },
+        async submit() { try { await api.updateWorkTask("first", "start", pending.fields.note, Number(pending.fields.taskVersion)); return { result: { recordId: "first" } }; } catch (reason) { draftState.phase = reason.status === 409 ? "conflict" : "denied"; dirty = true; return null; } },
+        async discard() {},
+    } }), draftBlocksSubmit: phase => phase === "conflict" || phase === "denied" };
+    const runWorkboardHook = modules({ react, window, document, drafts, api: { isBackendConfigured: true, isWorkspaceUpdateLeader: () => true, ApiError }, workboardApi: api, organizationApi: { visibleDepartments: async () => [] } })("features/workboard/hooks/use-workboard.ts").useWorkboard;
     let props = { role: "Employee", userEmail: "first@example.test", employees: [], departments: [], staffAccounts: [], teamLeadAssignments: [], appointments: [], refreshKey: 0 };
     const render = () => { if (!dirty) return result; dirty = false; cursor = 0; result = runWorkboardHook(props); pendingEffects.splice(0).forEach((effect) => effect()); return result; };
     const flush = async () => { for (let step = 0; step < 20; step++) { render(); const batch = [...timers.values()]; timers.clear(); batch.forEach((callback) => callback()); await Promise.resolve(); await Promise.resolve(); } return render(); };
@@ -149,6 +157,6 @@ test("stale preferences cannot overwrite a newer save and conflict reload keeps 
     let h;
     h = harness({ updateWorkTask: async () => { h.source([item("first", { version: 3, status: "IN_PROGRESS", allowedActions: ["complete"] })]); throw new h.ApiError(409, { detail: "Changed" }); } });
     await h.flush(); h.value.setExpandedTaskId("first"); await h.flush(); h.value.openTaskAction(item("first"), "start"); h.value.setActionNote("Keep this note"); await h.flush();
-    await h.value.submitTaskAction({ preventDefault() {} }); await h.flush(); assert.equal(h.value.conflict, true); assert.equal(h.value.actionNote, "Keep this note");
+    await h.value.submitTaskAction({ preventDefault() {} }); await h.flush(); assert.equal(h.value.actionDraft.state.phase, "conflict"); assert.equal(h.value.actionNote, "Keep this note");
     await h.value.reloadConflict(); await h.flush(); assert.equal(h.value.actionDialog.task.version, 3); assert.equal(h.value.actionNote, "Keep this note"); assert.deepEqual(plain(h.value.actionDialog.task.allowedActions), ["complete"]); assert.match(h.value.error, /no longer available/);
 });

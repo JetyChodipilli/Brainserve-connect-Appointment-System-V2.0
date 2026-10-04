@@ -1,0 +1,21 @@
+.section { min-width: 0; padding: 12px 0; color: var(--ink); }
+.heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.heading h3 { margin: 0; }
+.heading time, .muted { color: var(--muted); font-size: 12px; }
+.timeline { list-style: none; margin: 12px 0; padding: 0 0 0 15px; border-left: 2px solid var(--border); }
+.timeline li { position: relative; margin: 0 0 14px; padding: 0 0 10px; border-bottom: 1px solid var(--border); }
+.timeline li::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--red-600, #b82e4c); position: absolute; left: -20px; top: 5px; }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.section small, .section details { overflow-wrap: anywhere; }
+.receipt { display: inline-block; padding: 5px 8px; margin: 4px 0; background: var(--red-50); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.comments { list-style: none; margin: 12px 0; padding: 0; }
+.comments li { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.form { display: grid; gap: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 12px; }
+.form label { display: grid; gap: 6px; }
+.form textarea { min-height: 96px; width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: var(--ink); background: rgba(255,255,255,.78); font: inherit; }
+.options { display: grid; gap: 8px; max-height: 180px; overflow: auto; }
+.options label { display: flex; align-items: center; gap: 8px; min-height: 32px; overflow-wrap: anywhere; }
+.section button { min-height: 36px; }
+.section button:focus-visible, .section summary:focus-visible, .section input:focus-visible, .section textarea:focus-visible { outline: 2px solid var(--red-600, #b82e4c); outline-offset: 3px; }
+.attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+@media (max-width: 480px) { .heading { align-items: flex-start; } .section button { min-height: 44px; } .form { padding: 10px; } .timeline { padding-left: 12px; } .timeline li::before { left: -17px; } }

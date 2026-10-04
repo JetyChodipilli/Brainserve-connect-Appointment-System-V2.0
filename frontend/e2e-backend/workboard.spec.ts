@@ -1,3 +1,4 @@
+import { draftFixture } from "./helpers/draft-fixture";
 import { expect, test } from "@playwright/test";
 
 test("Employee Workboard loads scoped tasks and sends worksheet actions through its feature API", async ({ page }) => {
@@ -21,8 +22,10 @@ test("Employee Workboard loads scoped tasks and sends worksheet actions through 
         sessionStorage.setItem("brainserve.connect.access-token", "workboard-access");
         sessionStorage.setItem("brainserve.connect.refresh-token", "workboard-refresh");
     });
+    const handleDraft = draftFixture();
     await page.route("http://backend.invalid/api/v1/**", async (route) => {
         const endpoint = new URL(route.request().url()).pathname.replace("/api/v1", "");
+        if (await handleDraft(route, (_form, _context, fields) => { actions.push({ method: "POST", body: { note: fields.note, expectedVersion: Number(fields.taskVersion) } }); task.status = "IN_PROGRESS"; return { json: task }; })) return;
         if (endpoint === "/auth/me") return route.fulfill({ json: profile });
         if (endpoint === "/profile/me") return route.fulfill({ json: { ...profile, fullName: "Employee Reviewer", departmentId: department.id, photoUrl: null } });
         if (endpoint === "/employees") return route.fulfill({ json: paged([{ id: employeeId, employeeNumber: "EMP-001", departmentId: department.id,
