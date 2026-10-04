@@ -22,12 +22,17 @@ import java.util.*;
 @Service
 public class WorkboardQueryService {
     public enum Period { TODAY, CARRY_FORWARD, HISTORY, ALL }
-    public enum QuickFilter { ALL, MY_ACTIONS, DUE_TODAY, OVERDUE_DELIVERY, AWAITING_MY_REVIEW, RETURNED_FOR_REWORK }
+    public enum QuickFilter { ALL, MY_ACTIONS, DUE_TODAY, OVERDUE_DELIVERY, AWAITING_MY_REVIEW, RETURNED_FOR_REWORK, BLOCKED }
     public enum Sort { DUE_DATE, UPDATED_AT, TITLE, PRIORITY }
     public enum Layout { LIST, BOARD }
     public enum Density { COMPACT, COMFORTABLE }
     private static final Set<String> STATUSES = Set.of("ALL", "ASSIGNED", "IN_PROGRESS", "COMPLETED", "CHANGES_REQUESTED", "APPROVED", "ACKNOWLEDGED", "INSIGHT_REWORK_REQUESTED");
     private static final Map<String, String> HISTORY_TITLES = Map.ofEntries(
+            Map.entry("WORK_TASK_PLANNING_UPDATED", "Task planning updated"),
+            Map.entry("WORK_TASK_CHECKLIST_UPDATED", "Checklist progress updated"),
+            Map.entry("WORK_TASK_BLOCKER_RAISED", "Task blocker raised"), Map.entry("WORK_TASK_BLOCKER_RESOLVED", "Task blocker resolved"),
+            Map.entry("WORK_TASK_BLOCKER_CONTACT_UPDATED", "Blocker contact updated"),
+            Map.entry("WORK_TASK_EVIDENCE_UPLOADED", "Delivery evidence attached"), Map.entry("WORK_TASK_EVIDENCE_UNLINKED", "Draft evidence removed"),
             Map.entry("WORK_TASK_ASSIGNED", "Worksheet assigned"), Map.entry("WORK_TASK_IN_PROGRESS", "Delivery started"),
             Map.entry("WORK_TASK_COMPLETED", "Delivery submitted"), Map.entry("WORK_TASK_APPROVED", "Delivery approved by Team Lead"),
             Map.entry("WORK_TASK_CHANGES_REQUESTED", "Delivery returned for changes"), Map.entry("WORK_TASK_ACKNOWLEDGED", "Employee acknowledged approval"),
@@ -257,13 +262,14 @@ public class WorkboardQueryService {
             case OVERDUE_DELIVERY -> "due_date<:today and is_delivery";
             case AWAITING_MY_REVIEW -> "awaiting_my_review";
             case RETURNED_FOR_REWORK -> "lane='REWORK'";
+            case BLOCKED -> "blocked";
         };
     }
     private static String order(Sort sort) { return switch (sort) {
         case DUE_DATE -> "due_date asc, id asc";
         case UPDATED_AT -> "workboard_updated_at desc, id asc";
         case TITLE -> "lower(title) asc, id asc";
-        case PRIORITY -> "id asc"; // Priority metadata starts in S6. Missing values are all equal.
+        case PRIORITY -> "case priority when 'URGENT' then 0 when 'HIGH' then 1 when 'NORMAL' then 2 else 3 end asc, due_date asc, id asc";
     }; }
     private static String scopeCountsSql() { return Arrays.stream(Period.values()).map(p -> "count(*) filter(where " + period(p) + ") s_" + p).collect(java.util.stream.Collectors.joining(",")); }
     private static String quickCountsSql() { return Arrays.stream(QuickFilter.values()).map(q -> "count(*) filter(where " + quick(q) + ") q_" + q).collect(java.util.stream.Collectors.joining(",")); }
@@ -281,7 +287,7 @@ public class WorkboardQueryService {
                 rs.getString("employee_update"), rs.getString("team_lead_review"), rs.getString("insight_review_source"), rs.getString("insight_review_reason"), instant(rs,"insight_review_requested_at"),
                 rs.getInt("rework_cycle"), instant(rs,"started_at"), instant(rs,"completed_at"), instant(rs,"approved_at"), instant(rs,"acknowledged_at"), instant(rs,"created_at"), rs.getLong("version"),
                 rs.getString("assignee_name"), rs.getString("audit_status"), rs.getObject("audit_record_id", UUID.class), (Long)rs.getObject("audit_version"), instant(rs,"workboard_updated_at"),
-                (Long)rs.getObject("submission_version"), null, null, actions, nextActor(rs), rs.getString("lane"));
+                (Long)rs.getObject("submission_version"), rs.getString("priority"), rs.getBoolean("blocked"), actions, nextActor(rs), rs.getString("lane"));
     }
     private static String nextActor(ResultSet rs) throws SQLException {
         String status = rs.getString("status"), audit = rs.getString("audit_status");

@@ -7,6 +7,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
@@ -64,6 +66,22 @@ public class DepartmentWorkTask extends AuditableEntity {
     @Column(name = "submission_version")
     private Long submissionVersion;
 
+    @Column(nullable = false, length = 10)
+    private String priority = "NORMAL";
+    @Column(name = "original_due_date")
+    private LocalDate originalDueDate;
+    @Column(name = "original_due_date_known", nullable = false)
+    private boolean originalDueDateKnown;
+    @Column(name = "estimate_minutes")
+    private Integer estimateMinutes;
+    @Column(name = "evidence_required", nullable = false)
+    private boolean evidenceRequired;
+    @Column(nullable = false)
+    private boolean blocked;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "planning_state", nullable = false, columnDefinition = "jsonb")
+    private TaskPlanningState planning = new TaskPlanningState();
+
     protected DepartmentWorkTask() {}
 
     public DepartmentWorkTask(UUID departmentId, UUID employeeId, UUID teamLeadUserId,
@@ -79,6 +97,8 @@ public class DepartmentWorkTask extends AuditableEntity {
         this.description = description.trim();
         this.departmentBranch = departmentBranch.trim();
         this.dueDate = dueDate;
+        this.originalDueDate = dueDate;
+        this.originalDueDateKnown = true;
     }
 
     public void start(String update) {
@@ -94,11 +114,13 @@ public class DepartmentWorkTask extends AuditableEntity {
     public void complete(String update) {
         if (status != WorkTaskStatus.ASSIGNED && status != WorkTaskStatus.IN_PROGRESS
                 && status != WorkTaskStatus.CHANGES_REQUESTED) invalid("completed");
+        planning.requireSubmission(evidenceRequired);
         status = WorkTaskStatus.COMPLETED;
         employeeUpdate = normalize(update);
         if (startedAt == null) startedAt = Instant.now();
         completedAt = Instant.now();
         submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
+        planning.capture(submissionVersion, completedAt);
         approvedAt = null;
         acknowledgedAt = null;
     }
@@ -119,6 +141,7 @@ public class DepartmentWorkTask extends AuditableEntity {
         status = WorkTaskStatus.APPROVED;
         teamLeadReview = normalize(review);
         approvedAt = Instant.now();
+        planning.accept(submissionVersion, "TEAM_LEAD");
         acknowledgedAt = null;
     }
 
@@ -157,9 +180,11 @@ public class DepartmentWorkTask extends AuditableEntity {
                 || reworkCycle < 1 || insightReviewReason == null) {
             invalid("updated after rework submission");
         }
+        planning.requireSubmission(evidenceRequired);
         employeeUpdate = required(update, "A revised completion update is required");
         completedAt = Instant.now();
         submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
+        planning.capture(submissionVersion, completedAt);
     }
 
     public void reviseEmployeeReworkSubmission(String update) {
@@ -173,9 +198,11 @@ public class DepartmentWorkTask extends AuditableEntity {
                     "This rework submission can no longer be updated because the Team Lead has already reviewed it",
                     HttpStatus.CONFLICT);
         }
+        planning.requireSubmission(evidenceRequired);
         employeeUpdate = required(update, "A revised completion update is required");
         completedAt = Instant.now();
         submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
+        planning.capture(submissionVersion, completedAt);
     }
 
     public void finalizeInsightApproval() {
@@ -231,6 +258,19 @@ public class DepartmentWorkTask extends AuditableEntity {
     }
 
     private String normalize(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+
+    public void acceptHrEvidence() { if ("TEAM_LEAD".equals(assigneeRole)) planning.accept(submissionVersion, "HR_ADMIN"); }
+    public String getPriority() { return priority; }
+    public LocalDate getOriginalDueDate() { return originalDueDate; }
+    public boolean isOriginalDueDateKnown() { return originalDueDateKnown; }
+    public Integer getEstimateMinutes() { return estimateMinutes; }
+    public boolean isEvidenceRequired() { return evidenceRequired; }
+    public boolean isBlocked() { return blocked; }
+    public void setBlocked(boolean value) { blocked = value; }
+    public TaskPlanningState getPlanning() { return planning; }
+    public void updatePlanning(String priority, Integer estimateMinutes, boolean evidenceRequired, LocalDate dueDate) {
+        this.priority = priority; this.estimateMinutes = estimateMinutes; this.evidenceRequired = evidenceRequired; this.dueDate = dueDate;
+    }
 
     public Long getSubmissionVersion() { return submissionVersion; }
 

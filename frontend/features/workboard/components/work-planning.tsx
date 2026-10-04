@@ -1,0 +1,97 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { ApiError, isBackendConfigured } from '../../../lib/api-client';
+import { workboardApi } from '../api/workboard-api';
+import type { WorkboardItem, WorkPlanning, WorkPlanningUpdate, WorkEvidence } from '../types/workboard';
+import { workActorName } from "../utils/workboard-model";
+import { WorkDialog } from './work-dialog';
+
+export function WorkPlanningPanel({ task, onChanged }: { task: WorkboardItem; onChanged: () => void }) {
+    const [planning, setPlanning] = useState<WorkPlanning | null>(null);
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [saved, setSaved] = useState('');
+    const [dialog, setDialog] = useState<'requirements' | 'raise' | 'resolve' | 'contact' | null>(null);
+    const [draft, setDraft] = useState<WorkPlanningUpdate | null>(null);
+    const [reason, setReason] = useState('');
+    const [contact, setContact] = useState('');
+    const [file, setFile] = useState<File | null>(null);
+    const [completed, setCompleted] = useState<string[]>([]);
+    const [conflict, setConflict] = useState(false);
+    const [confirmClose, setConfirmClose] = useState(false);
+    const controller = useRef<AbortController | null>(null);
+    const alive = useRef(true);
+    const serial = useRef(0);
+    const current = useRef<WorkPlanning | null>(null);
+    const initialDraft = useRef('');
+    const deniedScope = (cause: unknown) => cause instanceof ApiError && [401, 403, 404].includes(cause.status);
+    const clearScoped = () => { current.current = null; initialDraft.current = ''; setPlanning(null); setDraft(null); setDialog(null); setFile(null); setReason(''); setContact(''); setCompleted([]); setConfirmClose(false); setConflict(false); setSaved(''); };
+    const accept = (value: WorkPlanning) => { current.current = value; setPlanning(value); setCompleted(value.checklist.filter(item => item.completed).map(item => item.id)); };
+    const reload = async () => {
+        const request = ++serial.current;
+        controller.current?.abort(); controller.current = new AbortController();
+        setBusy(true); setError('');
+        try {
+            if (!isBackendConfigured) { accept(current.current ?? { taskId: task.id, taskVersion: task.version, priority: task.priority ?? 'NORMAL', originalDueDate: task.dueDate, originalDueDateKnown: false, dueDate: task.dueDate, estimateMinutes: null, evidenceRequired: false, checklist: [], blockers: [], evidence: [], submissions: [], contactOptions: [], permissions: { manage: false, progress: false, blocker: false, resolveBlocker: false, upload: false } }); return; }
+            const value = await workboardApi.planning(task.id, controller.current.signal);
+            if (alive.current && request === serial.current) { accept(value); setConflict(false); }
+        } catch (cause) { if (alive.current && request === serial.current) { if (deniedScope(cause)) clearScoped(); else { setPlanning(null); current.current = null; } setError(cause instanceof Error ? cause.message : 'Planning is unavailable.'); } }
+        finally { if (alive.current && request === serial.current) setBusy(false); }
+    };
+    useEffect(() => {
+        alive.current = true; const start = setTimeout(() => { if (alive.current) void reload(); }, 0);
+        const changed = () => { alive.current = false; serial.current++; controller.current?.abort(); clearScoped(); setError('Session changed. Reopen this worksheet in the current workspace.'); };
+        window.addEventListener('brainserve:auth-session-changed', changed);
+        return () => { clearTimeout(start); alive.current = false; controller.current?.abort(); window.removeEventListener('brainserve:auth-session-changed', changed); };
+        // Each drawer is keyed to task identity. Version updates explicitly reload current planning.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [task.id]);
+    useEffect(() => {
+        if (!current.current || task.version <= current.current.taskVersion) return;
+        const refresh = setTimeout(() => { if (alive.current) void reload(); }, 0);
+        return () => clearTimeout(refresh);
+        // Refresh retained snapshots after a submission/review changes the task.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [task.version]);
+    const mutate = async (request: (value: WorkPlanning, signal: AbortSignal) => Promise<WorkPlanning>, close = false) => {
+        if (!current.current || busy || conflict) return;
+        const generation = ++serial.current; controller.current?.abort(); const abort = new AbortController(); controller.current = abort;
+        setBusy(true); setError(''); setSaved('');
+        try { const value = await request(current.current, abort.signal); if (!alive.current || generation !== serial.current) return; accept(value); setFile(null); setSaved('Saved to this worksheet.'); if (close) { setDialog(null); setDraft(null); setReason(''); } onChanged(); }
+        catch (cause) { if (!alive.current || generation !== serial.current) return; if (deniedScope(cause)) clearScoped(); setConflict(cause instanceof ApiError && cause.status === 409); setError(cause instanceof Error ? cause.message : 'Change was not confirmed. Reload current data before retrying.'); }
+        finally { if (alive.current && generation === serial.current) setBusy(false); }
+    };
+    const open = (kind: NonNullable<typeof dialog>) => {
+        if (!planning) return; setReason(''); setContact(planning.blockers.find(item => !item.resolvedAt)?.contactUserId ?? '');
+        const nextDraft = { expectedVersion: planning.taskVersion, priority: planning.priority, estimateMinutes: planning.estimateMinutes, evidenceRequired: planning.evidenceRequired, dueDate: planning.dueDate, reason: '', checklist: planning.checklist.map(({ id, title, required }) => ({ id, title, required })) }; initialDraft.current = JSON.stringify(nextDraft); setDraft(nextDraft); setDialog(kind);
+    };
+    const close = () => { if (busy) return; if (reason || (draft && JSON.stringify(draft) !== initialDraft.current)) setConfirmClose(true); else { setDialog(null); setDraft(null); } };
+    const download = async (evidence: WorkEvidence) => {
+        const generation = ++serial.current; controller.current?.abort(); const abort = new AbortController(); controller.current = abort; setBusy(true); setError('');
+        try { const blob = await workboardApi.downloadEvidence(task.id, evidence.id, abort.signal); if (!alive.current || generation !== serial.current) return; const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = evidence.filename.replace(/[\\/\x00-\x1f]/g, '_'); anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+        catch (cause) { if (alive.current && generation === serial.current) { if (deniedScope(cause)) clearScoped(); setError(cause instanceof Error ? cause.message : 'Download is unavailable.'); } }
+        finally { if (alive.current && generation === serial.current) setBusy(false); }
+    };
+    const evidenceList = (items: WorkEvidence[], draftList = false) => <ul className="work-evidence-list">{items.map(item => <li key={item.id}><div><strong>{item.filename}</strong><small>{Math.ceil(item.sizeBytes / 1024)} KB · {item.contentType}</small><details><summary>File integrity</summary><small>SHA-256: {item.sha256}</small></details></div><button type="button" className="button button-secondary" disabled={busy} onClick={() => void download(item)}>Download {item.filename}</button>{draftList && planning?.permissions.upload && <button type="button" className="button button-secondary" disabled={busy || conflict} onClick={() => void mutate((value, signal) => workboardApi.removeEvidence(task.id, item.id, value.taskVersion, signal))}>Remove draft {item.filename}</button>}</li>)}</ul>;
+    const active = planning?.blockers.find(item => !item.resolvedAt);
+    return <section className="work-planning" aria-label="Planning and evidence">
+        <div className="work-planning-heading"><h3>Planning & evidence</h3><button type="button" className="button button-secondary" disabled={busy} onClick={() => void reload()}>Reload planning</button></div>
+        {error && <div className="login-error" role="alert">{error}{conflict && <p>Your notes and selected file are retained. Reload planning, review the changes, then explicitly save again. Nothing is replayed automatically.</p>}</div>}{busy && <p role="status">Checking the current worksheet…</p>}{saved && <p role="status">{saved}</p>}
+        {planning && <><dl className="work-detail-fields"><div><dt>Priority</dt><dd>{planning.priority}</dd></div><div><dt>Current deadline</dt><dd>{planning.dueDate}</dd></div><div><dt>{planning.originalDueDateKnown === false ? 'Recorded deadline at Sprint 6 rollout' : 'Original deadline'}</dt><dd>{planning.originalDueDate ?? 'Not recorded'}</dd></div><div><dt>Estimated effort</dt><dd>{planning.estimateMinutes === null ? 'Not estimated' : `${planning.estimateMinutes} minutes`}</dd></div></dl>
+            {planning.permissions.manage && <button type="button" className="button button-secondary" disabled={busy || conflict} onClick={() => open('requirements')}>Edit requirements & deadline</button>}
+            <section><h3>Checklist · {planning.checklist.filter(item => item.completed).length}/{planning.checklist.length}</h3><p>Completion is progress. Acceptance is recorded separately in the frozen submission below.</p>{planning.checklist.length === 0 && <p>No checklist requirements recorded.</p>}{planning.checklist.map(item => <label className="work-checklist-row" key={item.id}><input type="checkbox" checked={completed.includes(item.id)} disabled={!planning.permissions.progress || busy || conflict} onChange={event => setCompleted(values => event.target.checked ? [...values, item.id] : values.filter(id => id !== item.id))} /><span>{item.title}{item.required && <small>Required before submission</small>}</span></label>)}{planning.permissions.progress && planning.checklist.length > 0 && <button type="button" className="button button-primary" disabled={busy || conflict} onClick={() => void mutate((value, signal) => workboardApi.saveChecklist(task.id, value.taskVersion, completed, signal))}>Save checklist progress</button>}</section>
+            <section><h3>Blockers</h3>{active ? <div className="insight-rework-card"><strong>Blocked · since {new Date(active.raisedAt).toLocaleString('en-IN')}</strong><p>{active.reason}</p><p>Follow-up: {planning.contactOptions.find(item => item.id === active.contactUserId)?.name ?? 'Assigned contact'}</p>{planning.permissions.resolveBlocker && <div className="work-task-actions"><button type="button" className="button button-secondary" disabled={busy || conflict} onClick={() => open('resolve')}>Resolve blocker</button><button type="button" className="button button-secondary" disabled={busy || conflict} onClick={() => open('contact')}>Change follow-up contact</button></div>}</div> : <><p>No active blocker. Raising a blocker does not extend the deadline.</p>{planning.permissions.blocker && <button type="button" className="button button-secondary" disabled={busy || conflict} onClick={() => open('raise')}>Raise blocker</button>}</>}
+            <details><summary>Blocker history ({planning.blockers.filter(item => item.resolvedAt).length})</summary>{planning.blockers.filter(item => item.resolvedAt).map(item => <article key={item.id}><p>{item.reason}</p>{item.resolutionReason && <p>Resolution: {item.resolutionReason}</p>}<small>Raised {new Date(item.raisedAt).toLocaleString('en-IN')} · Resolved {new Date(item.resolvedAt!).toLocaleString('en-IN')}</small></article>)}{planning.blockersTruncated && <p>Showing the latest 100 retained blockers.</p>}</details></section>
+            <section><h3>Draft evidence · {planning.evidence.length}/20</h3><p>{planning.evidenceRequired ? 'Evidence is required before submission.' : 'Evidence is optional.'} Files are scanned and private. Removing a draft link preserves prior submitted copies.</p>{evidenceList(planning.evidence, true)}{planning.permissions.upload && <><label>Evidence file (JPEG, PNG or PDF)<input type="file" accept="image/jpeg,image/png,application/pdf" disabled={busy || conflict} onChange={event => { setFile(event.target.files?.[0] ?? null); setSaved(''); }} /></label>{file && <p>Selected: {file.name} · not uploaded</p>}<button type="button" className="button button-primary" disabled={!file || busy || conflict || planning.evidence.length >= 20} onClick={() => { if (file) void mutate((value, signal) => workboardApi.uploadEvidence(task.id, value.taskVersion, file, signal)); }}>Scan & upload evidence</button></>}</section>
+            <section><h3>Frozen submissions</h3><p>Submitted requirements and files are immutable. Rework creates a new version; editing the draft does not replace accepted evidence.</p>{planning.submissions.length === 0 && <p>No retained evidence submissions. Earlier versions may not have recorded snapshots.</p>}{planning.submissions.map(submission => <details key={submission.version}><summary>Version {submission.version} · {submission.acceptedAt ? `Accepted by ${submission.acceptedByRole ? workActorName(submission.acceptedByRole) : 'reviewer'}` : 'Awaiting delivery acceptance'}</summary><p>Submitted {new Date(submission.submittedAt).toLocaleString('en-IN')}{submission.acceptedAt && ` · Accepted ${new Date(submission.acceptedAt).toLocaleString('en-IN')}`}</p><ul>{submission.checklist.map(item => <li key={item.id}>{item.completed ? 'Complete' : 'Incomplete'} · {item.title}{item.required ? ' (required)' : ''}</li>)}</ul>{evidenceList(submission.evidence)}</details>)}{planning.submissionsTruncated && <p>Showing the latest 50 retained submissions.</p>}</section>
+        </>}
+        {dialog && draft && <WorkDialog className="work-create-dialog work-planning-dialog" titleId="planning-dialog-title" onClose={close}><form onSubmit={event => { event.preventDefault(); if (!reason.trim() || !planning) return; const blocker = planning.blockers.find(item => !item.resolvedAt); void mutate((value, signal) => dialog === 'requirements' ? workboardApi.savePlanning(task.id, { ...draft, expectedVersion: value.taskVersion, reason: reason.trim() }, signal) : dialog === 'raise' ? workboardApi.raiseBlocker(task.id, value.taskVersion, reason.trim(), contact || null, signal) : dialog === 'resolve' ? workboardApi.resolveBlocker(task.id, blocker!.id, value.taskVersion, reason.trim(), signal) : workboardApi.contactBlocker(task.id, blocker!.id, value.taskVersion, reason.trim(), contact, signal), true); }}>
+            <header><h2 id="planning-dialog-title">{dialog === 'requirements' ? 'Requirements & deadline' : dialog === 'raise' ? 'Raise blocker' : dialog === 'resolve' ? 'Resolve blocker' : 'Follow-up contact'}</h2><button type="button" className="button button-secondary" onClick={close} disabled={busy}>Close planning form</button></header>
+            {error && <p role="alert">{error}</p>}{conflict && <button type="button" className="button button-secondary" disabled={busy} onClick={() => void reload()}>Reload planning and retain notes</button>}
+            {dialog === 'requirements' && <><div className="modal-form-grid"><label>Priority<select data-initial-focus value={draft.priority} onChange={event => setDraft({ ...draft, priority: event.target.value as WorkPlanningUpdate['priority'] })}>{['LOW', 'NORMAL', 'HIGH', 'URGENT'].map(value => <option key={value}>{value}</option>)}</select></label><label>Deadline<input type="date" required value={draft.dueDate} onChange={event => setDraft({ ...draft, dueDate: event.target.value })} /></label><label>Estimated minutes<input type="number" min={1} max={525600} value={draft.estimateMinutes ?? ''} onChange={event => setDraft({ ...draft, estimateMinutes: event.target.value ? Number(event.target.value) : null })} /></label><label className="work-checklist-row"><input type="checkbox" checked={draft.evidenceRequired} onChange={event => setDraft({ ...draft, evidenceRequired: event.target.checked })} />Require submission evidence</label></div><h3>Checklist requirements</h3>{draft.checklist.map((item, index) => <div className="work-checklist-edit" key={item.id}><label>Requirement {index + 1}<input required maxLength={300} value={item.title} onChange={event => setDraft({ ...draft, checklist: draft.checklist.map(value => value.id === item.id ? { ...value, title: event.target.value } : value) })} /></label><label><input type="checkbox" checked={item.required} onChange={event => setDraft({ ...draft, checklist: draft.checklist.map(value => value.id === item.id ? { ...value, required: event.target.checked } : value) })} />Required</label><button type="button" className="button button-secondary" onClick={() => setDraft({ ...draft, checklist: draft.checklist.filter(value => value.id !== item.id) })}>Remove requirement {index + 1}</button></div>)}<button type="button" className="button button-secondary" disabled={draft.checklist.length >= 50} onClick={() => setDraft({ ...draft, checklist: [...draft.checklist, { id: crypto.randomUUID(), title: '', required: true }] })}>Add requirement</button></>}
+            {(dialog === 'raise' || dialog === 'contact') && <label>Follow-up contact<select required={dialog === 'contact'} value={contact} onChange={event => setContact(event.target.value)}><option value="">Assigned lead / assigner</option>{planning?.contactOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+            <label>Reason<textarea data-initial-focus={dialog !== 'requirements' ? true : undefined} required maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} /></label><p>Changes are recorded against the current version. Existing submissions stay unchanged.</p><button type="submit" className="button button-primary" disabled={busy || conflict || !reason.trim() || !planning}>Save planning change</button>
+        </form></WorkDialog>}
+        {confirmClose && <WorkDialog className="work-action-dialog" titleId="planning-discard-title" onClose={() => setConfirmClose(false)}><h2 id="planning-discard-title">Keep unsaved planning?</h2><p>Your changes have not been saved.</p><button type="button" className="button button-primary" data-initial-focus onClick={() => setConfirmClose(false)}>Keep editing planning</button><button type="button" className="button button-secondary" onClick={() => { setConfirmClose(false); setDialog(null); setDraft(null); }}>Discard planning changes</button></WorkDialog>}
+    </section>;
+}

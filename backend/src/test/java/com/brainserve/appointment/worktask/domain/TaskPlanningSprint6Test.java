@@ -1,0 +1,37 @@
+package com.brainserve.appointment.worktask.domain;
+
+import com.brainserve.appointment.shared.application.BusinessException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.junit.jupiter.api.Test;
+import java.time.*;
+import java.util.*;
+import static org.assertj.core.api.Assertions.*;
+
+class TaskPlanningSprint6Test {
+    private DepartmentWorkTask task(String role){return new DepartmentWorkTask(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"HR_ADMIN",role,"Delivery","Complete instructions","Department",LocalDate.of(2026,10,3));}
+    @Test void jsonSnapshotEqualityPreventsASecondCommitTimeDirtyVersionIncrement() throws Exception {
+        var mapper=new ObjectMapper().registerModule(new JavaTimeModule());var state=new TaskPlanningState();
+        state.checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Required",0,true,true));state.capture(1,Instant.now());state.touch();
+        var persisted=mapper.readValue(mapper.writeValueAsString(state),TaskPlanningState.class);
+        assertThat(state).isEqualTo(persisted);assertThat(state.hashCode()).isEqualTo(persisted.hashCode());
+        state.touch();assertThat(state).isNotEqualTo(persisted);
+        var afterFlush=mapper.readValue(mapper.writeValueAsString(state),TaskPlanningState.class);
+        assertThat(state).isEqualTo(afterFlush);assertThat(state).isEqualTo(mapper.readValue(mapper.writeValueAsString(afterFlush),TaskPlanningState.class));
+    }
+    @Test void requiredChecklistCannotBeBypassedByDomainCompletion(){var task=task("EMPLOYEE");task.getPlanning().checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Required",0,true,false));assertThatThrownBy(()->task.complete("Attempt")).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("WORK_TASK_CHECKLIST_REQUIRED");assertThat(task.getSubmissionVersion()).isNull();assertThat(task.getStatus()).isEqualTo(WorkTaskStatus.ASSIGNED);}
+    @Test void evidenceRequirementFailsWithoutCreatingASubmission(){var task=task("EMPLOYEE");task.updatePlanning("HIGH",30,true,task.getDueDate());assertThatThrownBy(()->task.complete("Attempt")).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("WORK_TASK_EVIDENCE_REQUIRED");assertThat(task.getPlanning().submissions).isEmpty();}
+    @Test void optionalIncompleteChecklistDoesNotBlockDeliveryOrImplicitlyBecomeComplete(){var task=task("EMPLOYEE");task.getPlanning().checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Optional",0,false,false));task.complete("Submitted");assertThat(task.getPlanning().submissions.getFirst().checklist().getFirst().completed()).isFalse();assertThat(task.getPlanning().submissions.getFirst().acceptedAt()).isNull();}
+    @Test void acceptanceIsSeparateAndCapturedDefinitionAndDigestRemainImmutable(){var task=task("EMPLOYEE");UUID check=UUID.randomUUID();task.getPlanning().checklist.add(new TaskPlanningState.ChecklistItem(check,"Original",0,true,true));var evidence=new TaskPlanningState.Evidence(UUID.randomUUID(),UUID.randomUUID(),"delivery.pdf","application/pdf",8,"a".repeat(64),Instant.now());task.getPlanning().evidence.add(evidence);task.complete("Submitted");task.approve("Accepted");var snapshot=task.getPlanning().submissions.getFirst();task.getPlanning().checklist.clear();task.getPlanning().evidence.clear();assertThat(snapshot.checklist().getFirst().title()).isEqualTo("Original");assertThat(snapshot.evidence().getFirst()).isEqualTo(evidence);assertThat(snapshot.acceptedByRole()).isEqualTo("TEAM_LEAD");assertThatThrownBy(()->snapshot.evidence().clear()).isInstanceOf(UnsupportedOperationException.class);}
+    @Test void reworkVersionsRetainOriginalAcceptedSnapshot(){var task=task("EMPLOYEE");task.complete("First");task.approve("Accepted");task.requestInsightRework("HR_ADMIN","Need detail");task.assignInsightRework("Correct");task.complete("Second");assertThat(task.getPlanning().submissions).extracting(TaskPlanningState.Submission::version).containsExactly(1L,2L);assertThat(task.getPlanning().submissions.getFirst().acceptedAt()).isNotNull();assertThat(task.getPlanning().submissions.getLast().acceptedAt()).isNull();}
+    @Test void employeeRevisionCannotBypassRequiredNewEvidence(){var task=task("EMPLOYEE");task.complete("First");task.requestChanges("Correct");task.complete("Second");task.updatePlanning("NORMAL",null,true,task.getDueDate());assertThatThrownBy(()->task.reviseEmployeeReworkSubmission("Third")).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("WORK_TASK_EVIDENCE_REQUIRED");assertThat(task.getSubmissionVersion()).isEqualTo(2);}
+    @Test void leadRevisionCannotBypassRequiredChecklist(){var task=task("TEAM_LEAD");task.complete("First");task.requestInsightRework("HR_ADMIN","Correct");task.assignInsightRework("Guidance");task.complete("Second");task.getPlanning().checklist.add(new TaskPlanningState.ChecklistItem(UUID.randomUUID(),"Mandatory",0,true,false));assertThatThrownBy(()->task.reviseInsightReworkSubmission("Third")).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("WORK_TASK_CHECKLIST_REQUIRED");assertThat(task.getSubmissionVersion()).isEqualTo(2);}
+    @Test void directLeadAcceptanceIsHrOnlyAndCannotRewriteExistingAcceptance(){var task=task("TEAM_LEAD");task.complete("Submitted");task.acceptHrEvidence();var accepted=task.getPlanning().submissions.getFirst();assertThat(accepted.acceptedByRole()).isEqualTo("HR_ADMIN");task.acceptHrEvidence();assertThat(task.getPlanning().submissions.getFirst()).isEqualTo(accepted);}
+    @Test void legacyUnknownSubmissionDoesNotFabricateSnapshotAcceptance(){var task=task("EMPLOYEE");task.getPlanning().accept(null,"TEAM_LEAD");assertThat(task.getPlanning().submissions).isEmpty();}
+    @Test void priorityAndBlockerAreIndependentOfWorkflowStatusAndOriginalDeadline(){var task=task("EMPLOYEE");LocalDate original=task.getDueDate();task.updatePlanning("URGENT",120,true,original.plusDays(3));task.setBlocked(true);assertThat(task.getStatus()).isEqualTo(WorkTaskStatus.ASSIGNED);assertThat(task.getOriginalDueDate()).isEqualTo(original);assertThat(task.isOriginalDueDateKnown()).isTrue();assertThat(task.getPriority()).isEqualTo("URGENT");}
+    @Test void explicitNullAcceptanceSurvivesProductionNonNullDefaults() throws Exception {
+        var task=task("EMPLOYEE");task.complete("Submitted");var mapper=new ObjectMapper().registerModule(new JavaTimeModule()).setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);
+        var json=mapper.readTree(mapper.writeValueAsString(task.getPlanning().submissions.getFirst()));assertThat(json.has("acceptedAt")).isTrue();assertThat(json.get("acceptedAt").isNull()).isTrue();assertThat(json.has("acceptedByRole")).isTrue();
+    }
+    @Test void retainedSnapshotsRoundTripJsonWithoutObjectKeys() throws Exception {var task=task("EMPLOYEE");task.complete("Submitted");task.approve("Accepted");var mapper=new ObjectMapper().registerModule(new JavaTimeModule()).setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);String json=mapper.writeValueAsString(task.getPlanning());var decoded=mapper.readValue(json,TaskPlanningState.class);assertThat(decoded.submissions).isEqualTo(task.getPlanning().submissions);assertThat(json).doesNotContain("objectKey","publicUrl");}
+}

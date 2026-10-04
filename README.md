@@ -244,6 +244,10 @@ drawer. Layout, density and named filters persist per account. Existing submissi
 review and rework actions use observed task versions to detect concurrent changes.
 See [Sprint 5 Workboard and rollout](docs/SPRINT_5.md).
 
+Task planning adds priority, blockers, estimates, required checklists and scanned
+private evidence. Submission versions preserve the checklist and files reviewed;
+rework creates a new version. See [Sprint 6 planning and evidence](docs/SPRINT_6.md).
+
 ```mermaid
 flowchart TD
     U["Reports workspace"]

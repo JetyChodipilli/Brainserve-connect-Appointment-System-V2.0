@@ -318,6 +318,10 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory {
 
     @Override
     @Transactional
+    public void acceptHrDeliveryEvidence(UUID workTaskId) { require(workTaskId).acceptHrEvidence(); }
+
+    @Override
+    @Transactional
     public TaskSnapshot finalizeInsightApproval(UUID workTaskId) {
         DepartmentWorkTask task = require(workTaskId);
         task.finalizeInsightApproval();

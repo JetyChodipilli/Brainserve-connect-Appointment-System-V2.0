@@ -1,6 +1,6 @@
 # BrainServe product roadmap and sprint plan
 
-Planning baseline: the expanded BrainServe Connect V2 PRD dated 30 September 2026. Its sixteen-sprint sequence replaces the earlier ten-sprint proposal below. Sprint 5 adds the compact Workboard to the deployment, security, dashboard and setup/import foundations from S1–S4. Implementation and verification evidence live in the individual `SPRINT_*.md` documents. Enterprise and SaaS schedules remain proposals.
+Planning baseline: the expanded BrainServe Connect V2 PRD dated 30 September 2026. Its sixteen-sprint sequence replaces the earlier ten-sprint proposal below. Sprint 6 extends the compact Workboard with priority, blockers, checklists and scanned private evidence. Sprint 5 added the compact Workboard to the deployment, security, dashboard and setup/import foundations from S1–S4. Implementation and verification evidence live in the individual `SPRINT_*.md` documents. Enterprise and SaaS schedules remain proposals.
 
 ## Release decision
 

@@ -114,9 +114,9 @@ class WorkboardQueryServiceTest {
         assertThatThrownBy(() -> validatePreferences(new PreferencesUpdate(0L, Layout.BOARD, Density.COMPACT, List.of(filter,filter)))).isInstanceOf(BusinessException.class);
         assertThat(Arrays.stream(SavedFilter.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName)).doesNotContain("employeeId", "departmentId", "actorId");
     }
-    @Test void reviewFilterExcludesDeliveryAndAcknowledgementAndPriorityNeverInventsValues() {
+    @Test void reviewFilterExcludesDeliveryAndAcknowledgementAndPriorityUsesRealValues() {
         service.list(actor, new Criteria(Period.CARRY_FORWARD,QuickFilter.AWAITING_MY_REVIEW,"","ALL","",Sort.PRIORITY),0,20);
-        assertThat(sql.getFirst()).contains("created_at<:start and not is_closed", "array['approve','request-changes','insight-rework','hr-rework','hr-audit','open-oversight']", "where awaiting_my_review", "order by id asc");
+        assertThat(sql.getFirst()).contains("created_at<:start and not is_closed", "array['approve','request-changes','insight-rework','hr-rework','hr-audit','open-oversight']", "where awaiting_my_review", "order by case priority when 'URGENT' then 0", "due_date asc, id asc");
         assertThat(quick(QuickFilter.OVERDUE_DELIVERY)).isEqualTo("due_date<:today and is_delivery");
     }
     private Criteria criteria(String query) { return new Criteria(Period.TODAY,QuickFilter.ALL,query,"ALL","",Sort.DUE_DATE); }

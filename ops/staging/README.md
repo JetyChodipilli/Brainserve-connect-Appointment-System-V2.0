@@ -58,16 +58,25 @@ not constitute a maintenance guarantee for those releases.
 # restores into a new database and temporarily connects the backend to it.
 export RELEASE_ID="$(git rev-parse HEAD)"
 export STAGING_DOMAIN=localhost
+export BRAINSERVE_DISPOSABLE_STACK=1
 bash ops/staging/verify.sh
 ```
 
 The script validates Compose, builds and tags images, waits for the full stack,
 checks HTTPS and product HTML, requires 401 for an anonymous dashboard request,
-requires 404 for external actuator access, stops writes, creates a checksummed dump,
+requires 404 for external actuator access, exercises scanned private work evidence,
+stops writes, creates a checksummed dump,
 restores a separate database, compares every successful Flyway version/checksum,
 verifies synthetic restored rows, starts the application against the restore, and
 reapplies the pinned images against the original staging database. It never deletes
 or overwrites a database. `STAGING_RECOVERY_VERIFIED` appears only after every check.
+
+The evidence probe refuses existing accounts and requires both explicit disposable
+opt-in and localhost. It creates synthetic scoped principals, exercises real HTTPS,
+PostgreSQL, MinIO and ClamAV, rejects invalid bytes and malware, verifies fail-closed
+scanner outage, immutable submission acceptance, authorized byte downloads and
+permission revocation. Seeded sessions exercise request authorization; this probe
+does not test interactive login or MFA enrollment. Never run it on a staff host.
 
 The CI cleanup deletes **only the disposable runner's volumes**. Do not copy that
 cleanup step to a persistent staging or production host.
@@ -106,13 +115,14 @@ RPO/RTO remain unmeasured until a representative full restore is timed.
    reporting revisions and wraps existing refresh functions, and V53 adds
    dashboard measurement facts/coverage. V54 adds versioned company setup and
    durable import previews/results. V55 adds Workboard preferences and submission
-   counters. Preserve V1–V54
+   counters. V56 adds versioned planning and immutable submission evidence. Preserve V1–V55
    checksums; do not use `flyway repair` to hide drift. Read `docs/SPRINT_2.md`
    for MFA enrollment, encryption-key continuity and the exact trusted proxy;
    `docs/SPRINT_3.md` describes metric definitions, source gaps and screen rollback.
    Read `docs/SPRINT_4.md` before resuming interrupted imports or rolling back setup.
    Read `docs/SPRINT_5.md` for Workboard scopes, version conflicts and backend-first
-   rollout. Restore verification checks V55 and compares all migration checksums.
+   rollout. Read `docs/SPRINT_6.md` for evidence retention and planning policy.
+   Restore verification checks V56 and compares all migration checksums.
 3. Verify the new release in an isolated restore before changing a persistent host.
 4. Build the new commit-tagged images, preserve the previous verified images, and
    run the same Compose `up --no-build --wait` with the new `RELEASE_ID`.
