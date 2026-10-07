@@ -29,6 +29,7 @@ public class GoogleCalendarAdapter {
     public record Result(String code,int retryAfterSeconds,String externalId) {}
     @Transactional(propagation=Propagation.MANDATORY)
     public Result deliver(UUID connectionId,long credentialVersion,String eventId,long revision,String action,Instant start,Instant end) {
+        if(!config.configured())return result("REAUTH_REQUIRED",0,null);
         if(eventId==null || !eventId.matches("[0-9a-v]{5,200}") || revision<1 || !("UPSERT".equals(action)||"DELETE".equals(action)))return result("PERMANENT_FAILURE",0,null);
         if(action.equals("UPSERT") && (start==null || end==null || !end.isAfter(start) || end.isAfter(start.plusSeconds(86400))))return result("PERMANENT_FAILURE",0,null);
         var rows=jdbc.queryForList("""

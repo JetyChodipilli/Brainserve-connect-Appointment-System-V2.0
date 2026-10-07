@@ -43,6 +43,7 @@ CREATE TABLE integration_google_consent (
  CHECK(length(ticket_ciphertext)<=1024 AND length(state_ciphertext)<=1024 AND length(verifier_ciphertext)<=1024 AND length(code_ciphertext)<=8192)
 );
 CREATE INDEX ix_google_consent_owner ON integration_google_consent(owner_id,created_at DESC);
+CREATE INDEX ix_google_consent_retention ON integration_google_consent(created_at,id);
 CREATE INDEX ix_google_consent_expiry ON integration_google_consent(expires_at)
  WHERE status IN ('INITIATED','AUTHORIZED','CALLBACK_RECEIVED','EXCHANGING');
 CREATE TABLE integration_google_revocation (

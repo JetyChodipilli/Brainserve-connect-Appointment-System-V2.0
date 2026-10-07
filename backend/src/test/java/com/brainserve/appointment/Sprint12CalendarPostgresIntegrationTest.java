@@ -146,7 +146,7 @@ class Sprint12CalendarPostgresIntegrationTest {
         var claim = integrations.claim(id, Instant.now().plusSeconds(1)).orElseThrow();
         integrations.complete(claim, Instant.now().plusSeconds(2)); integrations.complete(claim, Instant.now().plusSeconds(3));
         verify(google, times(1)).deliver(c.id(), 1, CalendarProjection.eventId(c.id(), resource), 1, "UPSERT", SLOT, SLOT.plusSeconds(1800));
-        assertThat(status(id)).isEqualTo("DELIVERED");
+        assertThat(deliveryStatus(id)).isEqualTo("DELIVERED");
         assertThat(count("select count(*) from integration_external_mapping")).isEqualTo(1);
         assertThat(integrations.attempts(ADMIN, id)).extracting(IntegrationModels.Attempt::outcome).containsExactly("SUCCESS");
         assertThat(count("select count(*) from integration_simulator_receipt")).isZero();
@@ -185,7 +185,7 @@ class Sprint12CalendarPostgresIntegrationTest {
         capture(resource, "CANCELLED", SLOT);
         jdbc.update("update integration_connection set status='ACTIVE' where id=?", c.id());
         integrations.complete(claim, Instant.now().plusSeconds(2));
-        assertThat(status(old)).isEqualTo("SUPERSEDED"); verifyNoInteractions(google);
+        assertThat(deliveryStatus(old)).isEqualTo("SUPERSEDED"); verifyNoInteractions(google);
         var job = reconcile(c.id()); integrations.reconcileBatch(job.id());
         UUID repair = repairDelivery(job.id()); complete(repair);
         verify(google).deliver(c.id(), 1, CalendarProjection.eventId(c.id(), resource), 2, "DELETE", SLOT, SLOT.plusSeconds(1800));
@@ -196,7 +196,7 @@ class Sprint12CalendarPostgresIntegrationTest {
         when(google.deliver(any(), anyLong(), anyString(), anyLong(), anyString(), any(), any()))
                 .thenThrow(new IllegalStateException(PRIVATE)).thenReturn(new GoogleCalendarAdapter.Result("RATE_LIMITED", 900, null))
                 .thenReturn(new GoogleCalendarAdapter.Result("SUCCESS", 0, CalendarProjection.eventId(c.id(), resource)));
-        complete(id); assertThat(status(id)).isEqualTo("PENDING"); assertThat(count("select count(*) from integration_external_mapping")).isZero();
+        complete(id); assertThat(deliveryStatus(id)).isEqualTo("PENDING"); assertThat(count("select count(*) from integration_external_mapping")).isZero();
         complete(id); assertThat(jdbc.queryForObject("select next_attempt_at>now()+interval '899 seconds' from integration_delivery where id=?", Boolean.class, id)).isTrue();
         complete(id); verify(google, times(3)).deliver(c.id(), 1, CalendarProjection.eventId(c.id(), resource), 1, "UPSERT", SLOT, SLOT.plusSeconds(1800));
         assertThat(integrations.attempts(ADMIN, id)).extracting(IntegrationModels.Attempt::outcome).containsExactly("OUTAGE", "RATE_LIMITED", "SUCCESS");
@@ -209,10 +209,10 @@ class Sprint12CalendarPostgresIntegrationTest {
         jdbc.execute("create trigger fail_s12_mapping before insert on integration_external_mapping for each row execute function fail_s12_mapping()");
         try { assertThatThrownBy(() -> integrations.complete(claim, now.plusSeconds(1))).hasMessageContaining("mapping failed after provider"); }
         finally { jdbc.execute("drop trigger fail_s12_mapping on integration_external_mapping"); jdbc.execute("drop function fail_s12_mapping()"); }
-        assertThat(status(id)).isEqualTo("RUNNING"); assertThat(count("select count(*) from integration_delivery_attempt")).isZero();
+        assertThat(deliveryStatus(id)).isEqualTo("RUNNING"); assertThat(count("select count(*) from integration_delivery_attempt")).isZero();
         // Persisted lease recovery, not an in-memory provider receipt, makes the unknown outcome retryable.
         jdbc.update("update integration_delivery set lease_until=now()-interval '1 second' where id=?", id);
-        complete(id); assertThat(status(id)).isEqualTo("DELIVERED");
+        complete(id); assertThat(deliveryStatus(id)).isEqualTo("DELIVERED");
         verify(google, times(2)).deliver(c.id(), 1, CalendarProjection.eventId(c.id(), resource), 1, "UPSERT", SLOT, SLOT.plusSeconds(1800));
         assertThat(integrations.attempts(ADMIN, id)).extracting(IntegrationModels.Attempt::outcome).containsExactly("LEASE_EXPIRED", "SUCCESS");
     }
@@ -224,7 +224,7 @@ class Sprint12CalendarPostgresIntegrationTest {
         var recovered = integrations.claim(id, Instant.now().plusSeconds(2)).orElseThrow();
         integrations.complete(abandoned, Instant.now().plusSeconds(3)); verifyNoInteractions(google);
         jdbc.update("update iam_user_account set enabled=false where id=?", ADMIN);
-        integrations.complete(recovered, Instant.now().plusSeconds(4)); assertThat(status(id)).isEqualTo("CANCELLED"); verifyNoInteractions(google);
+        integrations.complete(recovered, Instant.now().plusSeconds(4)); assertThat(deliveryStatus(id)).isEqualTo("CANCELLED"); verifyNoInteractions(google);
     }
 
     @Test void revocationSerializesWithBoundedProviderWorkAndStopsAlreadyClaimedFollowup() throws Exception {
@@ -255,7 +255,7 @@ class Sprint12CalendarPostgresIntegrationTest {
         when(google.deliver(any(), anyLong(), anyString(), anyLong(), anyString(), any(), any())).thenReturn(new GoogleCalendarAdapter.Result(result, 0, null));
         complete(id);
         assertThat(count("select count(*) from integration_external_mapping")).isZero();
-        assertThat(status(id)).isEqualTo(result.equals("REAUTH_REQUIRED") ? "NEEDS_RECONNECT" : result.equals("NEWER_REVISION") ? "SUPERSEDED" : "FAILED");
+        assertThat(deliveryStatus(id)).isEqualTo(result.equals("REAUTH_REQUIRED") ? "NEEDS_RECONNECT" : result.equals("NEWER_REVISION") ? "SUPERSEDED" : "FAILED");
         assertThat(integrations.attempts(ADMIN, id)).extracting(IntegrationModels.Attempt::outcome).containsExactly(result);
         if (result.equals("REAUTH_REQUIRED")) assertThat(integrations.connections(ADMIN).getFirst().status()).isEqualTo("NEEDS_RECONNECT");
     }
@@ -264,11 +264,11 @@ class Sprint12CalendarPostgresIntegrationTest {
         var c = googleConnection(); UUID resource = UUID.randomUUID(); capture(resource, "APPROVED", SLOT); UUID id = latestDelivery(c.id(), resource);
         var claim = integrations.claim(id, Instant.now().plusSeconds(1)).orElseThrow();
         jdbc.update("update integration_connection set credential_version=credential_version+1,version=version+1 where id=?", c.id());
-        integrations.complete(claim, Instant.now().plusSeconds(2)); assertThat(status(id)).isEqualTo("NEEDS_RECONNECT"); verifyNoInteractions(google);
+        integrations.complete(claim, Instant.now().plusSeconds(2)); assertThat(deliveryStatus(id)).isEqualTo("NEEDS_RECONNECT"); verifyNoInteractions(google);
         capture(resource, "APPROVED", SLOT.plusSeconds(3600)); UUID next = latestDelivery(c.id(), resource);
         var nextClaim = integrations.claim(next, Instant.now().plusSeconds(1)).orElseThrow();
         integrations.revoke(ADMIN, c.id(), integrations.connections(ADMIN).getFirst().version());
-        integrations.complete(nextClaim, Instant.now().plusSeconds(2)); assertThat(status(next)).isEqualTo("CANCELLED");
+        integrations.complete(nextClaim, Instant.now().plusSeconds(2)); assertThat(deliveryStatus(next)).isEqualTo("CANCELLED");
         verify(google).disconnect(c.id(), 2);
         verify(google, times(0)).deliver(any(), anyLong(), anyString(), anyLong(), anyString(), any(), any());
     }
@@ -374,7 +374,7 @@ class Sprint12CalendarPostgresIntegrationTest {
         when(google.deliver(any(), anyLong(), anyString(), anyLong(), anyString(), any(), any())).thenReturn(new GoogleCalendarAdapter.Result("OUTAGE", 0, null));
         complete(id);
         assertThat(jdbc.queryForObject("select status from appointment where id=?", String.class, resource)).isEqualTo("CANCELLED");
-        assertThat(status(id)).isEqualTo("PENDING");
+        assertThat(deliveryStatus(id)).isEqualTo("PENDING");
         verify(google).deliver(eq(c.id()), eq(1L), eq(CalendarProjection.eventId(c.id(), resource)), eq(1L), eq("DELETE"), any(), any());
     }
 
@@ -389,7 +389,7 @@ class Sprint12CalendarPostgresIntegrationTest {
     private UUID latestDelivery(UUID connection, UUID resource) { return jdbc.queryForObject("select id from integration_delivery where connection_id=? and resource_id=? and event_type<>'CALENDAR_RECONCILE' order by business_revision desc limit 1", UUID.class, connection, resource); }
     private UUID repairDelivery(UUID job) { return jdbc.queryForObject("select id from integration_delivery where reconciliation_id=? limit 1", UUID.class, job); }
     private void complete(UUID id) { jdbc.update("update integration_delivery set next_attempt_at=now()-interval '1 second' where id=?", id); Instant now = Instant.now().plusSeconds(1); integrations.complete(integrations.claim(id, now).orElseThrow(), now.plusSeconds(1)); }
-    private String status(UUID id) { return jdbc.queryForObject("select status from integration_delivery where id=?", String.class, id); }
+    private String deliveryStatus(UUID id) { return jdbc.queryForObject("select status from integration_delivery where id=?", String.class, id); }
     private long count(String sql, Object... args) { return jdbc.queryForObject(sql, Long.class, args); }
     private IntegrationModels.Reconciliation reconcile(UUID connection) { var c = integrations.connections(ADMIN).stream().filter(row -> row.id().equals(connection)).findFirst().orElseThrow(); return integrations.reconcile(ADMIN, connection, new IntegrationModels.Reconcile(UUID.randomUUID(), c.version())); }
     private void code(Runnable action, String code) { assertThatThrownBy(action::run).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(code); }

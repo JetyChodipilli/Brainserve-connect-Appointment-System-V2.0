@@ -24,13 +24,22 @@ public class GoogleRevocationWorker {
     }
     @Scheduled(fixedDelayString="${brainserve.integrations.google-calendar.revocation-poll-ms:30000}")
     public void tick() {
-        if(!enabled)return;
-        for(UUID id:jdbc.query("select id from integration_google_revocation where status in ('PENDING','RETRYING') and next_attempt_at<=now() order by next_attempt_at,id limit 5",(rs,n)->rs.getObject(1,UUID.class))) {
+        if(enabled)for(UUID id:jdbc.query("select id from integration_google_revocation where status in ('PENDING','RETRYING') and next_attempt_at<=now() order by next_attempt_at,id limit 5",(rs,n)->rs.getObject(1,UUID.class))) {
             try { process(id); }catch(RuntimeException unavailable) { /* The encrypted durable job remains due; never log provider material. */ }
         }
         transactions.executeWithoutResult(tx->{
-            jdbc.update("update integration_google_consent set status=case when status='EXCHANGING' then 'EXCHANGE_UNKNOWN' else 'EXPIRED' end,last_result_code=case when status='EXCHANGING' then 'EXCHANGE_UNKNOWN' else 'CONSENT_EXPIRED' end,ticket_hash=null,state_hash=null,ticket_ciphertext=null,state_ciphertext=null,verifier_ciphertext=null,browser_hash=null,code_ciphertext=null where expires_at<now() and status in ('INITIATED','AUTHORIZED','CALLBACK_RECEIVED','EXCHANGING')");
-            jdbc.update("delete from integration_google_consent where created_at<now()-interval '90 days' and status not in ('INITIATED','AUTHORIZED','CALLBACK_RECEIVED','EXCHANGING')");
+            jdbc.update("""
+                    update integration_google_consent set status=case when status='EXCHANGING' then 'EXCHANGE_UNKNOWN' else 'EXPIRED' end,
+                    last_result_code=case when status='EXCHANGING' then 'EXCHANGE_UNKNOWN' else 'CONSENT_EXPIRED' end,
+                    ticket_hash=null,state_hash=null,ticket_ciphertext=null,state_ciphertext=null,verifier_ciphertext=null,browser_hash=null,code_ciphertext=null
+                    where id in (select id from integration_google_consent where expires_at<now() and status in ('INITIATED','AUTHORIZED','CALLBACK_RECEIVED','EXCHANGING')
+                    order by expires_at,id limit 200 for update skip locked)
+                    """);
+            jdbc.update("""
+                    delete from integration_google_consent where id in (select id from integration_google_consent
+                    where created_at<now()-interval '90 days' and status not in ('INITIATED','AUTHORIZED','CALLBACK_RECEIVED','EXCHANGING')
+                    order by created_at,id limit 200 for update skip locked)
+                    """);
         });
     }
     public void process(UUID job) {

@@ -45,7 +45,10 @@ public class GoogleCalendarController {
     @PostMapping("/connections/{id}/recover") @PreAuthorize("hasAuthority('ROLE_SYSTEM_ADMIN')")
     public ResponseEntity<IntegrationModels.Connection> recover(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id,@RequestBody GoogleCalendarConsentService.Recover command) {return noStore(consents.recover(auth(jwt),id,command));}
     @PostMapping("/connections/{id}/revocation/retry") @PreAuthorize("hasAuthority('ROLE_SYSTEM_ADMIN')")
-    public ResponseEntity<GoogleCalendarConsentService.Metadata> retry(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id,@RequestBody IntegrationModels.Version command) {return noStore(consents.retryRevocation(auth(jwt),id,command.expectedVersion()));}
+    public ResponseEntity<GoogleCalendarConsentService.Metadata> retry(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id,@RequestBody IntegrationModels.Version command) {
+        if(command==null)throw new BusinessException("INVALID_GOOGLE_CALENDAR_REQUEST","Supply the observed connection version",HttpStatus.BAD_REQUEST);
+        return noStore(consents.retryRevocation(auth(jwt),id,command.expectedVersion()));
+    }
     @GetMapping("/authorize")
     public ResponseEntity<Void> authorize(@RequestParam String ticket) {
         var authorization=consents.authorize(ticket);

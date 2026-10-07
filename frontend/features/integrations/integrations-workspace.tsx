@@ -42,7 +42,11 @@ export function IntegrationsWorkspace() {
     const canConsent = Boolean(googleVerified && googleConfig?.configured && !busy && !blocked && !sessionEnded);
     const eligible = Boolean(clock > 0 && selected?.status === 'ACTIVE' && Date.parse(selected.credentialExpiresAt) > clock);
     const expiryMin = clock > 0 ? localDate(clock + 60000) : undefined, expiryMax = clock > 0 ? localDate(clock + 90 * 86400000) : undefined;
-    useEffect(() => { if (authorization && clock >= Date.parse(authorization.expiresAt)) setAuthorization(null); }, [authorization, clock]);
+    useEffect(() => {
+        if (!authorization || clock < Date.parse(authorization.expiresAt)) return;
+        const timer = window.setTimeout(() => setAuthorization(null), 0);
+        return () => window.clearTimeout(timer);
+    }, [authorization, clock]);
     const load = useCallback(async () => {
         if (!isBackendConfigured) return;
         const operation = begin(); if (!operation) return;

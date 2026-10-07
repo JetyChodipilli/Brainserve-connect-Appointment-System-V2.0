@@ -329,6 +329,34 @@ class Sprint12GoogleConsentPostgresIntegrationTest {
         GOOGLE.reply(400,"{\"error\":\"invalid_token\",\"error_description\":\"private token detail\"}");revocations.process(job);
         assertThat(jdbc.queryForObject("select status from integration_google_revocation where id=?",String.class,job)).isEqualTo("COMPLETE");assertThat(jdbc.queryForObject("select token_ciphertext from integration_google_revocation where id=?",String.class,job)).isEmpty();
     }
+    @Test void recoveryKeepsRotatedRefreshEvenWhenOperatorCalendarVerificationFails() throws Exception {
+        var consent=ready();GOOGLE.reply(200,tokens(true,GoogleCalendarConfiguration.SCOPE));GOOGLE.reply(503,"{}");var unknown=complete(consent,200);
+        UUID id=connection(consent);long version=unknown.path("version").asLong();
+        var retained=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(secrets.convertToEntityAttribute(jdbc.queryForObject("select credential_ciphertext from integration_connection where id=?",String.class,id)));
+        retained.put("expiresAt",Instant.now().minusSeconds(30).toString());jdbc.update("update integration_connection set credential_ciphertext=? where id=?",secrets.convertToDatabaseColumn(retained.toString()),id);
+        GOOGLE.reply(200,tokens(true,GoogleCalendarConfiguration.SCOPE).replace("private-refresh","rotated-refresh"));GOOGLE.reply(200,calendar(UUID.randomUUID(),"foreign@group.calendar.google.com"));
+        recover(id,version,"foreign@group.calendar.google.com",409);
+        assertThat(secrets.convertToEntityAttribute(jdbc.queryForObject("select credential_ciphertext from integration_connection where id=?",String.class,id))).contains("rotated-refresh");
+        assertThat(jdbc.queryForObject("select provisioning_status from integration_google_calendar where connection_id=?",String.class,id)).isEqualTo("PROVISIONING_UNKNOWN");
+        GOOGLE.reply(200,calendar(id,"app@group.calendar.google.com"));var recovered=recover(id,version,"app@group.calendar.google.com",200);assertThat(recovered.path("status").asText()).isEqualTo("ACTIVE");
+        assertThat(GOOGLE.requests().stream().filter(request->request.body().contains("grant_type=refresh_token")).count()).isEqualTo(1);
+    }
+    @Test void expiredConsentSecretsAreCleanedWhileNetworkWorkersAreDisabled() throws Exception {
+        var consent=ready();UUID id=UUID.fromString(consent.path("id").asText());jdbc.update("update integration_google_consent set expires_at=now()-interval '1 second' where id=?",id);
+        revocations.tick();
+        assertThat(jdbc.queryForObject("select status from integration_google_consent where id=?",String.class,id)).isEqualTo("EXPIRED");
+        assertThat(jdbc.queryForObject("select code_ciphertext from integration_google_consent where id=?",String.class,id)).isNull();
+        assertThat(jdbc.queryForObject("select verifier_ciphertext from integration_google_consent where id=?",String.class,id)).isNull();assertThat(GOOGLE.requests()).isEmpty();
+    }
+    @Test void requestReceiptsRejectChangedConsentPayloadAndReplacementCancelsOriginalBrowserFlow() throws Exception {
+        UUID request=UUID.randomUUID();String body=json.writeValueAsString(Map.of("requestId",request,"label","S12 Google calendar"));
+        var original=json.readTree(mvc.perform(post(ROOT+"/consents").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        var replay=json.readTree(mvc.perform(post(ROOT+"/consents").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());assertThat(replay).isEqualTo(original);
+        mvc.perform(post(ROOT+"/consents").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("requestId",request,"label","Changed")))).andExpect(status().isConflict());
+        var navigation=authorize(original);callback(navigation,"private-code");long version=jdbc.queryForObject("select version from integration_connection where id=?",Long.class,connection(original));
+        start(connection(original),version);complete(original,409);assertThat(GOOGLE.requests()).isEmpty();
+        mvc.perform(post(ROOT+"/connections/"+connection(original)+"/revocation/retry").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("null")).andExpect(status().isBadRequest());
+    }
     private JsonNode start(UUID id,Long version) throws Exception {
         var command=new java.util.HashMap<String,Object>();command.put("requestId",UUID.randomUUID());command.put("label","S12 Google calendar");if(id!=null){command.put("connectionId",id);command.put("expectedVersion",version);}
         return json.readTree(mvc.perform(post(ROOT+"/consents").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(command))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());

@@ -196,23 +196,32 @@ public class GoogleCalendarConsentService {
     }
     public IntegrationModels.Connection recover(GoogleAccountGuard.Auth auth,UUID id,Recover command) {
         if(command==null || !GoogleCalendarAdapter.validCalendarId(command.calendarId()))throw invalid();
-        return transactions.execute(tx->{
+        RecoveryOutcome outcome=transactions.execute(tx->{
             guard.require(auth,true);var current=owned(auth.actor(),id,true);expected(command.expectedVersion(),((Number)current.get("version")).longValue());
             var calendar=jdbc.queryForMap("select * from integration_google_calendar where connection_id=?",id);
             if(!"PROVISIONING_UNKNOWN".equals(calendar.get("provisioning_status")) || "REVOKED".equals(current.get("status")))throw conflict();
+            if(!instant(current,"credential_expires_at").isAfter(Instant.now()))throw problem("REAUTH_REQUIRED",HttpStatus.CONFLICT);
             var tokens=codec.decode((String)current.get("credential_ciphertext"));
             if(tokens==null || tokens.refresh()==null)throw problem("REAUTH_REQUIRED",HttpStatus.CONFLICT);
             if(!tokens.expiresAt().isAfter(Instant.now().plusSeconds(30))) {
                 var refreshed=http.token(Map.of("grant_type","refresh_token","refresh_token",tokens.refresh(),"client_id",config.clientId(),"client_secret",config.clientSecret()));
-                if(!refreshed.success())throw problem("CALENDAR_RECOVERY_UNAVAILABLE",HttpStatus.CONFLICT);
+                if(!refreshed.success())return recoveryFailure(id,"CALENDAR_RECOVERY_UNAVAILABLE");
                 tokens=GoogleTokenCodec.response(refreshed.body(),tokens.refresh(),false);
-                if(tokens==null)throw problem("REAUTH_REQUIRED",HttpStatus.CONFLICT);
+                if(tokens==null)return recoveryFailure(id,"REAUTH_REQUIRED");
                 jdbc.update("update integration_connection set credential_ciphertext=? where id=?",codec.encode(tokens),id);
             }
             var verified=http.calendar("GET",command.calendarId(),null,tokens.access(),null,null);
-            if(!verified.success() || !verifiedCalendar(verified.body(),id,command.calendarId()))throw problem("CALENDAR_RECOVERY_UNVERIFIED",HttpStatus.CONFLICT);
-            activate(id,command.calendarId());audit.record("GOOGLE_CALENDAR_RECOVERED","INTEGRATION_CONNECTION",id.toString(),"{}");return connection(id);
+            if(!verified.success() || !verifiedCalendar(verified.body(),id,command.calendarId()))return recoveryFailure(id,"CALENDAR_RECOVERY_UNVERIFIED");
+            activate(id,command.calendarId());audit.record("GOOGLE_CALENDAR_RECOVERED","INTEGRATION_CONNECTION",id.toString(),"{}");return new RecoveryOutcome(connection(id),null);
         });
+        // Throw after commit so a successful rotated refresh is not lost when ID verification fails.
+        if(outcome.error()!=null)throw problem(outcome.error(),HttpStatus.CONFLICT);
+        return outcome.connection();
+    }
+    private RecoveryOutcome recoveryFailure(UUID id,String code) {
+        jdbc.update("update integration_google_calendar set last_result_code=? where connection_id=?",code,id);
+        jdbc.update("update integration_connection set last_result_code=?,updated_at=now() where id=?",code,id);
+        return new RecoveryOutcome(null,code);
     }
     public Metadata retryRevocation(GoogleAccountGuard.Auth auth,UUID id,Long version) {
         transactions.executeWithoutResult(tx->{
@@ -271,4 +280,5 @@ public class GoogleCalendarConsentService {
     private static BusinessException problem(String code,HttpStatus status) {return new BusinessException(code,"Reload Google Calendar connection details and follow the available recovery action",status);}
     private record Exchange(UUID id,UUID connection,long version,String code,String verifier) { @Override public String toString(){return "Exchange[REDACTED]";} }
     private record Prepared(String access,String calendar,long generation) { @Override public String toString(){return "Prepared[REDACTED]";} }
+    private record RecoveryOutcome(IntegrationModels.Connection connection,String error) {}
 }
