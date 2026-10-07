@@ -10,9 +10,9 @@
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .fields label, .field { display: grid; gap: 7px; min-width: 0; font-size: 14px; font-weight: 650; }
 .workspace input, .workspace select { min-width: 0; max-width: 100%; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--white); color: var(--ink); font: inherit; }
-.workspace button { cursor: pointer; min-height: 44px; max-width: 100%; white-space: normal; }
+.workspace button, .workspace a { cursor: pointer; min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .workspace button:disabled { cursor: default; }
-.workspace :is(button, input, select, summary):focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.workspace :is(a, button, input, select, summary):focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 0; }
 .list { display: grid; list-style: none; padding: 0; margin: 0; gap: 8px; }
 .connection { width: 100%; text-align: left; display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); color: var(--ink); font: inherit; }

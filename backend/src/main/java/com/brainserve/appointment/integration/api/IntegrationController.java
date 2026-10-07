@@ -6,6 +6,9 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import java.time.Instant;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -59,6 +62,22 @@ public class IntegrationController {
     @GetMapping("/deliveries/{id}/attempts")
     public ResponseEntity<List<IntegrationModels.Attempt>> attempts(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         return noStore(integrations.attempts(actor(jwt), id));
+    }
+    @PostMapping("/connections/{id}/reconcile")
+    public ResponseEntity<IntegrationModels.Reconciliation> reconcile(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @Valid @RequestBody IntegrationModels.Reconcile command) {
+        return noStore(integrations.reconcile(actor(jwt), id, command));
+    }
+    @GetMapping("/connections/{id}/reconciliation")
+    public ResponseEntity<IntegrationModels.Reconciliation> reconciliation(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        return noStore(integrations.latestReconciliation(actor(jwt), id));
+    }
+    @GetMapping("/google-calendar/calendar.ics")
+    public ResponseEntity<byte[]> calendarFile(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"brainserve-calendar.ics\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .contentType(MediaType.parseMediaType("text/calendar;charset=UTF-8"))
+                .body(integrations.calendarFile(actor(jwt), Instant.now()));
     }
     private UUID actor(Jwt jwt) {
         try { return UUID.fromString(jwt.getSubject()); }

@@ -23,6 +23,7 @@ async function fixture(page: Page, role = 'SYSTEM_ADMIN') {
                 state.reads.push(path + url.search);
                 if (state.readFailure) return route.fulfill({ status: 503, json: { detail: 'Source unavailable' } });
                 if (path === '/integrations/connections') return route.fulfill({ json: state.connections });
+                if (path === '/integrations/google-calendar/config') return route.fulfill({ json: { configured: false, scope: 'https://www.googleapis.com/auth/calendar.app.created', usesDedicatedCalendar: true } });
                 if (path.endsWith('/deliveries')) return route.fulfill({ json: { content: state.deliveries, number: Number(url.searchParams.get('page')), size: 20, totalElements: state.moreDeliveries ? 21 : state.deliveries.length, totalPages: state.moreDeliveries ? 2 : 1 } });
                 if (path.endsWith('/attempts')) return route.fulfill({ json: [{ id: eventId, deliveryId, attemptNumber: 1, credentialVersion: 1, outcome: 'OUTAGE', startedAt: now, completedAt: now }] });
                 if (path.endsWith('/preview')) { if (state.previewDelay) await new Promise(resolve => setTimeout(resolve, state.previewDelay)); return route.fulfill({ json: state.previewSnapshot }); }

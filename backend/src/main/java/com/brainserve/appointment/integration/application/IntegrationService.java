@@ -3,6 +3,7 @@ package com.brainserve.appointment.integration.application;
 import com.brainserve.appointment.audit.api.AuditService;
 import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
 import com.brainserve.appointment.integration.api.IntegrationModels;
+import com.brainserve.appointment.integration.google.GoogleCalendarAdapter;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.brainserve.appointment.shared.application.SensitiveStringConverter;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -30,7 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-/** Fixed simulator adapters only. Business writers capture events; this service never performs network I/O. */
+/** Committed business outbox and bounded independent worker transactions; source capture never calls a provider. */
 @Service
 public class IntegrationService {
     private static final int PAGE_SIZE = 20;
@@ -45,12 +46,13 @@ public class IntegrationService {
     private final SensitiveStringConverter secrets;
     private final AuditService audit;
     private final ObjectMapper json;
+    private final GoogleCalendarAdapter google;
     private final RowMapper<IntegrationModels.Connection> connections = this::connection;
     private final RowMapper<IntegrationModels.Delivery> deliveries = this::delivery;
 
     public IntegrationService(JdbcTemplate jdbc, CurrentAccountAuthority authority, SensitiveStringConverter secrets,
-                              AuditService audit, ObjectMapper json) {
-        this.jdbc = jdbc; this.authority = authority; this.secrets = secrets; this.audit = audit; this.json = json;
+                              AuditService audit, ObjectMapper json, GoogleCalendarAdapter google) {
+        this.jdbc = jdbc; this.authority = authority; this.secrets = secrets; this.audit = audit; this.json = json; this.google = google;
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +65,7 @@ public class IntegrationService {
     public IntegrationModels.Connection create(UUID actor, IntegrationModels.Create command) {
         requireAdmin(actor, true);
         if (command == null || command.requestId() == null || command.provider() == null) throw invalid();
+        simulatorOnly(command.provider());
         credential(command.credential(), command.credentialExpiresAt());
         String label = label(command.label());
         requestLock(command.requestId());
@@ -92,6 +95,7 @@ public class IntegrationService {
     public IntegrationModels.Connection reconnect(UUID actor, UUID id, IntegrationModels.Reconnect command) {
         requireAdmin(actor, true);
         var current = owned(actor, id, true);
+        simulatorOnly(current.provider());
         if (command == null) throw invalid();
         expected(command.expectedVersion(), current.version());
         credential(command.credential(), command.credentialExpiresAt());
@@ -109,6 +113,8 @@ public class IntegrationService {
         requireAdmin(actor, true);
         var current = owned(actor, id, true);
         expected(version, current.version());
+        if (current.provider() == IntegrationModels.Provider.GOOGLE_CALENDAR) google.disconnect(id, current.credentialVersion());
+        jdbc.update("update integration_calendar_reconciliation set status='CANCELLED',completed_at=now() where connection_id=? and status in ('QUEUED','RUNNING')", id);
         finishClaims(id, "CANCELLED", "CONNECTION_REVOKED", Instant.now());
         jdbc.update("""
                 update integration_delivery set status='CANCELLED',last_result_code='CONNECTION_REVOKED',version=version+1
@@ -128,6 +134,7 @@ public class IntegrationService {
         if (command == null || command.requestId() == null || command.scenario() == null) throw invalid();
         requestLock(command.requestId());
         var current = owned(actor, id, true);
+        simulatorOnly(current.provider());
         UUID replay = receipt(actor, command.requestId(), "TEST", id, command.expectedVersion(), command.scenario().name());
         if (replay != null) return delivery(replay, false);
         expected(command.expectedVersion(), current.version());
@@ -169,7 +176,7 @@ public class IntegrationService {
         if (replay != null) return d;
         expected(command.expectedVersion(), d.version()); usable(current, Instant.now());
         if (!List.of("FAILED","NEEDS_RECONNECT").contains(d.status()) || d.manualRetries() >= 3 || d.totalAttempts() >= 20) throw conflict();
-        if (superseded(d)) throw new BusinessException("INTEGRATION_DELIVERY_SUPERSEDED", "A newer revision is already queued; reload deliveries", HttpStatus.CONFLICT);
+        if (superseded(d, current.provider())) throw new BusinessException("INTEGRATION_DELIVERY_SUPERSEDED", "A newer revision is already queued; reload deliveries", HttpStatus.CONFLICT);
         jdbc.update("""
                 update integration_delivery set status='PENDING',attempts=0,manual_retries=manual_retries+1,retry_request_id=?,
                 next_attempt_at=now(),last_result_code='RETRY_QUEUED',version=version+1 where id=?
@@ -245,7 +252,8 @@ public class IntegrationService {
             clearLease(id, status, !eligible ? "OWNER_INELIGIBLE" : c.status().equals("REVOKED") ? "CONNECTION_REVOKED" : "REAUTH_REQUIRED", now);
             return Optional.empty();
         }
-        if (superseded(d)) { clearLease(id,"SUPERSEDED","NEWER_REVISION",now); return Optional.empty(); }
+        if (cancelledRepair(d, c)) { clearLease(id,"CANCELLED","RECONCILIATION_CANCELLED",now); return Optional.empty(); }
+        if (superseded(d, c.provider())) { clearLease(id,"SUPERSEDED","NEWER_REVISION",now); return Optional.empty(); }
         if (d.attempts() >= 5 || d.totalAttempts() >= 20) { clearLease(id,"FAILED","RETRIES_EXHAUSTED",now); return Optional.empty(); }
         if (d.nextAttemptAt().isAfter(now)) return Optional.empty();
         UUID token = UUID.randomUUID();
@@ -256,8 +264,13 @@ public class IntegrationService {
         return Optional.of(new Claim(id, token, c.credentialVersion()));
     }
 
-    /** Provider receipt, mapping and completion share one transaction for the fixed local simulator. */
-    @Transactional
+    /**
+     * Separate worker transaction: account -> connection -> delivery locks serialize revoke and generation changes.
+     * Google HTTP (including refresh) has a 24-second total ceiling; require 35 lease seconds before starting.
+     * A 45-second transaction timeout bounds the worker. Remote effects and this DB commit are not atomic:
+     * unknown outcomes recover through the deterministic event ID, revision and provider ETag checks.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 45)
     public void complete(Claim claim, Instant now) {
         var observed = delivery(claim.deliveryId(), false);
         boolean eligible = eligibleOwner(connectionOwner(observed.connectionId()));
@@ -277,7 +290,12 @@ public class IntegrationService {
             expireConnection(c,now);
             recordAttempt(d.id(),"REAUTH_REQUIRED",now); clearLease(d.id(),"NEEDS_RECONNECT","REAUTH_REQUIRED",now); return;
         }
-        if (superseded(d)) { recordAttempt(d.id(),"NEWER_REVISION",now); clearLease(d.id(),"SUPERSEDED","NEWER_REVISION",now); return; }
+        if (cancelledRepair(d, c)) { recordAttempt(d.id(),"RECONCILIATION_CANCELLED",now); clearLease(d.id(),"CANCELLED","RECONCILIATION_CANCELLED",now); return; }
+        if (superseded(d, c.provider())) { recordAttempt(d.id(),"NEWER_REVISION",now); clearLease(d.id(),"SUPERSEDED","NEWER_REVISION",now); return; }
+        if (c.provider() == IntegrationModels.Provider.GOOGLE_CALENDAR) {
+            completeGoogle(c, d, now, ((Timestamp) lease.get("lease_until")).toInstant());
+            return;
+        }
         // Decryption validates the configured key; the secret never enters a result, request URL or log.
         String credential;
         try { credential = secret(c.id()); }
@@ -311,6 +329,197 @@ public class IntegrationService {
         jdbc.update("update integration_connection set last_checked_at=?,last_result_code=?,version=version+1,updated_at=now() where id=?",time(now),result,c.id());
     }
 
+    private void completeGoogle(IntegrationModels.Connection c, IntegrationModels.Delivery d, Instant now, Instant leaseUntil) {
+        var source = latestSource(d.resourceId());
+        if (source == null || CalendarProjection.action(source.status()).equals("SKIP")) {
+            finishGoogle(c, d, "DELIVERED", "SKIPPED_STATE", now, 0);
+            return;
+        }
+        if (!d.eventType().equals("CALENDAR_RECONCILE") && source.revision() != d.businessRevision()) {
+            finishGoogle(c, d, "SUPERSEDED", "NEWER_REVISION", now, 0);
+            return;
+        }
+        // Never start bounded network work close to the lease fence. A crash after HTTP before DB commit is unknown,
+        // so the same deterministic provider ID and current revision are used again after lease recovery.
+        Instant started = Instant.now();
+        if (leaseUntil.isBefore(started.plusSeconds(35))) {
+            finishGoogle(c, d, "PENDING", "LEASE_EXPIRING", now, retryDelay(d.attempts()));
+            return;
+        }
+        String eventId = CalendarProjection.eventId(c.id(), d.resourceId());
+        GoogleCalendarAdapter.Result result;
+        try {
+            result = google.deliver(c.id(), c.credentialVersion(), eventId, source.revision(),
+                    CalendarProjection.action(source.status()), source.start(), source.end());
+        } catch (RuntimeException exception) {
+            // The provider may have committed: no fabricated success or mapping, and no raw exception/body logging.
+            result = new GoogleCalendarAdapter.Result("OUTAGE", 0, null);
+        }
+        String code = result == null ? "OUTAGE" : result.code();
+        if (code == null || !Set.of("SUCCESS", "OUTAGE", "RATE_LIMITED", "REAUTH_REQUIRED", "PERMANENT_FAILURE", "NEWER_REVISION").contains(code)) code = "OUTAGE";
+        Instant finished = Instant.now().isAfter(now) ? Instant.now() : now;
+        String status;
+        if (code.equals("SUCCESS")) {
+            if (!eventId.equals(result.externalId())) code = "OUTAGE";
+            else {
+                jdbc.update("""
+                        insert into integration_external_mapping(connection_id,resource_id,external_id,business_revision,business_event_id,last_event_type)
+                        values(?,?,?,?,?,?) on conflict(connection_id,resource_id) do update set
+                        external_id=excluded.external_id,business_revision=excluded.business_revision,business_event_id=excluded.business_event_id,
+                        last_event_type=excluded.last_event_type,updated_at=now()
+                        where integration_external_mapping.business_revision<=excluded.business_revision
+                        """, c.id(), d.resourceId(), eventId, source.revision(), source.event(), source.eventType());
+                finishGoogle(c, d, "DELIVERED", code, finished, 0);
+                return;
+            }
+        }
+        if (code.equals("REAUTH_REQUIRED")) {
+            status = "NEEDS_RECONNECT";
+            jdbc.update("update integration_connection set status='NEEDS_RECONNECT',version=version+1,updated_at=now() where id=?", c.id());
+        } else if (code.equals("NEWER_REVISION")) status = "SUPERSEDED";
+        else if (code.equals("PERMANENT_FAILURE") || d.attempts() >= 5 || d.totalAttempts() >= 20) status = "FAILED";
+        else status = "PENDING";
+        int retryAfter = result == null ? 0 : Math.max(0, Math.min(3600, result.retryAfterSeconds()));
+        long delay = code.equals("RATE_LIMITED") ? Math.max(60, Math.max(retryDelay(d.attempts()), retryAfter)) : Math.max(retryDelay(d.attempts()), retryAfter);
+        finishGoogle(c, d, status, code, finished, status.equals("PENDING") ? delay : 0);
+    }
+
+    private void finishGoogle(IntegrationModels.Connection c, IntegrationModels.Delivery d, String status, String result, Instant now, long delay) {
+        recordAttempt(d.id(), result, now);
+        clearLease(d.id(), status, result, now.plusSeconds(delay));
+        if (status.equals("DELIVERED")) jdbc.update("update integration_delivery set delivered_at=? where id=?", time(now), d.id());
+        jdbc.update("update integration_connection set last_checked_at=?,last_result_code=?,version=version+1,updated_at=now() where id=?", time(now), result, c.id());
+    }
+
+    @Transactional(timeout = 10)
+    public IntegrationModels.Reconciliation reconcile(UUID actor, UUID id, IntegrationModels.Reconcile command) {
+        requireAdmin(actor, true);
+        if (command == null || command.requestId() == null || command.expectedVersion() == null || command.expectedVersion() < 0) throw invalid();
+        requestLock(command.requestId());
+        var current = owned(actor, id, true);
+        googleOnly(current);
+        var retained = jdbc.queryForList("select * from integration_calendar_reconciliation where request_id=?", command.requestId());
+        if (!retained.isEmpty()) {
+            var job = retained.getFirst();
+            if (!actor.equals(job.get("actor_id")) || !id.equals(job.get("connection_id"))
+                    || command.expectedVersion() != ((Number) job.get("expected_version")).longValue()) throw conflict();
+            return reconciliation((UUID) job.get("id"));
+        }
+        expected(command.expectedVersion(), current.version());
+        usable(current, Instant.now());
+        // Active-one, five-minute cooldown, three jobs per day and <=500 resources bound repair floods.
+        if (count("select count(*) from integration_calendar_reconciliation where connection_id=? and (status in ('QUEUED','RUNNING') or created_at>now()-interval '5 minutes')", id) > 0
+                || count("select count(*) from integration_calendar_reconciliation where connection_id=? and created_at>now()-interval '24 hours'", id) >= 3
+                || count("select count(*) from integration_delivery where connection_id=? and status in ('PENDING','RUNNING')", id) > 1500) throw reconcileLimit();
+        if (calendarCandidates(null, 501).size() > 500) throw reconcileLimit();
+        UUID job = UUID.randomUUID();
+        jdbc.update("insert into integration_calendar_reconciliation(id,request_id,connection_id,actor_id,expected_version,credential_version) values(?,?,?,?,?,?)",
+                job, command.requestId(), id, actor, command.expectedVersion(), current.credentialVersion());
+        jdbc.update("update integration_connection set version=version+1,updated_at=now() where id=?", id);
+        audit.record("CALENDAR_RECONCILIATION_QUEUED", "INTEGRATION_CONNECTION", id.toString(), "{}");
+        return reconciliation(job);
+    }
+
+    @Transactional(readOnly = true)
+    public IntegrationModels.Reconciliation latestReconciliation(UUID actor, UUID id) {
+        requireAdmin(actor, false);
+        googleOnly(owned(actor, id, false));
+        var ids = jdbc.query("select id from integration_calendar_reconciliation where connection_id=? order by created_at desc,id desc limit 1", (rs,n) -> rs.getObject(1, UUID.class), id);
+        return ids.isEmpty() ? null : reconciliation(ids.getFirst());
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> dueReconciliations() {
+        return jdbc.query("select id from integration_calendar_reconciliation where status in ('QUEUED','RUNNING') and next_batch_at<=now() order by next_batch_at,id limit 5", (rs,n) -> rs.getObject(1, UUID.class));
+    }
+
+    /** Each durable scan transaction inserts at most 25 idempotent deliveries; no provider call occurs here. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 10)
+    public void reconcileBatch(UUID jobId) {
+        UUID connection = jdbc.queryForObject("select connection_id from integration_calendar_reconciliation where id=?", UUID.class, jobId);
+        boolean eligible = eligibleOwner(connectionOwner(connection));
+        var c = connectionLocked(connection);
+        var job = jdbc.queryForMap("select * from integration_calendar_reconciliation where id=? for update", jobId);
+        if (!List.of("QUEUED", "RUNNING").contains(job.get("status"))) return;
+        if (!eligible || c.status().equals("REVOKED") || c.credentialVersion() != ((Number) job.get("credential_version")).longValue()) {
+            closeReconciliation(jobId, "CANCELLED"); return;
+        }
+        if (!c.status().equals("ACTIVE") || !c.credentialExpiresAt().isAfter(Instant.now())) {
+            closeReconciliation(jobId, "FAILED"); return;
+        }
+        if ((Boolean) job.get("scan_complete")) {
+            if (count("select count(*) from integration_delivery where reconciliation_id=? and status in ('PENDING','RUNNING')", jobId) > 0) {
+                jdbc.update("update integration_calendar_reconciliation set next_batch_at=now()+interval '30 seconds' where id=?", jobId);
+                return;
+            }
+            boolean failed = count("select count(*) from integration_delivery where reconciliation_id=? and status in ('FAILED','NEEDS_RECONNECT','CANCELLED')", jobId) > 0;
+            closeReconciliation(jobId, failed ? "FAILED" : "COMPLETED"); return;
+        }
+        int processed = ((Number) job.get("processed")).intValue();
+        var sources = calendarCandidates((UUID) job.get("cursor_resource_id"), 25);
+        if (processed + sources.size() > 500) { closeReconciliation(jobId, "FAILED"); return; }
+        UUID cursor = (UUID) job.get("cursor_resource_id");
+        for (Source source : sources) {
+            UUID deliveryId = UUID.nameUUIDFromBytes((jobId.toString() + ":" + source.resource()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            insertDelivery(deliveryId, connection, deliveryId, "CALENDAR_RECONCILE", source.resource(), source.revision(), source.occurred(), source.payload(), IntegrationModels.Scenario.SUCCESS);
+            jdbc.update("update integration_delivery set reconciliation_id=? where id=?", jobId, deliveryId);
+            cursor = source.resource();
+        }
+        jdbc.update("update integration_calendar_reconciliation set status='RUNNING',processed=?,cursor_resource_id=?,scan_complete=?,next_batch_at=now() where id=?",
+                processed + sources.size(), cursor, sources.size() < 25, jobId);
+    }
+
+    /** Authenticated administrative export, approved future appointments only, 30 days and 500 events; overflow fails. */
+    @Transactional
+    public byte[] calendarFile(UUID actor, Instant now) {
+        requireAdmin(actor, true);
+        List<CalendarFile.Event> events = jdbc.query("""
+                select id,version,slot_start,slot_end from appointment
+                where status in ('APPROVED','CHECKED_IN','IN_MEETING') and slot_start>=? and slot_start<?
+                order by slot_start,id limit 501
+                """, (rs,n) -> new CalendarFile.Event(rs.getObject("id", UUID.class), rs.getLong("version"), instant(rs,"slot_start"), instant(rs,"slot_end")), time(now), time(now.plus(Duration.ofDays(30))));
+        if (events.size() > 500) throw new BusinessException("CALENDAR_EXPORT_LIMIT", "More than 500 approved appointments fall within the 30-day export window", HttpStatus.CONFLICT);
+        byte[] file = CalendarFile.render(events, now);
+        audit.record("CALENDAR_FILE_EXPORTED", "CALENDAR_EXPORT", actor.toString(), "{\"events\":" + events.size() + "}");
+        return file;
+    }
+
+    private List<Source> calendarCandidates(UUID cursor, int limit) {
+        // Indexed newest committed appointment snapshot, not a historical replay or the visitor-arrival revision.
+        return jdbc.query("""
+                select * from (select distinct on (resource_id) * from integration_business_event
+                where event_type<>'VISITOR_ARRIVED' and (?::uuid is null or resource_id>?::uuid)
+                order by resource_id,business_revision desc) latest
+                where payload_json->>'status' in ('APPROVED','CHECKED_IN','IN_MEETING','CANCELLED','REJECTED','NO_SHOW','EXPIRED')
+                order by resource_id limit ?
+                """, this::source, cursor, cursor, limit);
+    }
+    private Source latestSource(UUID resource) {
+        var rows = jdbc.query("select * from integration_business_event where resource_id=? and event_type<>'VISITOR_ARRIVED' order by business_revision desc limit 1", this::source, resource);
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+    private Source source(ResultSet rs, int row) throws SQLException {
+        String payload = rs.getString("payload_json");
+        try {
+            var fields = json.readTree(payload);
+            return new Source(rs.getObject("id", UUID.class), rs.getObject("resource_id", UUID.class), rs.getLong("business_revision"), rs.getString("event_type"),
+                    instant(rs,"occurred_at"), payload, fields.path("status").asText(), Instant.parse(fields.path("slotStart").asText()), Instant.parse(fields.path("slotEnd").asText()));
+        } catch (JsonProcessingException | java.time.format.DateTimeParseException exception) { throw new IllegalStateException("Invalid retained calendar snapshot"); }
+    }
+    private record Source(UUID event, UUID resource, long revision, String eventType, Instant occurred, String payload, String status, Instant start, Instant end) {}
+    private IntegrationModels.Reconciliation reconciliation(UUID id) {
+        return jdbc.queryForObject("select * from integration_calendar_reconciliation where id=?", (rs,n) -> new IntegrationModels.Reconciliation(rs.getObject("id", UUID.class), rs.getString("status"), rs.getInt("processed"), instant(rs,"created_at"), instant(rs,"completed_at")), id);
+    }
+    private void closeReconciliation(UUID id, String status) {
+        jdbc.update("update integration_calendar_reconciliation set status=?,completed_at=now() where id=?", status, id);
+    }
+    private static void googleOnly(IntegrationModels.Connection c) {
+        if (c.provider() != IntegrationModels.Provider.GOOGLE_CALENDAR) throw new BusinessException("GOOGLE_CALENDAR_REQUIRED", "Reconciliation requires a consented Google Calendar connection", HttpStatus.CONFLICT);
+    }
+    private static BusinessException reconcileLimit() {
+        return new BusinessException("CALENDAR_RECONCILE_LIMIT", "Use one repair at a time, wait five minutes, and keep within three daily repairs and 500 resources", HttpStatus.CONFLICT);
+    }
+
     public static long retryDelay(int attempt) { return Math.min(480L, 30L << Math.min(4, Math.max(0, attempt - 1))); }
     public record Claim(UUID deliveryId, UUID token, long credentialVersion) {}
 
@@ -334,7 +543,19 @@ public class IntegrationService {
             if (!end.isAfter(start)) throw invalid();
         } catch (ClassCastException | java.time.format.DateTimeParseException exception) { throw invalid(); }
     }
-    private boolean superseded(IntegrationModels.Delivery d) {
+    private boolean cancelledRepair(IntegrationModels.Delivery d, IntegrationModels.Connection c) {
+        if (!d.eventType().equals("CALENDAR_RECONCILE")) return false;
+        return count("""
+                select count(*) from integration_calendar_reconciliation j join integration_delivery d on d.reconciliation_id=j.id
+                where d.id=? and (j.status='CANCELLED' or j.credential_version<>?)
+                """, d.id(), c.credentialVersion()) > 0;
+    }
+    private boolean superseded(IntegrationModels.Delivery d, IntegrationModels.Provider provider) {
+        if (provider == IntegrationModels.Provider.GOOGLE_CALENDAR) {
+            // Reconciliation resolves current source again under worker locks; a stale queued snapshot is not replayed.
+            if (d.eventType().equals("CALENDAR_RECONCILE")) return false;
+            if (count("select count(*) from integration_business_event where resource_id=? and event_type<>'VISITOR_ARRIVED' and business_revision>?", d.resourceId(), d.businessRevision()) > 0) return true;
+        }
         if (d.eventType().equals("CONNECTION_TEST")) return false;
         return count("select count(*) from integration_delivery where connection_id=? and resource_id=? and business_revision>?",d.connectionId(),d.resourceId(),d.businessRevision()) > 0
                 || count("select count(*) from integration_external_mapping where connection_id=? and resource_id=? and business_revision>?",d.connectionId(),d.resourceId(),d.businessRevision()) > 0;
@@ -411,6 +632,9 @@ public class IntegrationService {
     private String secret(UUID id) { return secrets.convertToEntityAttribute(jdbc.queryForObject("select credential_ciphertext from integration_connection where id=?",String.class,id)); }
     private void usable(IntegrationModels.Connection c, Instant now) {
         if (!c.status().equals("ACTIVE") || !c.credentialExpiresAt().isAfter(now)) throw new BusinessException("INTEGRATION_RECONNECT_REQUIRED","Reconnect with an unexpired credential before delivery",HttpStatus.CONFLICT);
+    }
+    private static void simulatorOnly(IntegrationModels.Provider provider) {
+        if (provider == IntegrationModels.Provider.GOOGLE_CALENDAR) throw new BusinessException("GOOGLE_CALENDAR_CONSENT_REQUIRED", "Use Google Calendar consent to connect or reconnect", HttpStatus.CONFLICT);
     }
     private static void credential(String value, Instant expiry) {
         Instant now = Instant.now();

@@ -73,7 +73,13 @@ public class AuthenticatedRequestLimitFilter extends OncePerRequestFilter {
         }
         if ("GET".equals(method)) {
             if (path.matches("/api/v1/report-exports/[^/]+/download-url")
-                    || path.matches("/api/v1/support/diagnostics/[^/]+/download")) return new Rule("export", exports);
+                    || path.matches("/api/v1/support/diagnostics/[^/]+/download")
+                    || path.equals("/api/v1/integrations/google-calendar/calendar.ics")) return new Rule("export", exports);
+            if (path.equals("/api/v1/integrations/google-calendar/config")
+                    || path.equals("/api/v1/integrations/google-calendar/consents")
+                    || path.matches("/api/v1/integrations/google-calendar/connections/[^/]+")
+                    || path.matches("/api/v1/integrations/connections/[^/]+/reconciliation"))
+                return new Rule("search", searches);
             if (path.equals("/api/v1/support/diagnostics/preview")) return new Rule("search", searches);
             if (path.equals("/api/v1/realtime/stream")) return new Rule("stream-connect", streamConnects);
             String query = request.getParameter("query");

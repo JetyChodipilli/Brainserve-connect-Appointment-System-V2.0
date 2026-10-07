@@ -119,6 +119,7 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 || path.startsWith("/admin/account-closures/archived-recovery")
                 || (write && path.startsWith("/admin/account-closures/direct-archive"))
                 || (write && path.startsWith("/integrations/"))
+                || path.equals("/integrations/google-calendar/calendar.ics")
                 || path.equals("/support/diagnostics") || path.startsWith("/support/diagnostics/")
                 || path.equals("/report-exports") || path.startsWith("/report-exports/");
     }

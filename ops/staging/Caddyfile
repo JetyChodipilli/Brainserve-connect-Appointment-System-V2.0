@@ -1,4 +1,6 @@
 {$STAGING_DOMAIN} {
+    # Access logging is intentionally disabled: OAuth callback queries carry codes.
+    # Any deployment-level logging must redact queries, Cookie and Authorization.
     tls {$STAGING_TLS}
     header {
         Strict-Transport-Security "max-age=31536000"

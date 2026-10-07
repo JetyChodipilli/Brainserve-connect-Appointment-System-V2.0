@@ -104,12 +104,20 @@ class ActiveAccountFilterTest {
         assertResponse("POST", "/api/v1/integrations/connections", 403, "MFA_STEP_UP_REQUIRED");
         assertResponse("POST", "/api/v1/integrations/connections/" + UUID.randomUUID() + "/reconnect", 403, "MFA_STEP_UP_REQUIRED");
         assertResponse("GET", "/api/v1/integrations/connections", 200, null);
+        assertResponse("GET", "/api/v1/integrations/google-calendar/config", 200, null);
+        assertResponse("GET", "/api/v1/integrations/google-calendar/calendar.ics", 403, "MFA_STEP_UP_REQUIRED");
+        assertResponse("POST", "/api/v1/integrations/google-calendar/consents", 403, "MFA_STEP_UP_REQUIRED");
+        assertResponse("POST", "/api/v1/integrations/google-calendar/consents/" + UUID.randomUUID() + "/complete", 403, "MFA_STEP_UP_REQUIRED");
+        assertResponse("POST", "/api/v1/integrations/connections/" + UUID.randomUUID() + "/reconcile", 403, "MFA_STEP_UP_REQUIRED");
+        assertResponse("POST", "/api/v1/integrations/google-calendar/connections/" + UUID.randomUUID() + "/revocation/retry", 403, "MFA_STEP_UP_REQUIRED");
         assertResponse("POST", "/api/v1/support/diagnostics", 403, "MFA_STEP_UP_REQUIRED");
         assertResponse("GET", "/api/v1/support/diagnostics/" + UUID.randomUUID() + "/download", 403, "MFA_STEP_UP_REQUIRED");
         assertResponse("DELETE", "/api/v1/auth/sessions/" + familyId, 403, "MFA_STEP_UP_REQUIRED");
         verified(Instant.now().truncatedTo(ChronoUnit.SECONDS));
         assertResponse("PUT", "/api/v1/admin/users/" + UUID.randomUUID() + "/permissions", 200, null);
         assertResponse("POST", "/api/v1/integrations/connections", 200, null);
+        assertResponse("GET", "/api/v1/integrations/google-calendar/calendar.ics", 200, null);
+        assertResponse("POST", "/api/v1/integrations/google-calendar/consents", 200, null);
         assertResponse("GET", "/api/v1/support/diagnostics/preview", 200, null);
     }
 

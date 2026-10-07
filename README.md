@@ -17,7 +17,7 @@ Run npm commands from `frontend/` and Maven from `backend/`. Start with the [fro
 
 The [reliability audit](docs/V2_AUDIT.md), [product roadmap and sprint estimates](docs/PRODUCT_ROADMAP.md), and [requirements and release gates](docs/V2_REQUIREMENTS.md) distinguish completed fixes from planned commercial, enterprise and SaaS work.
 
-[Sprint 11](docs/SPRINT_11.md) adds owner-scoped integration simulators with protected credentials, durable delivery/retry evidence, and authorized redacted support packages. Real calendar and messaging providers follow in S12–S13.
+[Sprint 11](docs/SPRINT_11.md) adds owner-scoped integration simulators with protected credentials, durable delivery/retry evidence, and authorized redacted support packages. [Sprint 12](docs/SPRINT_12.md) implements Google Calendar consent, one-way approved appointment delivery, reconciliation, and a calendar-file fallback. Real Google UAT remains a release gate; the messaging provider follows in S13.
 
 ```sh
 cd frontend
