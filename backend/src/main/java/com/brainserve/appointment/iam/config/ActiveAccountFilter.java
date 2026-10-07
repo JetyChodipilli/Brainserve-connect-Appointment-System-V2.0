@@ -118,6 +118,8 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 || (write && path.matches("/admin/staff-accounts/[^/]+/(reset-password|email|status)"))
                 || path.startsWith("/admin/account-closures/archived-recovery")
                 || (write && path.startsWith("/admin/account-closures/direct-archive"))
+                || (write && path.startsWith("/integrations/"))
+                || path.equals("/support/diagnostics") || path.startsWith("/support/diagnostics/")
                 || path.equals("/report-exports") || path.startsWith("/report-exports/");
     }
     private boolean reject(HttpServletResponse response, HttpStatus status, String code, String detail) throws IOException {

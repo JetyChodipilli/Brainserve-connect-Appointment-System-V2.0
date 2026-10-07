@@ -146,6 +146,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         redis.opsForValue().set(otpKey(appointment.getReferenceNumber()), hash(otp), Duration.ofMinutes(10));
         events.publishEvent(new AppointmentEvents.AppointmentRequested(appointment.getId(), appointment.getReferenceNumber(),
                 command.visitorEmail(), otp, Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_CREATED");
         audit.record("APPOINTMENT_REQUESTED", "APPOINTMENT", appointment.getId().toString(),
                 "{\"reference\":\"" + appointment.getReferenceNumber() + "\"}");
         return appointment;
@@ -157,6 +158,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         appointment = save(appointment);
         events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(appointment.getId(),
                 appointment.getReferenceNumber(), appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_CREATED");
         audit.record("VISITOR_RECEPTION_REGISTERED", "APPOINTMENT", appointment.getId().toString(),
                 "{\"reference\":\"" + appointment.getReferenceNumber() + "\"}");
         return appointment;
@@ -174,7 +176,9 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         events.publishEvent(new AppointmentEvents.SecurityIntakeRecorded(appointment.getId(),
                 appointment.getReferenceNumber(), securityUserId, appointment.getArrivalVisitorName(),
                 appointment.getArrivalPurpose(), Instant.now()));
-        publishStatus(appointment);
+        events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(appointment.getId(),
+                appointment.getReferenceNumber(), appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_CREATED");
         return appointment;
     }
 
@@ -273,6 +277,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         audit.record("APPOINTMENT_CONTACT_VERIFIED", "APPOINTMENT", appointment.getId().toString(),
                 "{\"reference\":\"" + appointment.getReferenceNumber() + "\"}");
         events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(appointment.getId(), reference, appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_UPDATED");
         return appointment;
     }
 
@@ -324,6 +329,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         audit.record("APPOINTMENT_APPROVED", "APPOINTMENT", id.toString(),
                 "{\"reference\":\"" + appointment.getReferenceNumber() + "\"}");
         events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(id, appointment.getReferenceNumber(), appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_UPDATED");
         return appointment;
     }
 
@@ -337,6 +343,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         audit.record("APPOINTMENT_REJECTED", "APPOINTMENT", id.toString(),
                 "{\"reference\":\"" + appointment.getReferenceNumber() + "\"}");
         events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(id, appointment.getReferenceNumber(), appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_UPDATED");
         return appointment;
     }
 
@@ -455,6 +462,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
                 actorUserId, appointment.getHostEmployeeId(), appointment.getType().name(),
                 appointment.getArrivalVisitorName() == null ? appointment.getVisitorName()
                         : appointment.getArrivalVisitorName(), remarks, Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_UPDATED");
         return appointment;
     }
 
@@ -642,7 +650,11 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
 
     @Override
     @Transactional
-    public void markCheckedIn(UUID appointmentId) { get(appointmentId).checkIn(); }
+    public void markCheckedIn(UUID appointmentId) {
+        Appointment appointment = get(appointmentId);
+        appointment.checkIn();
+        publishIntegration(appointment, "APPOINTMENT_UPDATED");
+    }
 
     @Override
     @Transactional
@@ -650,6 +662,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         Appointment appointment = get(appointmentId);
         appointment.checkOut();
         appointment.complete();
+        publishIntegration(appointment, "APPOINTMENT_UPDATED");
     }
 
     @Override
@@ -711,6 +724,13 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     private void publishStatus(Appointment appointment) {
         events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(appointment.getId(),
                 appointment.getReferenceNumber(), appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, appointment.getStatus() == AppointmentStatus.CANCELLED
+                ? "APPOINTMENT_CANCELLED" : "APPOINTMENT_UPDATED");
+    }
+    private void publishIntegration(Appointment appointment, String eventType) {
+        events.publishEvent(new AppointmentEvents.IntegrationChange(UUID.randomUUID(), appointment.getId(), eventType,
+                appointment.getStatus().name(), appointment.getType().name(), appointment.getSlotStart(),
+                appointment.getSlotEnd(), Instant.now()));
     }
     private void publishEmployeeVisitCard(Appointment appointment, UUID actorUserId) {
         if (appointment.getType() != AppointmentType.EMPLOYEE_VISIT) return;

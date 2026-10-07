@@ -34,6 +34,8 @@ class AuthenticatedRequestLimitFilterTest {
     @ParameterizedTest
     @CsvSource({"POST,/api/v1/documents,upload,20", "POST,/api/v1/profile/me/photo,upload,20",
             "POST,/api/v1/report-exports,export-job,5", "POST,/api/v1/report-exports/REF/retry,export-job,5",
+            "POST,/api/v1/support/diagnostics,export-job,5", "GET,/api/v1/support/diagnostics/REF/download,export,30",
+            "GET,/api/v1/support/diagnostics/preview,search,120", "POST,/api/v1/integrations/connections,integration-write,5",
             "GET,/api/v1/report-exports/REF/download-url,export,30", "GET,/api/v1/history,search,120",
             "GET,/api/v1/visitors/search,search,120", "GET,/api/v1/realtime/stream,stream-connect,12"})
     void expensiveRoutesHaveExplicitAccountBudgets(String method, String path, String operation, int limit) throws Exception {

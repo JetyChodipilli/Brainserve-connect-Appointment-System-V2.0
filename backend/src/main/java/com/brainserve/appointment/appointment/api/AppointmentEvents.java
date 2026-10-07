@@ -5,6 +5,9 @@ import java.util.UUID;
 
 public final class AppointmentEvents {
     private AppointmentEvents() {}
+    /** Safe integration snapshot, published synchronously inside the business transaction. */
+    public record IntegrationChange(UUID eventId, UUID appointmentId, String eventType, String status, String appointmentType,
+                                    Instant slotStart, Instant slotEnd, Instant occurredAt) {}
     public record AppointmentRequested(UUID appointmentId, String reference, String visitorEmail, String otp, Instant occurredAt) {}
     public record AppointmentCancellationOtpRequested(UUID appointmentId, String reference,
                                                       String visitorEmail, String otp,

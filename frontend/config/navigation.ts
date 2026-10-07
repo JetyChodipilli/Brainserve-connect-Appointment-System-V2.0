@@ -9,6 +9,8 @@ import {
     IdCard,
     LayoutDashboard,
     MessageSquare,
+    Plug,
+    LifeBuoy,
     Settings,
     Sparkles,
     UserCog,
@@ -30,6 +32,7 @@ export const navItems: { id: View; label: string; icon: typeof LayoutDashboard }
     { id: "reports", label: "Reports", icon: FileText },
     { id: "audit", label: "Audit trail", icon: FileClock },
     { id: "logs", label: "Logs", icon: FileText },
+    { id: "integrations", label: "Integrations", icon: Plug },
+    { id: "support", label: "Support diagnostics", icon: LifeBuoy },
     { id: "settings", label: "Settings", icon: Settings },
 ];
-
