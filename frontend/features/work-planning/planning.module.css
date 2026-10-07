@@ -1,0 +1,50 @@
+.workspace { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass); color: var(--ink); font: 500 14px/1.6 var(--font-ui); }
+.workspace *, .dialog *, .handover * { box-sizing: border-box; }
+.workspace h2, .dialog h2 { margin: 0; font: 500 28px/1.2 var(--font-display); overflow-wrap: anywhere; }
+.workspace h3, .dialog h3, .handover h3 { margin: 0; font: 700 17px/1.5 var(--font-ui); }
+.workspace h4 { margin: 0; font: 700 15px/1.5 var(--font-ui); overflow-wrap: anywhere; }
+.workspace p, .dialog p, .handover p { margin: 6px 0 12px; overflow-wrap: anywhere; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-width: 0; }
+.heading > div { min-width: 0; }
+.eyebrow { color: var(--red-800); font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+.content, .form, .section, .handover { display: grid; gap: 16px; min-width: 0; }
+.content { margin-top: 18px; }
+.section { padding-top: 18px; border-top: 1px solid var(--line); }
+.metricGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.memberGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.card { min-width: 0; border: 1px solid var(--line); background: var(--white); border-radius: 12px; padding: 16px; overflow-wrap: anywhere; }
+.metricGrid .card { display: flex; flex-direction: column; gap: 8px; }
+.metricGrid .card > button { margin-top: auto; align-self: flex-start; }
+.metricValue { font: 500 36px/1.2 var(--font-display); color: var(--red-950); }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.memberFacts, .metricFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0; }
+.facts dt, .memberFacts dt, .metricFacts dt { color: var(--red-950); font-size: 12px; }
+.facts dd, .memberFacts dd, .metricFacts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.tag { display: inline-flex; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 800; background: var(--red-50); color: var(--red-950); }
+.note { color: var(--red-950); font-size: 12px; }
+.unavailable { color: var(--red-950); padding-inline-start: 10px; border-inline-start: 3px solid var(--red-600); }
+.actions, .pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.pagination { border-top: 1px solid var(--line); padding-top: 12px; }
+.pagination > span { flex: 1 1 220px; font-size: 12px; }
+.workspace button, .dialog button, .handover button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.workspace :focus-visible, .dialog :focus-visible, .handover :focus-visible { outline: 3px solid var(--red-600); outline-offset: 3px; }
+.empty, .callout, .notice, .error { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--red-50); color: var(--red-950); }
+.error { border-color: var(--red-600); }
+.notice { border-inline-start: 4px solid var(--red-700); }
+.dialog { width: min(860px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); padding: 0; overflow-y: auto; color: var(--ink); font: 500 14px/1.6 var(--font-ui); }
+.form { padding: 24px; }
+.filterForm { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 12px; align-items: end; min-width: 0; }
+.filterForm label, .dialog label { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 700; }
+.filterForm input, .filterForm select, .dialog input, .dialog select, .dialog textarea { width: 100%; min-width: 0; min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); color: var(--ink); font: 500 14px/1.5 var(--font-ui); }
+.dialog textarea { resize: vertical; }
+.workspace summary, .dialog summary { min-height: 44px; cursor: pointer; color: var(--red-950); font-weight: 700; overflow-wrap: anywhere; }
+.table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.table th, .table td { text-align: start; padding: 10px 5px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.recordList, .history { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.history li { border-bottom: 1px solid var(--line); padding-bottom: 12px; overflow-wrap: anywhere; }
+.handover { padding-block: 4px; font: 500 14px/1.6 var(--font-ui); }
+.drawer :global(.work-drawer-tabs) { flex-wrap: wrap; }
+.drawer :global(.work-drawer-tabs) button { flex: 1 1 115px; min-width: 0; min-height: 44px; white-space: normal; }
+@media (max-width: 1000px) { .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filterForm { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .workspace { padding: 16px; } .form { padding: 18px; } .metricGrid, .memberGrid, .facts, .filterForm { grid-template-columns: minmax(0, 1fr); } .heading > .actions, .actions > button { flex: 1 1 auto; } .dialog { width: calc(100vw - 20px); max-width: calc(100vw - 20px); max-height: calc(100dvh - 20px); } .table { font-size: 11px; } }
+@media (prefers-reduced-motion: reduce) { .workspace button, .dialog button, .handover button { transition: none; } }

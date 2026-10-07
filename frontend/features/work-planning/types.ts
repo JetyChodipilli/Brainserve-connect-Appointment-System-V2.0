@@ -1,0 +1,23 @@
+export type AnalyticsFilters = { from: string; to: string; departmentId: string };
+export type AnalyticsContext = { metricVersion: string; officeZone: string; officeDate: string; scope: string; departmentOptions: { id: string; name: string }[]; canReadWorkload: boolean; canHandover: boolean };
+export type WorkloadMember = { employeeId: string; userId: string | null; name: string; role: string; eligible: boolean; unavailableReasons: string[]; activeTasks: number; dueToday: number; upcoming: number; overdueDelivery: number; pendingReview: number; blocked: number; estimatedMinutes: number | null; estimatedTasks: number; unestimatedTasks: number; capacityMinutes: number | null };
+export type Workload = { metricVersion: string; generatedAt: string; officeZone: string; officeDate: string; scope: string; departmentId: string | null; departmentName: string | null; members: WorkloadMember[]; totals: { activeTasks: number; dueToday: number; upcoming: number; overdueDelivery: number; pendingReview: number; blocked: number; estimatedMinutes: number | null; estimatedTasks: number; unestimatedTasks: number; capacityMinutes?: number | null } };
+export type WorkMetric = { id: string; title: string; kind: string; unit: string; value: number | null; numerator: number | null; denominator: number | null; sampleCount: number; coverageKnown: number; coverageTotal: number; excluded: number; smallSample: boolean; definition: string; reason: string | null };
+export type WorkStage = { stage: string; sampleCount: number; medianSeconds: number | null; p95Seconds: number | null; unresolved: number; oldestUnresolvedSeconds: number | null; coverageKnown: number; coverageTotal: number };
+export type WorkTrend = { date: string; denominator: number; numerator: number; value: number | null };
+export type WorkDepartmentTrend = { departmentId: string; departmentName: string; denominator: number; numerator: number; value: number | null; trend: WorkTrend[] };
+export type WorkSummary = { metricVersion: string; generatedAt: string; officeZone: string; from: string; to: string; departmentId: string | null; scope: string; cards: WorkMetric[]; stages: WorkStage[]; trend: WorkTrend[]; departmentTrends: WorkDepartmentTrend[] };
+export type WorkMetricRecord = { id: string; title: string; departmentId: string; departmentName: string; employeeId: string; assigneeName: string; status: string; originalDueDate: string | null; dueDate: string; occurredAt: string | null; detail: string };
+export type WorkMetricPage = { metricVersion: string; generatedAt: string; number: number; size: number; totalElements: number; totalPages: number; items: WorkMetricRecord[] };
+export type HandoverHistory = { id: string; fromEmployeeId: string; fromName: string; toEmployeeId: string; toName: string; actorUserId: string; actorName: string; reason: string; effectiveAt: string; occurredAt: string; assignmentRevision: number; previousSubmissionVersion: number | null };
+export type HandoverView = { taskId: string; taskVersion: number; currentEmployeeId: string; originalEmployeeId: string; currentAssigneeName: string; originalAssigneeName: string; canHandover: boolean; unavailableReason: string | null; eligibleAssignees: { employeeId: string; displayName: string; role: string }[]; history: HandoverHistory[]; historyTruncated: boolean };
+export type HandoverChange = { expectedVersion: number; targetEmployeeId: string; reason: string; effectiveAt?: string | null };
+export type PlanningTransport = {
+    context(signal: AbortSignal): Promise<AnalyticsContext>;
+    workload(departmentId: string, signal: AbortSignal): Promise<Workload>;
+    summary(filters: AnalyticsFilters, signal: AbortSignal): Promise<WorkSummary>;
+    records(metric: string, filters: AnalyticsFilters, version: string, page: number, signal: AbortSignal): Promise<WorkMetricPage>;
+    export(metric: string, filters: AnalyticsFilters, version: string, signal: AbortSignal): Promise<Blob>;
+    handover(taskId: string, signal: AbortSignal): Promise<HandoverView>;
+    changeHandover(taskId: string, body: HandoverChange, signal: AbortSignal): Promise<HandoverView>;
+};

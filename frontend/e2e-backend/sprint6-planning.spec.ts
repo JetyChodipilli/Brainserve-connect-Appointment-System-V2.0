@@ -146,7 +146,7 @@ for (const width of [360, 768, 1440]) test(`planning evidence keyboard and respo
     await drawer(page).getByLabel('Verify reconciliation').check();
     await drawer(page).getByRole('button', { name: 'Save checklist progress' }).click();
     await expect(drawer(page).getByRole('heading', { name: 'Checklist · 1/1' })).toBeVisible();
-    await drawer(page).getByText('Version 1 · Accepted by Team Lead', { exact: true }).click();
+    await drawer(page).getByText('Version 1 · original author not recorded · Historical acceptance retained', { exact: true }).click();
     await expect(drawer(page).getByText('Complete · Original accepted requirement (required)', { exact: true })).toBeVisible();
     const download = page.waitForEvent('download'); await drawer(page).getByRole('button', { name: 'Download accepted.pdf' }).click(); expect((await download).suggestedFilename()).toBe('accepted.pdf');
     await page.screenshot({ path: `test-results/sprint6-planning-${width}.png` }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -176,7 +176,7 @@ test('blockers preserve deadline and denied reload removes controls; close retai
 
 for (const status of [403, 404]) test(`denied evidence download ${status} clears retained content and selected file`, async ({ page }) => {
     const { state } = await fixture(page); await planningTab(page);
-    await drawer(page).getByText('Version 1 · Accepted by Team Lead', { exact: true }).click();
+    await drawer(page).getByText('Version 1 · original author not recorded · Historical acceptance retained', { exact: true }).click();
     await drawer(page).getByLabel('Evidence file (JPEG, PNG or PDF)').setInputFiles({ name: 'private-selected.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic') });
     state.downloadStatus = status;
     await drawer(page).getByRole('button', { name: 'Download accepted.pdf' }).click();

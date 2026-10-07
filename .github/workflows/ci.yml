@@ -96,6 +96,17 @@ jobs:
         working-directory: .
         run: node scripts/check-recurrence-calendar.mjs
 
+      - name: Verify work metric arithmetic and export safety
+        working-directory: .
+        run: node scripts/check-work-metrics.mjs
+
+      - name: Verify Sprint 9 PostgreSQL and Redis behavior first
+        env:
+          ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          PII_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
+        run: mvn --batch-mode --no-transfer-progress -Dtest=Sprint9HandoverPostgresIntegrationTest,Sprint9WorkAnalyticsPostgresIntegrationTest test
+
       - name: Compile and test backend
         env:
           ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

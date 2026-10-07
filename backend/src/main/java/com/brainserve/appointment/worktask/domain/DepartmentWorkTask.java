@@ -20,8 +20,12 @@ import java.util.UUID;
 public class DepartmentWorkTask extends AuditableEntity {
     @Column(name = "department_id", nullable = false, updatable = false)
     private UUID departmentId;
-    @Column(name = "employee_id", nullable = false, updatable = false)
+    @Column(name = "employee_id", nullable = false)
     private UUID employeeId;
+    @Column(name = "original_employee_id", nullable = false, updatable = false)
+    private UUID originalEmployeeId;
+    @Column(name = "assignment_revision", nullable = false)
+    private long assignmentRevision;
     @Column(name = "team_lead_user_id", nullable = false)
     private UUID teamLeadUserId;
     @Column(name = "assigned_by_user_id", nullable = false, updatable = false)
@@ -89,6 +93,7 @@ public class DepartmentWorkTask extends AuditableEntity {
                               String title, String description, String departmentBranch, LocalDate dueDate) {
         this.departmentId = departmentId;
         this.employeeId = employeeId;
+        this.originalEmployeeId = employeeId;
         this.teamLeadUserId = teamLeadUserId;
         this.assignedByUserId = assignedByUserId;
         this.assignedByRole = assignedByRole;
@@ -112,6 +117,9 @@ public class DepartmentWorkTask extends AuditableEntity {
     }
 
     public void complete(String update) {
+        complete(update,null,null);
+    }
+    public void complete(String update, UUID authorUserId, String authorName) {
         if (status != WorkTaskStatus.ASSIGNED && status != WorkTaskStatus.IN_PROGRESS
                 && status != WorkTaskStatus.CHANGES_REQUESTED) invalid("completed");
         planning.requireSubmission(evidenceRequired);
@@ -120,7 +128,7 @@ public class DepartmentWorkTask extends AuditableEntity {
         if (startedAt == null) startedAt = Instant.now();
         completedAt = Instant.now();
         submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
-        planning.capture(submissionVersion, completedAt);
+        planning.capture(submissionVersion, completedAt,authorUserId==null?null:employeeId,authorUserId,authorName,assignmentRevision,employeeUpdate);
         approvedAt = null;
         acknowledgedAt = null;
     }
@@ -176,6 +184,9 @@ public class DepartmentWorkTask extends AuditableEntity {
     }
 
     public void reviseInsightReworkSubmission(String update) {
+        reviseInsightReworkSubmission(update,null,null);
+    }
+    public void reviseInsightReworkSubmission(String update,UUID authorUserId,String authorName) {
         if (!"TEAM_LEAD".equals(assigneeRole) || status != WorkTaskStatus.COMPLETED
                 || reworkCycle < 1 || insightReviewReason == null) {
             invalid("updated after rework submission");
@@ -184,10 +195,13 @@ public class DepartmentWorkTask extends AuditableEntity {
         employeeUpdate = required(update, "A revised completion update is required");
         completedAt = Instant.now();
         submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
-        planning.capture(submissionVersion, completedAt);
+        planning.capture(submissionVersion, completedAt,authorUserId==null?null:employeeId,authorUserId,authorName,assignmentRevision,employeeUpdate);
     }
 
     public void reviseEmployeeReworkSubmission(String update) {
+        reviseEmployeeReworkSubmission(update,null,null);
+    }
+    public void reviseEmployeeReworkSubmission(String update,UUID authorUserId,String authorName) {
         if (!"EMPLOYEE".equals(assigneeRole)) {
             throw new BusinessException("WORK_TASK_REWORK_UPDATE_DENIED",
                     "Only the assigned Employee can update this rework submission",
@@ -202,7 +216,7 @@ public class DepartmentWorkTask extends AuditableEntity {
         employeeUpdate = required(update, "A revised completion update is required");
         completedAt = Instant.now();
         submissionVersion = submissionVersion == null ? 1L : submissionVersion + 1;
-        planning.capture(submissionVersion, completedAt);
+        planning.capture(submissionVersion, completedAt,authorUserId==null?null:employeeId,authorUserId,authorName,assignmentRevision,employeeUpdate);
     }
 
     public void finalizeInsightApproval() {
@@ -226,6 +240,22 @@ public class DepartmentWorkTask extends AuditableEntity {
 
     public boolean requiresTeamLeadReview() {
         return "EMPLOYEE".equals(assigneeRole);
+    }
+
+    /** A revised delivery assignment retains prior authored evidence and starts a new draft. */
+    public void handover(UUID targetEmployeeId,UUID targetUserId,Instant at) {
+        if(employeeId.equals(targetEmployeeId)) throw new BusinessException("WORK_TASK_HANDOVER_INVALID","Choose a different assignee",HttpStatus.UNPROCESSABLE_ENTITY);
+        planning.retainDraft(employeeId,assignmentRevision,employeeUpdate,at);
+        employeeId=targetEmployeeId;
+        if("TEAM_LEAD".equals(assigneeRole)) teamLeadUserId=targetUserId;
+        assignmentRevision++;
+        status=WorkTaskStatus.ASSIGNED;
+        employeeUpdate=null;
+        teamLeadReview=null;
+        insightReviewSource=null;
+        insightReviewReason=null;
+        insightReviewRequestedAt=null;
+        startedAt=null;completedAt=null;approvedAt=null;acknowledgedAt=null;
     }
 
     public void reassignOpenTask(UUID expectedTeamLeadUserId, UUID replacementTeamLeadUserId) {
@@ -276,6 +306,8 @@ public class DepartmentWorkTask extends AuditableEntity {
 
     public UUID getDepartmentId() { return departmentId; }
     public UUID getEmployeeId() { return employeeId; }
+    public UUID getOriginalEmployeeId() { return originalEmployeeId; }
+    public long getAssignmentRevision() { return assignmentRevision; }
     public UUID getTeamLeadUserId() { return teamLeadUserId; }
     public UUID getAssignedByUserId() { return assignedByUserId; }
     public String getAssignedByRole() { return assignedByRole; }

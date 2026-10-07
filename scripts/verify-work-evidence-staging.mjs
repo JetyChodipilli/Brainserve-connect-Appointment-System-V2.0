@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { embeddedTestPdf } from './fixtures/work-evidence-pdf.mjs';
+import { verifyWorkPlanningStaging } from './verify-work-planning-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -53,8 +54,8 @@ insert into iam_refresh_token_session(id,user_id,token_hash,family_id,expires_at
 }
 sql(`insert into department_team_lead(id,department_id,team_lead_user_id,team_lead_employee_id,active,assigned_by_user_id,assigned_at,${auditColumns}) values('${id()}','${department}','${lead}','${leadEmployee}',true,'${lead}',now(),${auditValues});`);
 const ca = readFileSync(join(process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence', 'staging-ca.crt'));
-async function call(person, path, method = 'GET', value, expected = 200) {
-  let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: 'application/json' };
+async function call(person, path, method = 'GET', value, expected = 200, accept = 'application/json') {
+  let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: accept };
   if (value instanceof FormData) {
     const encoded = new Request('https://localhost', { method: 'POST', body: value });
     body = Buffer.from(await encoded.arrayBuffer()); headers['Content-Type'] = encoded.headers.get('content-type');
@@ -193,6 +194,8 @@ assert.equal((await call(employeePerson, `${scheduledTaskPath}/planning`)).json.
 assert.deepEqual((await call(employeePerson, `${scheduledTaskPath}/evidence/${scheduledEvidence.id}/download`)).bytes, safe);
 await call(otherPerson, `${scheduledTaskPath}/planning`, 'GET', undefined, [403, 404]);
 console.log('SPRINT8_RECURRENCE_SNAPSHOT_NOTIFICATION_EVIDENCE_VERIFIED');
+await verifyWorkPlanningStaging({ call, sql, leadPerson, employeePerson, otherPerson,
+  taskId: created.id, evidence, safe, workerEmployee, strangerEmployee, tomorrow });
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

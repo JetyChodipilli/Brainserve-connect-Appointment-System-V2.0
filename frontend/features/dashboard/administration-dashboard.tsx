@@ -12,6 +12,7 @@ import { dashboardFirstIds, dashboardPeriods, dashboardQuery, dashboardTimestamp
     type DashboardCards, type DashboardRange, type DashboardRecords, type DashboardRole, type MetricCard } from "./administration-dashboard-model";
 import { useDashboardResource } from "./use-dashboard-resource";
 import styles from "./administration-dashboard.module.css";
+import { WorkAnalyticsWorkspace } from "../work-planning/work-analytics-workspace";
 
 export const dashboardCardsEnabled = process.env.NEXT_PUBLIC_DASHBOARD_CARDS_ENABLED !== "false";
 
@@ -173,6 +174,7 @@ export function AdministrationDashboard({ role, userEmail, refreshKey, onNavigat
         {data && <details className={`${styles.coverage} glass-panel`}><summary>Source coverage and history</summary>
             {data.coverage.length === 0 ? <p>No source coverage metadata was returned.</p> : <ul>{data.coverage.map((item) => <li key={item.id}><strong>{item.title} · {item.state}</strong>
                 <p>{item.reason}</p><small>History since {item.since ? dashboardTimestamp(item.since, data.officeZone) : "unknown; legacy coverage is not confirmed"}</small></li>)}</ul>}</details>}
+        {role === "CEO" && <WorkAnalyticsWorkspace role={role} identityKey={`${role}:${userEmail}`} />}
         {selected && data && selected.scope === resource.scope && <RecordDialog key={`${selected.scope}:${selected.card.id}`} card={selected.card} range={recordRange}
             scope={resource.scope} refreshKey={refreshKey} zone={data?.officeZone ?? "UTC"} onClose={() => setSelected(null)} />}
     </section>;
