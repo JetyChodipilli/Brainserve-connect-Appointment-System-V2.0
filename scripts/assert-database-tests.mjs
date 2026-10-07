@@ -16,6 +16,8 @@ for (const name of [
   "com.brainserve.appointment.Sprint9HandoverPostgresIntegrationTest",
   "com.brainserve.appointment.Sprint9WorkAnalyticsPostgresIntegrationTest",
   "com.brainserve.appointment.Sprint10NotificationPostgresIntegrationTest",
+  "com.brainserve.appointment.Sprint11IntegrationPostgresIntegrationTest",
+  "com.brainserve.appointment.Sprint11SupportPostgresIntegrationTest",
   "com.brainserve.appointment.iam.AccountProvisioningIntegrationTest",
   "com.brainserve.appointment.iam.SystemAdminPasswordChangeOtpIntegrationTest",
   "com.brainserve.appointment.iam.PrivilegedSecurityIntegrationTest",

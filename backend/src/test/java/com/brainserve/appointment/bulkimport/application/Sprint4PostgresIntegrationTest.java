@@ -72,7 +72,7 @@ class Sprint4PostgresIntegrationTest {
     }
     @Test void v54IsAdditiveAndDoesNotSeedBusinessData() {
         var flyway=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).load();flyway.validate();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("64");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("66");
         Map<String,Integer> checksums=new TreeMap<>();for(var m:flyway.info().applied()) if(m.getVersion().getMajor().intValue()<=53) checksums.put(m.getVersion().toString(),m.getChecksum());
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         for(var m:flyway.info().applied()) if(m.getVersion().getMajor().intValue()<=53) assertThat(m.getChecksum()).isEqualTo(checksums.get(m.getVersion().toString()));

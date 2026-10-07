@@ -5,6 +5,8 @@ import com.brainserve.appointment.audit.api.AuditService;
 import com.brainserve.appointment.reception.domain.VisitAccessRecord;
 import com.brainserve.appointment.reception.api.ReceptionStatistics;
 import com.brainserve.appointment.reception.api.ReceptionRecords;
+import com.brainserve.appointment.reception.api.ReceptionEvents;
+import org.springframework.context.ApplicationEventPublisher;
 import com.brainserve.appointment.reception.infrastructure.VisitAccessRecordRepository;
 import com.brainserve.appointment.shared.application.BusinessException;
 import jakarta.persistence.EntityManager;
@@ -21,8 +23,11 @@ public class ReceptionService implements ReceptionStatistics, ReceptionRecords {
     private final AppointmentAccess appointments;
     private final EntityManager entityManager;
     private final AuditService audit;
-    public ReceptionService(VisitAccessRecordRepository records, AppointmentAccess appointments, EntityManager entityManager, AuditService audit) {
+    private final ApplicationEventPublisher events;
+    public ReceptionService(VisitAccessRecordRepository records, AppointmentAccess appointments, EntityManager entityManager,
+                            AuditService audit, ApplicationEventPublisher events) {
         this.records = records; this.appointments = appointments; this.entityManager = entityManager; this.audit = audit;
+        this.events = events;
     }
 
     @Transactional
@@ -44,6 +49,7 @@ public class ReceptionService implements ReceptionStatistics, ReceptionRecords {
         long badge = ((Number) entityManager.createNativeQuery("select nextval('visitor_badge_seq')").getSingleResult()).longValue();
         appointments.markCheckedIn(appointmentId);
         VisitAccessRecord record = records.save(new VisitAccessRecord(appointmentId, appointment.visitorName(), "B-" + String.format("%03d", badge), actor));
+        events.publishEvent(new ReceptionEvents.VisitorArrived(UUID.randomUUID(), appointmentId, record.getCheckedInAt()));
         audit.record("VISITOR_CHECK_IN", "APPOINTMENT", appointmentId.toString(), "{\"badge\":\"" + record.getBadgeNumber() + "\"}");
         return record;
     }

@@ -4,7 +4,7 @@ export type Role = "HR Admin" | "Manager" | "Team Lead" | "CEO" | "Employee" | "
 
 export type Screen = "welcome" | "book" | "track" | "login" | "register" | "forgot-password" | "forgot-email" | "app";
 
-export type View = "overview" | "appointments" | "work" | "performance" | "insights" | "employees" | "terminations" | "account-lifecycle" | "visitors" | "notifications" | "organization" | "reports" | "audit" | "logs" | "settings" | "profile";
+export type View = "overview" | "appointments" | "work" | "performance" | "insights" | "employees" | "terminations" | "account-lifecycle" | "visitors" | "notifications" | "organization" | "reports" | "audit" | "logs" | "settings" | "profile" | "integrations" | "support";
 
 export type AppointmentStatus = "Approved" | "Awaiting Security" | "Awaiting Reception" | "Awaiting HR" | "Awaiting Team Lead" | "Awaiting Manager" | "Awaiting CEO" |
     "Pending" | "Checked in" | "Completed" | "Rejected" | "Cancelled" | "Expired";

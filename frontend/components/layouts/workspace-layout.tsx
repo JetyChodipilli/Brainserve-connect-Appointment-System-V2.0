@@ -26,6 +26,8 @@ import { PrivacyCentreModal } from "../../features/privacy/privacy-centre-modal"
 import { MyProfileView } from "../../features/profile/my-profile-view";
 import { ReportsView } from "../../features/reports/reports-view";
 import { SettingsView } from "../../features/settings/settings-view";
+import { IntegrationsWorkspace } from "../../features/integrations/integrations-workspace";
+import { SupportWorkspace } from "../../features/support/support-workspace";
 import { SecurityIntakeModal } from "../../features/visitors/components/security-intake-modal";
 import { VisitorsView } from "../../features/visitors/visitors-view";
 import { isBackendConfigured } from "../../services/brainserve-api";
@@ -193,6 +195,8 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                                                     accessRecords={accessRecords} refreshKey={workspaceRevision} onRefresh={requestWorkspaceRefresh} />}
                 {view === "audit" && <AuditView key={`audit:${workspaceRevision}`} />}
                 {view === "logs" && <EssentialLogsView key={`logs:${workspaceRevision}`} />}
+                {view === "integrations" && role === "System Admin" && <IntegrationsWorkspace key={`${role}:${userEmail}`} />}
+                {view === "support" && role === "System Admin" && <SupportWorkspace key={`${role}:${userEmail}`} />}
                 {view === "profile" && <MyProfileView key={`profile:${workspaceRevision}`} role={role} userEmail={userEmail}
                                                       departments={departments} employees={employees} staffAccounts={staffAccounts}
                                                       onProfileUpdated={handleProfileUpdated} />}

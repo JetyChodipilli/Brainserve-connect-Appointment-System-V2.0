@@ -47,5 +47,5 @@ export const rolePermissions: Record<Role, View[]> = {
     Employee: ["overview", "work", "employees", "notifications", "organization", "reports", "profile"],
     Reception: ["overview", "appointments", "visitors", "notifications", "reports", "profile"],
     Security: ["overview", "appointments", "visitors", "reports", "profile"],
-    "System Admin": ["overview", "insights", "account-lifecycle", "notifications", "reports", "audit", "logs", "settings", "profile"],
+    "System Admin": ["overview", "insights", "account-lifecycle", "notifications", "reports", "audit", "logs", "integrations", "support", "settings", "profile"],
 };

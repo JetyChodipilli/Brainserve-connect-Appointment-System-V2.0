@@ -1,0 +1,44 @@
+.workspace { display: grid; gap: 16px; min-width: 0; color: var(--ink); }
+.heading { display: flex; gap: 16px; justify-content: space-between; align-items: start; }
+.heading h1 { font-family: var(--font-display); font-size: clamp(25px, 3vw, 34px); font-weight: 500; line-height: 1.15; margin: 0 0 8px; text-wrap: balance; overflow-wrap: anywhere; }
+.heading p, .panel p { line-height: 1.55; margin: 8px 0; overflow-wrap: anywhere; }
+.heading p, .muted { color: var(--muted); }
+.panel { padding: 20px; min-width: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--glass); box-shadow: var(--shadow-soft); }
+.panel h2 { font-size: 19px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.panel h3 { font-size: 16px; margin: 18px 0 10px; }
+.columns { display: grid; grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.5fr); gap: 16px; align-items: start; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.fields label, .field { display: grid; gap: 7px; min-width: 0; font-size: 14px; font-weight: 650; }
+.workspace input, .workspace select { min-width: 0; max-width: 100%; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--white); color: var(--ink); font: inherit; }
+.workspace button { cursor: pointer; min-height: 44px; max-width: 100%; white-space: normal; }
+.workspace button:disabled { cursor: default; }
+.workspace :is(button, input, select, summary):focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 0; }
+.list { display: grid; list-style: none; padding: 0; margin: 0; gap: 8px; }
+.connection { width: 100%; text-align: left; display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); color: var(--ink); font: inherit; }
+.connection[aria-pressed='true'] { border-color: var(--ink); box-shadow: inset 3px 0 var(--ink); }
+.connection:hover { background: var(--red-50); }
+.connection strong, .workspace dd, .workspace code, .row { overflow-wrap: anywhere; }
+.connection small { color: var(--muted); }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.facts div { min-width: 0; }
+.facts dt { font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: 5px; }
+.facts dd { font-size: 14px; margin: 0; line-height: 1.5; }
+.status { display: inline-flex; width: fit-content; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--ink); background: var(--white); }
+.workspace details { border-top: 1px solid var(--line); padding: 8px 0; }
+.workspace summary { display: list-item; min-height: 44px; align-content: center; cursor: pointer; font-weight: 650; overflow-wrap: anywhere; }
+.row { padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
+.rowHeader { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.rowHeader strong { font-size: 14px; }
+.preview { max-height: 380px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.preview dl { margin: 0; }
+.preview dt { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.preview dd { margin: 3px 0 12px; font-size: 13px; }
+.notice { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); line-height: 1.55; }
+.workspace fieldset { margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+.workspace legend { font-size: 16px; font-weight: 700; margin: 8px 0; }
+.workspace .check { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 14px; line-height: 1.5; }
+.workspace .check input { min-height: 24px; min-width: 24px; width: 24px; margin: 0; }
+@media (max-width: 900px) { .columns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 540px) { .panel { padding: 16px; } .fields, .facts { grid-template-columns: minmax(0, 1fr); } .heading { flex-direction: column; } .actions > button { flex: 1 1 140px; } .rowHeader { flex-wrap: wrap; } .workspace input, .workspace select { font-size: 16px; } }
+@media (prefers-reduced-motion: reduce) { .workspace * { transition: none; animation: none; } }

@@ -66,11 +66,15 @@ public class AuthenticatedRequestLimitFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         if ("POST".equals(method)) {
             if (path.equals("/api/v1/documents") || path.equals("/api/v1/profile/me/photo") || path.equals("/api/v1/bulk-imports/preview")) return new Rule("upload", uploads);
-            if (path.equals("/api/v1/report-exports") || path.matches("/api/v1/report-exports/[^/]+/retry"))
+            if (path.equals("/api/v1/report-exports") || path.matches("/api/v1/report-exports/[^/]+/retry")
+                    || path.equals("/api/v1/support/diagnostics"))
                 return new Rule("export-job", exportJobs);
+            if (path.startsWith("/api/v1/integrations/")) return new Rule("integration-write", exportJobs);
         }
         if ("GET".equals(method)) {
-            if (path.matches("/api/v1/report-exports/[^/]+/download-url")) return new Rule("export", exports);
+            if (path.matches("/api/v1/report-exports/[^/]+/download-url")
+                    || path.matches("/api/v1/support/diagnostics/[^/]+/download")) return new Rule("export", exports);
+            if (path.equals("/api/v1/support/diagnostics/preview")) return new Rule("search", searches);
             if (path.equals("/api/v1/realtime/stream")) return new Rule("stream-connect", streamConnects);
             String query = request.getParameter("query");
             if (path.equals("/api/v1/history") || path.equals("/api/v1/visitors/search")

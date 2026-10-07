@@ -8,6 +8,8 @@ services:
       TRUSTED_PROXY_CIDRS: "${STAGING_PROXY_IP:-172.29.91.10}/32"
       FRONTEND_PUBLIC_URL: "https://${STAGING_DOMAIN:?Set STAGING_DOMAIN}"
       BRAIN_SERVE_ALLOWED_ORIGINS: "https://${STAGING_DOMAIN:?Set STAGING_DOMAIN}"
+      SUPPORT_ENVIRONMENT: STAGING
+      SUPPORT_BUILD_REVISION: "${RELEASE_ID:?Set RELEASE_ID}"
   frontend:
     image: "brainserve-frontend:${RELEASE_ID:?Set RELEASE_ID to the checked-out commit}"
     build:
