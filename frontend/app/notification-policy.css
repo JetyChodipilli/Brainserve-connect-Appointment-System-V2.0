@@ -1,0 +1,35 @@
+.notification-policy-panel { margin-block: 16px; padding: clamp(16px, 2vw, 24px); min-width: 0; }
+.notification-policy-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.notification-policy-heading h2 { margin: 0; font-size: clamp(20px, 2.5vw, 28px); max-width: 100%; text-wrap: balance; }
+.notification-policy-panel p { line-height: 1.6; font-size: 14px; }
+.notification-policy-panel small { font-size: 12px; line-height: 1.5; }
+.notification-policy-panel fieldset { margin: 16px 0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.notification-policy-panel legend { font-weight: 700; padding-inline: 6px; }
+.notification-policy-panel label:not(.notification-check), .notification-checks label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600; }
+.notification-policy-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-block: 12px; }
+.notification-policy-panel input:not([type=checkbox]), .notification-policy-panel select, .notification-policy-panel textarea { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #fff); color: var(--ink, #261c20); font: inherit; }
+.notification-policy-panel textarea { min-height: 90px; resize: vertical; }
+.notification-check, .notification-checks label { display: flex !important; flex-direction: row !important; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; }
+.notification-policy-panel input[type=checkbox] { accent-color: var(--red-700); width: 18px; height: 18px; flex-shrink: 0; }
+.notification-checks { display: grid; gap: 8px; }
+.notification-mandatory-note { display: flex; align-items: start; flex-wrap: wrap; gap: 10px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--red-50); color: var(--red-700); }
+.notification-mandatory-note svg { flex-shrink: 0; }
+.notification-mandatory-note span { flex: 1; min-width: min(180px, 100%); }
+.notification-policy-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-block: 12px; }
+.notification-policy-actions button, .notification-policy-panel button { min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
+.notification-policy-panel .button-primary { color: #fff; background: var(--red-700, #9d273b); }
+.notification-policy-meta { color: var(--muted); overflow-wrap: anywhere; }
+.approval-stage-card { border: 1px solid var(--line); border-radius: 12px; margin-block: 12px; overflow: clip; }
+.approval-stage-card > summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; cursor: pointer; min-height: 64px; padding: 16px; transition: background-color 150ms; }
+.approval-stage-card > summary:hover { background: var(--red-50); }
+.approval-stage-card summary strong, .approval-stage-card summary small { display: block; overflow-wrap: anywhere; }
+.approval-deadline { font-size: 13px; max-width: 45%; flex-shrink: 0; }
+.approval-stage-body { padding: 0 16px 16px; }
+.approval-detail-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-delegation > summary, .approval-policy-editor > summary { min-height: 44px; padding-block: 12px; cursor: pointer; font-size: 15px; font-weight: 700; }
+.approval-delegation form { display: grid; gap: 16px; margin-top: 16px; }
+.approval-policy-form { margin-block: 20px; }
+.approval-review-evidence article { padding: 12px; margin-block: 12px; border-left: 3px solid var(--red-700); background: var(--red-50); overflow-wrap: anywhere; }
+.notification-policy-panel :focus-visible { outline: 3px solid var(--red-700); outline-offset: 3px; }
+@media (max-width: 640px) { .notification-policy-fields { grid-template-columns: minmax(0, 1fr); } .approval-stage-card > summary { align-items: start; flex-direction: column; gap: 8px; } .approval-deadline { max-width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .approval-stage-card > summary { transition: none; } }

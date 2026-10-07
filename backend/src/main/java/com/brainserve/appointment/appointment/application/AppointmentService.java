@@ -58,6 +58,34 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     private final DepartmentHrDirectory departmentHrs;
     private final ManagerDirectory managers;
     private final SecureRandom random = new SecureRandom();
+    private com.brainserve.appointment.approvalpolicy.api.ReviewDelegations reviewDelegations;
+    private jakarta.persistence.EntityManager entityManager;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void reviewDelegations(com.brainserve.appointment.approvalpolicy.api.ReviewDelegations value) {reviewDelegations=value;}
+    @org.springframework.beans.factory.annotation.Autowired
+    public void entityManager(jakarta.persistence.EntityManager value) {entityManager=value;}
+    private boolean delegatedVisit(UUID actor,UUID resource,String stage) {
+        return reviewDelegations!=null && reviewDelegations.lockAllows(actor,"VISIT",resource,stage);
+    }
+
+    @Transactional
+    public Appointment reviewQueued(UUID actor,UUID id,UUID stageId,Long expectedVersion,boolean approved,String remarks) {
+        var s=reviewDelegations.requireReviewer(actor,stageId);
+        if(!s.kind().equals("VISIT")||!s.resourceId().equals(id)||expectedVersion==null) throw new BusinessException("APPROVAL_STAGE_UNAVAILABLE","Reload the current visit review stage",HttpStatus.CONFLICT);
+        Appointment visit=get(id);
+        entityManager.refresh(visit,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        reviewDelegations.requireReviewer(actor,stageId);
+        if(expectedVersion!=visit.getVersion()) throw new BusinessException("APPOINTMENT_VERSION_CONFLICT","This visit changed. Reload before deciding.",HttpStatus.CONFLICT);
+        return switch(s.stage()) {
+            case "HR_ADMIN" -> approved?approveByHr(id,actor,null,remarks):rejectByHr(id,actor,null,remarks);
+            case "TEAM_LEAD" -> approved?approveByTeamLead(id,actor,remarks):rejectByTeamLead(id,actor,remarks);
+            case "MANAGER" -> approved?approveByManager(id,actor,remarks):rejectByManager(id,actor,remarks);
+            case "CEO" -> approved?approveByCeo(id,actor,remarks):rejectByCeo(id,actor,remarks);
+            case "HOST" -> approved?approve(id,visit.getHostEmployeeId(),org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication(),remarks)
+                    :reject(id,visit.getHostEmployeeId(),org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication(),remarks);
+            default -> throw new BusinessException("APPROVAL_STAGE_UNAVAILABLE","This visit stage cannot be reviewed",HttpStatus.CONFLICT);
+        };
+    }
 
     public AppointmentService(AppointmentRepository appointments, EmployeeDirectory employees,
                               StringRedisTemplate redis, ApplicationEventPublisher events,
@@ -349,7 +377,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     @Transactional
     public Appointment approveByTeamLead(UUID id, UUID actorUserId, String remarks) {
         Appointment appointment = get(id);
-        teamLeads.requireAssignedForHost(actorUserId, appointment.getType() == AppointmentType.CLIENT_MEETING
+        if(!delegatedVisit(actorUserId,id,"TEAM_LEAD")) teamLeads.requireAssignedForHost(actorUserId, appointment.getType() == AppointmentType.CLIENT_MEETING
                 ? appointment.getHostEmployeeId() : appointment.getRequestedEmployeeId());
         appointment.approveByTeamLead(actorUserId, remarks);
         audit.record("TEAM_LEAD_VISIT_APPROVED", "APPOINTMENT", id.toString(),
@@ -361,7 +389,7 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     @Transactional
     public Appointment rejectByTeamLead(UUID id, UUID actorUserId, String remarks) {
         Appointment appointment = get(id);
-        teamLeads.requireAssignedForHost(actorUserId, appointment.getType() == AppointmentType.CLIENT_MEETING
+        if(!delegatedVisit(actorUserId,id,"TEAM_LEAD")) teamLeads.requireAssignedForHost(actorUserId, appointment.getType() == AppointmentType.CLIENT_MEETING
                 ? appointment.getHostEmployeeId() : appointment.getRequestedEmployeeId());
         appointment.rejectByTeamLead(actorUserId, remarks);
         audit.record("TEAM_LEAD_VISIT_REJECTED", "APPOINTMENT", id.toString(),
@@ -702,13 +730,13 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     private void requireAssignedHr(Appointment appointment, UUID actorUserId) {
         if (appointment.getRoutingDepartmentId() == null) throw new BusinessException("VISIT_DEPARTMENT_REQUIRED",
                 "This visitor request has no routing department", HttpStatus.CONFLICT);
-        departmentHrs.requireAssignedReviewer(appointment.getRoutingDepartmentId(), actorUserId);
+        if(!delegatedVisit(actorUserId,appointment.getId(),"HR_ADMIN")) departmentHrs.requireAssignedReviewer(appointment.getRoutingDepartmentId(), actorUserId);
     }
     private void requireAssignedManager(Appointment appointment, UUID actorUserId) {
         if (appointment.getRoutingDepartmentId() == null) throw new BusinessException(
                 "VISIT_DEPARTMENT_REQUIRED", "This CEO visit has no routing department",
                 HttpStatus.CONFLICT);
-        managers.requireAssignedReviewer(appointment.getRoutingDepartmentId(), actorUserId);
+        if(!delegatedVisit(actorUserId,appointment.getId(),"MANAGER")) managers.requireAssignedReviewer(appointment.getRoutingDepartmentId(), actorUserId);
     }
     private UUID requireHostDepartment(UUID hostEmployeeId, UUID requestedDepartmentId) {
         UUID hostDepartment = employees.departmentIdForEmployee(hostEmployeeId);

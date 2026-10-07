@@ -26,6 +26,9 @@ public class NotificationDispatcher {
     private final ObjectMapper mapper;
     private final String from;
     private final TransactionOperations transactions;
+    private NotificationPreferenceService preferences;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void preferences(NotificationPreferenceService value) { preferences=value; }
     public NotificationDispatcher(OutboxRepository outbox, JavaMailSender mail, ObjectMapper mapper,
                                   @Value("${brainserve.notification.from}") String from,
                                   TransactionOperations transactions) {
@@ -56,9 +59,10 @@ public class NotificationDispatcher {
             List<OutboxMessage> ready = outbox.lockReady(
                     Set.of(OutboxMessage.Status.PENDING, OutboxMessage.Status.PROCESSING),
                     Instant.now(), PageRequest.of(0, 25));
-            ready.forEach(OutboxMessage::markProcessing);
+            List<OutboxMessage> eligible=preferences==null?ready:preferences.prepareEmails(ready,Instant.now());
+            eligible.forEach(OutboxMessage::markProcessing);
             outbox.flush();
-            return ready.stream().map(message -> new ClaimedEmail(message.getId(), message.getDestination(),
+            return eligible.stream().map(message -> new ClaimedEmail(message.getId(), message.getDestination(),
                     message.getTemplate(), message.getPayloadJson())).toList();
         });
         return claimed == null ? List.of() : claimed;
@@ -76,6 +80,10 @@ public class NotificationDispatcher {
     private void applyTemplate(SimpleMailMessage email, String template, Map<String, String> payload) {
         String reference = payload.getOrDefault("reference", "your request");
         switch (template) {
+            case "ROUTINE_MESSAGE", "ROUTINE_DIGEST" -> {
+                email.setSubject(template.equals("ROUTINE_DIGEST") ? "Your BrainServe routine digest" : "BrainServe routine message");
+                email.setText("Routine messages are ready. Sign in to " + reference + " to view their current details.");
+            }
             case "APPOINTMENT_OTP" -> {
                 email.setSubject("Verify your BrainServe Connect appointment");
                 email.setText("Your BrainServe Connect appointment reference is " + reference +

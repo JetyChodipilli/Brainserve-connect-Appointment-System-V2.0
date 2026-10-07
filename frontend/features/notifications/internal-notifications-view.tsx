@@ -24,6 +24,8 @@ import { newClientId } from "../../utils/ids";
 import { visitorInitials } from "../appointments/appointment-utils";
 import { ResourceDiscussionWorkspace } from "../discussions/resource-discussion-workspace";
 import { LeaveWorkspace } from "../leave/leave-workspace";
+import { NotificationPreferencesPanel } from './components/notification-preferences-panel';
+import { ApprovalQueuePanel } from './components/approval-queue-panel';
 import { Archive, Bell, CalendarDays, CheckCircle2, Inbox, MessageSquare, RotateCcw, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -50,6 +52,7 @@ export function InternalNotificationsView({ role, userEmail, onUnreadChange }: {
     const [error, setError] = useState("");
     const [loadError, setLoadError] = useState("");
     const [refreshWarning, setRefreshWarning] = useState("");
+    const [policyPanel, setPolicyPanel] = useState<'preferences' | 'approvals' | null>(null);
     const [recipientLoadFailed, setRecipientLoadFailed] = useState(false);
     const notificationLoadInFlightRef = useRef(false);
     const notificationsLoadedRef = useRef(false);
@@ -305,13 +308,16 @@ export function InternalNotificationsView({ role, userEmail, onUnreadChange }: {
             <span className="avatar">{visitorInitials(incoming ? item.senderName : item.recipientName)}</span>
             <div><header><span><strong>{incoming ? item.senderName : item.recipientName}</strong><small>{participantRole ? `${participantRole} · ${categoryLabel}` : categoryLabel}</small></span><time>{new Date(item.sentAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</time></header>
                 <p>{item.message}</p><footer><span className={`message-priority priority-badge-${(item.priority ?? "NORMAL").toLowerCase()}`}>{item.priority ?? "NORMAL"}</span><span className={`delivery-${item.deliveryStatus.toLowerCase()}`}>{item.deliveryStatus.toLowerCase()}</span>
-                    <span className="message-actions">{incoming && !archived && <button type="button" onClick={() => reply(item)}>Reply</button>}{incoming && !item.readAt && !archived && <button type="button" onClick={() => void markRead(item)}>Mark read</button>}{archived && <button type="button" className="message-delete" aria-label={`Delete archived message from ${item.senderName}`} title="Delete this old message" onClick={() => void deleteArchived(item)}><Trash2 size={14} /> Delete old message</button>}</span></footer></div>
+                    <span className="message-actions">{incoming && !archived && <button type="button" onClick={() => reply(item)}>Reply</button>}{incoming && !item.readAt && !archived && <button type="button" onClick={() => void markRead(item)}>Mark read</button>}{archived && officeToday(new Date(item.sentAt)) < officeToday() && <button type="button" className="message-delete" aria-label={`Delete archived message from ${item.senderName}`} title="Delete this old message" onClick={() => void deleteArchived(item)}><Trash2 size={14} /> Delete old message</button>}</span></footer></div>
         </article>;
     };
 
     return <section className="internal-notifications-page">
         <PageTitle eyebrow="BRAINSERVE INTERNAL DELIVERY" title="Priority calls & conversations"
                    detail="Today’s urgent and unread requests rise to the top. Earlier messages are stored safely in Archive." />
+        <div className='notification-policy-actions'><button type='button' className='button button-secondary' aria-expanded={policyPanel === 'preferences'} onClick={() => setPolicyPanel(p => p === 'preferences' ? null : 'preferences')}>Delivery preferences</button><button type='button' className='button button-secondary' aria-expanded={policyPanel === 'approvals'} onClick={() => setPolicyPanel(p => p === 'approvals' ? null : 'approvals')}>Approval deadlines & delegation</button></div>
+        {policyPanel === 'preferences' && <NotificationPreferencesPanel key={`${role}:${userEmail}`} />}
+        {policyPanel === 'approvals' && <ApprovalQueuePanel key={`${role}:${userEmail}`} role={role} />}
         {(loadError || refreshWarning) && <div className={`work-refresh-state ${loadError ? "is-error" : "is-warning"}`} role={loadError ? "alert" : "status"}><RotateCcw size={17} aria-hidden="true" /><span><strong>{loadError ? "Message service is reconnecting" : "Some message data is temporarily stale"}</strong><small>{loadError || refreshWarning} This view refreshes automatically.</small></span></div>}
         <div className="notification-attention glass-panel"><div><strong>{inbox.filter((item) => !item.readAt).length}</strong><span>Unread</span><small>Needs acknowledgement</small></div><i /><div><strong>{inbox.filter((item) => item.priority === "URGENT" && !item.readAt).length}</strong><span>Urgent</span><small>Handle first</small></div><i /><div><strong>{conversations.length}</strong><span>Conversations</span><small>Grouped by person</small></div></div>
         <div className="notification-workspace">
@@ -349,4 +355,3 @@ export function InternalNotificationsView({ role, userEmail, onUnreadChange }: {
         {(["Employee", "HR Admin"] as Role[]).includes(role) && <LeaveWorkspace role={role} />}
     </section>;
 }
-

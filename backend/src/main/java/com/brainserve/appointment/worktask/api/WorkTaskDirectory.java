@@ -10,6 +10,10 @@ import java.util.UUID;
  */
 public interface WorkTaskDirectory {
 
+    default void reviewDelivery(UUID actor,UUID taskId,boolean approved,String remarks,Long expectedVersion) {
+        throw new UnsupportedOperationException("Delivery review requires the production worktask service");
+    }
+
     List<TaskSnapshot> recentForDepartment(UUID departmentId);
 
     TaskSnapshot requireTask(UUID workTaskId);

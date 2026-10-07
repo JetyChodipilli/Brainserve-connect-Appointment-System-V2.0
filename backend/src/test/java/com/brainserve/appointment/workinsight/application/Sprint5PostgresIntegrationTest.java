@@ -49,6 +49,8 @@ class Sprint5PostgresIntegrationTest {
         drainNotifications();
         jdbc.update("delete from internal_call_notification where sender_user_id in (select id from iam_user_account where email like '%@sprint5.test') or recipient_user_id in (select id from iam_user_account where email like '%@sprint5.test')");
         jdbc.update("delete from workboard_preference");jdbc.update("delete from work_task_audit_record");jdbc.execute("truncate work_review_stage_event restart identity");jdbc.update("delete from department_work_task");
+        // Remove fixture-only stage history after source rows so deferred audit triggers cannot recreate it.
+        jdbc.execute("truncate approval_stage cascade");
         jdbc.update("delete from audit_event where event_type like 'WORK_TASK_%' or event_type like 'WORK_INSIGHT_%'");
         jdbc.update("delete from audit_event_history where event_type like 'WORK_TASK_%' or event_type like 'WORK_INSIGHT_%'");
         jdbc.update("delete from department_hr_assignment");jdbc.update("delete from department_manager_assignment");jdbc.update("delete from department_team_lead");
@@ -62,7 +64,7 @@ class Sprint5PostgresIntegrationTest {
     }
     @Test void v55IsAdditiveAndLegacySubmissionEvidenceRemainsUnknown() {
         Flyway flyway=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).load();flyway.validate();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("62");assertThat(flyway.migrate().migrationsExecuted).isZero();
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("64");assertThat(flyway.migrate().migrationsExecuted).isZero();
         var task=create("Unknown old delivery");jdbc.update("update department_work_task set submission_version=null,status='COMPLETED',completed_at=now() where id=?",task.getId());
         assertThat(board.detail(USER,task.getId()).item().submissionVersion()).isNull();
         assertThat(count("select count(*) from workboard_preference")).isZero();

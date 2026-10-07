@@ -56,7 +56,7 @@ public interface InternalCallNotificationRepository
                    updated_by = 'system'
              where id = :id
                and delivery_attempts = :deliveryAttempt
-               and delivery_status <> 'DELIVERED'
+               and delivery_status not in ('DELIVERED','SUPPRESSED')
             """, nativeQuery = true)
     int markPublishedIfUnacknowledged(
             @Param("id") UUID id,
@@ -76,7 +76,7 @@ public interface InternalCallNotificationRepository
                    updated_by = 'system'
              where id = :id
                and delivery_attempts = :deliveryAttempt
-               and delivery_status <> 'DELIVERED'
+               and delivery_status not in ('DELIVERED','SUPPRESSED')
             """, nativeQuery = true)
     int markFailedIfUnacknowledged(
             @Param("id") UUID id,
@@ -99,7 +99,7 @@ public interface InternalCallNotificationRepository
              where id = :id
                and sender_user_id = :senderUserId
                and recipient_user_id = :recipientUserId
-               and delivery_status <> 'DELIVERED'
+               and delivery_status not in ('DELIVERED','SUPPRESSED')
             """, nativeQuery = true)
     int acknowledgeIfMatching(
             @Param("id") UUID id,
@@ -125,8 +125,8 @@ public interface InternalCallNotificationRepository
               from InternalCallNotification n
              where n.recipientUserId = :userId
                and n.deliveryStatus = :status
-               and n.sentAt >= :from
-               and n.sentAt < :to
+               and ((n.sentAt >= :from and n.sentAt < :to)
+                    or (n.deliveredAt >= :from and n.deliveredAt < :to))
                and n.deletedAt is null
              order by n.sentAt desc
             """)
@@ -160,15 +160,23 @@ public interface InternalCallNotificationRepository
                     n.senderUserId = :userId
                     or n.recipientUserId = :userId
                )
-               and n.sentAt < :before
+               and (n.sentAt < :before or (n.recipientUserId = :userId and n.deliveryStatus = :suppressed))
                and n.deletedAt is null
              order by n.sentAt desc
             """)
-    List<InternalCallNotification> findArchive(
+    List<InternalCallNotification> findArchiveIncludingSuppressed(
             @Param("userId") UUID userId,
             @Param("before") Instant before,
-            org.springframework.data.domain.Pageable pageable
+            org.springframework.data.domain.Pageable pageable,
+            @Param("suppressed") InternalCallNotification.DeliveryStatus suppressed
     );
+
+    default List<InternalCallNotification> findArchive(
+            UUID userId, Instant before, org.springframework.data.domain.Pageable pageable
+    ) {
+        return findArchiveIncludingSuppressed(userId, before, pageable,
+                InternalCallNotification.DeliveryStatus.SUPPRESSED);
+    }
 
     Optional<InternalCallNotification>
     findByIdAndDeletedAtIsNull(UUID id);
@@ -180,8 +188,8 @@ public interface InternalCallNotificationRepository
                and n.deliveryStatus = :status
                and n.readAt is null
                and n.deletedAt is null
-               and n.sentAt >= :from
-               and n.sentAt < :to
+               and ((n.sentAt >= :from and n.sentAt < :to)
+                    or (n.deliveredAt >= :from and n.deliveredAt < :to))
             """)
     long countTodayUnread(
             @Param("userId") UUID userId,

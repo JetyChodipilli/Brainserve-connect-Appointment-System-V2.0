@@ -33,7 +33,8 @@ test("HR and Team Lead receive a full-width single-department workspace", () => 
 
 test("internal delivery persists priority, purpose and a stable conversation key", () => {
   assert.ok(notification.includes("enum MessagePriority { NORMAL, HIGH, URGENT }"));
-  assert.ok(notification.includes("enum MessageCategory { GENERAL, ACTION_REQUIRED, VISITOR, WORK, INSIGHT, LEAVE }"));
+  const categories = notification.match(/enum MessageCategory\s*\{([^}]+)\}/)?.[1].split(',').map(value => value.trim());
+  for (const retained of ['GENERAL','ACTION_REQUIRED','VISITOR','WORK','INSIGHT','LEAVE']) assert.ok(categories?.includes(retained));
   assert.ok(notificationController.includes("request.priority()"));
   assert.ok(notificationController.includes("conversationKey"));
   assert.ok(notificationService.includes("priorityRank"));
@@ -60,4 +61,3 @@ test("internal delivery resolves current participant roles instead of stale mess
   assert.ok(app.includes("participantRoles.map(readableNotificationRole)"));
   assert.ok(app.includes("brainserve:demo-accounts-updated"));
 });
-

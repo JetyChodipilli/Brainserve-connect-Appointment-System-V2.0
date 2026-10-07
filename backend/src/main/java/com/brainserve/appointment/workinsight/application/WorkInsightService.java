@@ -36,6 +36,35 @@ import java.util.UUID;
 
 @Service
 public class WorkInsightService {
+    private com.brainserve.appointment.approvalpolicy.api.ReviewDelegations reviewDelegations;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void reviewDelegations(com.brainserve.appointment.approvalpolicy.api.ReviewDelegations value) {reviewDelegations=value;}
+    private boolean delegated(UUID actor,UUID taskId,String role) {
+        return reviewDelegations!=null && reviewDelegations.lockAllows(actor,"WORK",taskId,role.replace("ROLE_",""));
+    }
+
+    @Transactional
+    public void decideQueued(UUID actor,UUID stageId,Long expectedVersion,boolean approved,String remarks) {
+        var s=reviewDelegations.requireReviewer(actor,stageId);
+        if(!"WORK".equals(s.kind())||expectedVersion==null) throw new BusinessException("APPROVAL_STAGE_UNAVAILABLE","Reload the current worksheet review stage",HttpStatus.CONFLICT);
+        lockCurrentPolicy(actor,s.resourceId());
+        var task=tasks.requireTaskForMutation(s.resourceId(),expectedVersion);
+        reviewDelegations.requireReviewer(actor,stageId);
+        switch(s.stage()) {
+            case "TEAM_LEAD" -> {
+                if(task.status().equals("INSIGHT_REWORK_REQUESTED")) {
+                    if(!approved) throw new BusinessException("REWORK_GUIDANCE_REQUIRED","This stage requires a corrective plan",HttpStatus.UNPROCESSABLE_ENTITY);
+                    assignRework(actor,s.resourceId(),remarks,null);
+                } else tasks.reviewDelivery(actor,s.resourceId(),approved,remarks,null);
+            }
+            case "HR_ADMIN" -> {if(approved) markAudited(actor,s.resourceId(),null); else requestHrRework(actor,s.resourceId(),remarks,null);}
+            case "MANAGER", "CEO" -> {
+                var record=audits.findByWorkTaskId(s.resourceId()).orElseThrow(()->new BusinessException("WORK_INSIGHT_NOT_FOUND","The current audit was not found",HttpStatus.NOT_FOUND));
+                if(s.stage().equals("CEO")) decideByCeo(actor,record.getId(),approved,remarks); else decideByManager(actor,record.getId(),approved,remarks);
+            }
+            default -> throw new BusinessException("APPROVAL_STAGE_UNAVAILABLE","This worksheet stage cannot be reviewed",HttpStatus.CONFLICT);
+        }
+    }
     private static final String HR = "ROLE_HR_ADMIN";
     private static final String MANAGER = "ROLE_MANAGER";
     private static final String CEO = "ROLE_CEO";
@@ -158,7 +187,7 @@ public class WorkInsightService {
 
         requireRole(hrUserId, HR, "Only HR can audit a worksheet");
         TaskSnapshot task = requireAuditReadyTask(workTaskId);
-        departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
+        if(!delegated(hrUserId,workTaskId,HR)) departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
         ManagerDirectory.Assignment manager = managers.requireForDepartment(task.departmentId());
         WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId).orElse(null);
         if (record == null) {
@@ -193,7 +222,7 @@ public class WorkInsightService {
 
         requireRole(hrUserId, HR, "Only HR can return an Insights worksheet for rework");
         TaskSnapshot task = requireAuditReadyTask(workTaskId);
-        departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
+        if(!delegated(hrUserId,workTaskId,HR)) departmentHrs.requireAssignedReviewer(task.departmentId(), hrUserId);
         WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId).orElse(null);
         if(record==null) {
             record=audits.saveAndFlush(newRecord(task,hrUserId));
@@ -226,7 +255,7 @@ public class WorkInsightService {
         WorkTaskAuditRecord record = audits.findByWorkTaskId(workTaskId)
                 .orElseThrow(() -> new BusinessException("WORK_INSIGHT_NOT_FOUND",
                         "The Insights rework request was not found", HttpStatus.NOT_FOUND));
-        if (!record.getTeamLeadUserId().equals(teamLeadUserId)) {
+        if (!record.getTeamLeadUserId().equals(teamLeadUserId) && !delegated(teamLeadUserId,workTaskId,TEAM_LEAD)) {
             throw new BusinessException("WORK_INSIGHT_TEAM_LEAD_SCOPE_DENIED",
                     "This rework request belongs to another Team Lead", HttpStatus.FORBIDDEN);
         }
@@ -289,7 +318,7 @@ public class WorkInsightService {
     public Insight decideByManager(UUID managerUserId, UUID recordId, boolean approved, String remarks) {
         requireRole(managerUserId, MANAGER, "Only the assigned Manager can decide a work audit");
         WorkTaskAuditRecord record = lockedDecisionRecord(managerUserId,recordId,MANAGER,"WORK_INSIGHT_MANAGER_APPROVE");
-        managers.requireAssignedReviewer(record.getDepartmentId(), managerUserId);
+        if(!delegated(managerUserId,record.getWorkTaskId(),MANAGER)) managers.requireAssignedReviewer(record.getDepartmentId(), managerUserId);
         record.decideByManager(managerUserId, approved, remarks);
         if (!approved) {
             requireAuditReadyTask(record.getWorkTaskId());
@@ -441,7 +470,7 @@ public class WorkInsightService {
     private void requireDecisionAuthority(UUID actor,WorkTaskAuditRecord record,String role,String permission) {
         var current=authority.requireActive(actor);
         if(!role.equals(current.role())||!current.permissions().contains(permission)) throw new BusinessException("WORK_INSIGHT_ROLE_REQUIRED","Your current role or permissions do not allow this decision",HttpStatus.FORBIDDEN);
-        if(!CEO.equals(role)) {
+        if(!CEO.equals(role) && !delegated(actor,record.getWorkTaskId(),role)) {
             var scope=authority.requireWorkScope(actor);
             if(!scope.authority().equals(current)||!scope.departmentId().equals(record.getDepartmentId())) throw new BusinessException("WORK_INSIGHT_SCOPE_DENIED","This audit is outside your current department assignment",HttpStatus.FORBIDDEN);
         }
@@ -543,6 +572,7 @@ public class WorkInsightService {
         if (!role.equals(current.role()) || !current.permissions().contains(permission)) {
             throw new BusinessException("WORK_INSIGHT_ROLE_REQUIRED", "Your current role or permissions do not allow this action", HttpStatus.FORBIDDEN);
         }
+        if(delegated(actor,taskId,role)) return;
         var scope = authority.requireWorkScope(actor);
         if (!scope.authority().equals(current)) throw new BusinessException("WORK_INSIGHT_ROLE_REQUIRED", "Your current account changed. Reload before submitting", HttpStatus.FORBIDDEN);
         TaskSnapshot task = tasks.requireTask(taskId);

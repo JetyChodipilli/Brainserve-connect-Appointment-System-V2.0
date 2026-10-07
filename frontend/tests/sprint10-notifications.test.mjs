@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const ts = require('typescript');
+const source = readFileSync(new URL('../features/notifications/api/notification-policy-api.ts', import.meta.url), 'utf8');
+const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const calls = [], instance = { exports: {} };
+new Function('require', 'module', 'exports', js)(() => ({ apiRequest: (...args) => { calls.push(args); return Promise.resolve({}); } }), instance, instance.exports);
+const api = instance.exports.notificationPolicyApi;
+test('private preferences and queue reads use no-store and propagated cancellation', async () => {
+    calls.length = 0;
+    const controller = new AbortController();
+    await api.preferences(controller.signal); await api.queue(true, 2, controller.signal);
+    assert.equal(calls[0][1].cache, 'no-store'); assert.equal(calls[0][1].signal, controller.signal);
+    assert.equal(calls[1][0], '/approval-policies/queue?overdue=true&page=2');
+});
+test('uncertain writes never request an automatic replay; visit and work decisions carry stage and observed version', async () => {
+    calls.length = 0;
+    const value = { version: 3, inAppEnabled: false, emailEnabled: true, soundEnabled: false, cadence: 'DAILY', quietEnabled: true, quietStart: '22:00', quietEnd: '08:00', zoneId: 'Asia/Kolkata' };
+    await api.savePreferences(value); await api.delegate('stage/a', 'target', '2026-10-08T08:00:00Z', 'Reviewed authority'); await api.revoke('grant/a');
+    await api.decide({ id: 'stage/a', resourceId: 'resource/a', resourceVersion: 7, kind: 'WORK' }, true, 'Reviewed evidence');
+    await api.decide({ id: 'visit/a', resourceId: 'resource/a', resourceVersion: 8, kind: 'VISIT' }, false, 'Visit cannot proceed');
+    for (const call of calls) assert.equal(call[2], false);
+    assert.deepEqual(JSON.parse(calls[0][1].body), value);
+    assert.equal(calls[1][0], '/approval-policies/stages/stage%2Fa/delegations');
+    assert.equal(calls[3][0], '/work-insights/review-queue/stage%2Fa/decision');
+    assert.deepEqual(JSON.parse(calls[4][1].body), { stageId: 'visit/a', expectedVersion: 8, approved: false, remarks: 'Visit cannot proceed' });
+});

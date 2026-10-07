@@ -292,9 +292,12 @@ export type InternalNotification = {
   recipientRoles?: string[];
   message: string;
   priority?: "NORMAL" | "HIGH" | "URGENT";
-  category?: "GENERAL" | "ACTION_REQUIRED" | "VISITOR" | "WORK" | "INSIGHT" | "LEAVE";
+  category?: "GENERAL" | "ACTION_REQUIRED" | "VISITOR" | "WORK" | "INSIGHT" | "LEAVE" | 'SECURITY' | 'APPROVAL' | 'ESCALATION';
   conversationKey?: string;
-  deliveryStatus: "QUEUED" | "DELIVERED" | "FAILED";
+  deliveryStatus: "QUEUED" | "DELIVERED" | "FAILED" | 'SUPPRESSED';
+  mandatory?: boolean;
+  deliveryDueAt?: string | null;
+  preferenceVersion?: number | null;
   sentAt: string;
   deliveredAt: string | null;
   readAt: string | null;

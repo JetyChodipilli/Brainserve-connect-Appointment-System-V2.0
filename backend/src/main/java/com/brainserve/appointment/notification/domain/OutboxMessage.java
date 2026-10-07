@@ -14,7 +14,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "notification_outbox")
 public class OutboxMessage extends AuditableEntity {
-    public enum Status { PENDING, PROCESSING, SENT, DEAD }
+    public enum Status { PENDING, PROCESSING, SENT, DEAD, SUPPRESSED }
 
     @Column(name = "event_key", nullable = false, unique = true, length = 160)
     private String eventKey;
@@ -45,9 +45,13 @@ public class OutboxMessage extends AuditableEntity {
         this.template = template; this.payloadJson = payloadJson;
     }
     public String getDestination() { return destination; }
+    public String getEventKey() { return eventKey; }
     public String getTemplate() { return template; }
     public String getPayloadJson() { return payloadJson; }
     public int getAttemptCount() { return attemptCount; }
+    public void defer(Instant due) { nextAttemptAt=due; }
+    public void suppress() { status=Status.SUPPRESSED; lastErrorCode="ROUTINE_CHANNEL_DISABLED"; }
+    public void currentDestination(String email) { destination=email; }
     public void markProcessing() {
         status = Status.PROCESSING;
         attemptCount++;
@@ -55,8 +59,9 @@ public class OutboxMessage extends AuditableEntity {
         // The ready query may reclaim it after this short delivery lease expires.
         nextAttemptAt = Instant.now().plusSeconds(300);
     }
-    public void markSent() { status = Status.SENT; sentAt = Instant.now(); lastErrorCode = null; }
+    public void markSent() { if(status==Status.SUPPRESSED) return; status = Status.SENT; sentAt = Instant.now(); lastErrorCode = null; }
     public void retry(String errorCode) {
+        if(status==Status.SUPPRESSED) return;
         lastErrorCode = errorCode;
         if (attemptCount >= 5) { status = Status.DEAD; return; }
         status = Status.PENDING;
