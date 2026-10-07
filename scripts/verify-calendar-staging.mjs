@@ -27,8 +27,8 @@ export async function verifyCalendarStaging({ call, sql, adminPerson, employeePe
     values('${connection}','${randomUUID()}','GOOGLE_CALENDAR','CALENDAR','Disposable Google restore fixture','${adminPerson.user}',
       '["https://www.googleapis.com/auth/calendar.app.created"]','REVOKED',1,now()+interval '1 day','REVOKED');
     insert into integration_google_calendar(connection_id,revocation_status,last_result_code) values('${connection}','FAILED','REVOKED');
-    insert into integration_google_consent(id,request_id,connection_id,owner_id,session_id,observed_version,label,status,expires_at,last_result_code)
-      values('${consent}','${randomUUID()}','${connection}','${adminPerson.user}','${adminPerson.family}',0,'Disposable consent restore fixture','DENIED',now()-interval '1 day','CONSENT_DENIED');
+    insert into integration_google_consent(id,request_id,connection_id,owner_id,session_id,observed_version,is_reconsent,label,status,expires_at,last_result_code)
+      values('${consent}','${randomUUID()}','${connection}','${adminPerson.user}','${adminPerson.family}',0,false,'Disposable consent restore fixture','DENIED',now()-interval '1 day','CONSENT_DENIED');
     insert into integration_google_revocation(id,connection_id,credential_version,token_ciphertext,status,attempts,recovery_count,last_result_code)
       values('${revoke}','${connection}',1,'synthetic-non-provider-ciphertext','FAILED',10,3,'REVOKE_FAILED');
     insert into integration_calendar_reconciliation(id,request_id,connection_id,actor_id,expected_version,credential_version,status,completed_at)
