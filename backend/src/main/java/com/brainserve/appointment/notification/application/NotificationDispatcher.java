@@ -76,6 +76,10 @@ public class NotificationDispatcher {
     private void applyTemplate(SimpleMailMessage email, String template, Map<String, String> payload) {
         String reference = payload.getOrDefault("reference", "your request");
         switch (template) {
+            case "ROUTINE_MESSAGE", "ROUTINE_DIGEST" -> {
+                email.setSubject(template.equals("ROUTINE_DIGEST") ? "Your BrainServe routine digest" : "BrainServe routine message");
+                email.setText("Routine messages are ready. Sign in to " + reference + " to view their current details.");
+            }
             case "APPOINTMENT_OTP" -> {
                 email.setSubject("Verify your BrainServe Connect appointment");
                 email.setText("Your BrainServe Connect appointment reference is " + reference +

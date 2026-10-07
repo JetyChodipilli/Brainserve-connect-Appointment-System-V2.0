@@ -51,6 +51,19 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
     private final CurrentAccountAuthority authority;
     private final EntityManager entityManager;
     private com.brainserve.appointment.notification.api.RecurringWorkNotifications recurringNotifications;
+    private com.brainserve.appointment.approvalpolicy.api.ReviewDelegations reviewDelegations;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void reviewDelegations(com.brainserve.appointment.approvalpolicy.api.ReviewDelegations value) { reviewDelegations=value; }
+
+    private boolean delegatedReview(UUID actor,UUID id) {
+        return reviewDelegations!=null && reviewDelegations.lockAllows(actor,"WORK",id,"TEAM_LEAD");
+    }
+
+    @Override @Transactional
+    public void reviewDelivery(UUID actor,UUID id,boolean approved,String remarks,Long version) {
+        if(approved) approve(actor,id,remarks,version); else requestChanges(actor,id,remarks,version);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public void recurringNotifications(com.brainserve.appointment.notification.api.RecurringWorkNotifications notifications) {
@@ -484,11 +497,11 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
     @Transactional
     public DepartmentWorkTask approve(UUID teamLeadUserId, UUID taskId, String review, Long expectedVersion) {
         var current = requirePermission(teamLeadUserId, "WORK_TASK_REVIEW");
-        var currentScope = authority.requireWorkScope(teamLeadUserId);
-        requireCurrentAuthority(current, currentScope.authority());
+        var currentScope = delegatedReview(teamLeadUserId,taskId)?null:authority.requireWorkScope(teamLeadUserId);
+        if(currentScope!=null) requireCurrentAuthority(current, currentScope.authority());
         if (!"ROLE_TEAM_LEAD".equals(current.role())) throw new BusinessException("WORK_TASK_ROLE_REQUIRED", "Only the assigned Team Lead can review delivery", HttpStatus.FORBIDDEN);
         requireTeamLeadReviewScope(teamLeadUserId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
-        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(teamLeadUserId, currentScope));
+        requireObservedVersion(taskId, expectedVersion, () -> { if(currentScope!=null) requireUnchangedScope(teamLeadUserId, currentScope); else if(!delegatedReview(teamLeadUserId,taskId)) throw new BusinessException("APPROVAL_DELEGATION_REVOKED","Review delegation is no longer valid",HttpStatus.FORBIDDEN); });
         DepartmentWorkTask task = requireTeamLeadReviewScope(teamLeadUserId, taskId);
         task.approve(review);
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(teamLeadUserId, employeeUserId(task),
@@ -510,11 +523,11 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
     @Transactional
     public DepartmentWorkTask requestChanges(UUID teamLeadUserId, UUID taskId, String review, Long expectedVersion) {
         var current = requirePermission(teamLeadUserId, "WORK_TASK_REVIEW");
-        var currentScope = authority.requireWorkScope(teamLeadUserId);
-        requireCurrentAuthority(current, currentScope.authority());
+        var currentScope = delegatedReview(teamLeadUserId,taskId)?null:authority.requireWorkScope(teamLeadUserId);
+        if(currentScope!=null) requireCurrentAuthority(current, currentScope.authority());
         if (!"ROLE_TEAM_LEAD".equals(current.role())) throw new BusinessException("WORK_TASK_ROLE_REQUIRED", "Only the assigned Team Lead can review delivery", HttpStatus.FORBIDDEN);
         requireTeamLeadReviewScope(teamLeadUserId, taskId); // Scope errors precede version errors for guessed foreign identifiers.
-        requireObservedVersion(taskId, expectedVersion, () -> requireUnchangedScope(teamLeadUserId, currentScope));
+        requireObservedVersion(taskId, expectedVersion, () -> { if(currentScope!=null) requireUnchangedScope(teamLeadUserId, currentScope); else if(!delegatedReview(teamLeadUserId,taskId)) throw new BusinessException("APPROVAL_DELEGATION_REVOKED","Review delegation is no longer valid",HttpStatus.FORBIDDEN); });
         DepartmentWorkTask task = requireTeamLeadReviewScope(teamLeadUserId, taskId);
         task.requestChanges(review);
         events.publishEvent(new WorkTaskEvents.DirectNotificationRequested(teamLeadUserId, employeeUserId(task),
@@ -586,7 +599,7 @@ public class DepartmentWorkTaskService implements WorkTaskDirectory, com.brainse
     }
 
     private DepartmentWorkTask requireTeamLeadReviewScope(UUID teamLeadUserId, UUID taskId) {
-        DepartmentWorkTask task = requireTeamLeadScope(teamLeadUserId, taskId);
+        DepartmentWorkTask task = delegatedReview(teamLeadUserId,taskId)?require(taskId):requireTeamLeadScope(teamLeadUserId, taskId);
         if (!task.requiresTeamLeadReview()
                 || task.getEmployeeId().equals(authority.requireActive(teamLeadUserId).employeeId())) {
             throw new BusinessException("WORK_TASK_SELF_REVIEW_NOT_ALLOWED",

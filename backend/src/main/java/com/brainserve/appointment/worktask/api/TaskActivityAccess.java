@@ -12,6 +12,9 @@ import java.util.*;
 public class TaskActivityAccess {
     private final CurrentAccountAuthority authority;
     private final JdbcTemplate jdbc;
+    private com.brainserve.appointment.approvalpolicy.api.ReviewDelegations reviewDelegations;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void reviewDelegations(com.brainserve.appointment.approvalpolicy.api.ReviewDelegations value) {reviewDelegations=value;}
     public TaskActivityAccess(CurrentAccountAuthority authority, JdbcTemplate jdbc) { this.authority=authority; this.jdbc=jdbc; }
 
     public void preauthorize(UUID actor) {
@@ -32,6 +35,9 @@ public class TaskActivityAccess {
     }
     public Access policy(UUID actor,UUID id,UUID department,UUID employeeId,UUID leadUserId,String assigneeRole,String status) {
         var current=authority.requireActive(actor);
+        if(current.permissions().contains("WORK_TASK_READ") && reviewDelegations!=null
+                && reviewDelegations.allows(actor,"WORK",id,current.role().replace("ROLE_","")))
+            return new Access(current,null,false,false,false,false,false);
         if("ROLE_CEO".equals(current.role())) {
             if(!current.permissions().contains("WORK_INSIGHT_CEO_APPROVE")) denied();
             if(!Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from work_task_audit_record where work_task_id=? and audit_status in ('PENDING_CEO_APPROVAL','CEO_APPROVED','CEO_REWORK_REQUESTED'))",Boolean.class,id))) missing();

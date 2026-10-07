@@ -3,6 +3,7 @@ import "@fontsource-variable/manrope/wght.css";
 import "@fontsource-variable/newsreader/wght.css";
 import "./globals.css";
 import "./professional-ui.css";
+import './notification-policy.css';
 
 export const metadata: Metadata = {
   title: "BrainServe Connect | Workplace Access",

@@ -125,8 +125,8 @@ public interface InternalCallNotificationRepository
               from InternalCallNotification n
              where n.recipientUserId = :userId
                and n.deliveryStatus = :status
-               and n.sentAt >= :from
-               and n.sentAt < :to
+               and ((n.sentAt >= :from and n.sentAt < :to)
+                    or (n.deliveredAt >= :from and n.deliveredAt < :to))
                and n.deletedAt is null
              order by n.sentAt desc
             """)
@@ -180,8 +180,8 @@ public interface InternalCallNotificationRepository
                and n.deliveryStatus = :status
                and n.readAt is null
                and n.deletedAt is null
-               and n.sentAt >= :from
-               and n.sentAt < :to
+               and ((n.sentAt >= :from and n.sentAt < :to)
+                    or (n.deliveredAt >= :from and n.deliveredAt < :to))
             """)
     long countTodayUnread(
             @Param("userId") UUID userId,

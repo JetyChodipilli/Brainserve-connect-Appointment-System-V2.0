@@ -17,6 +17,13 @@ export function setNotificationSoundEnabled(enabled: boolean) {
   if (enabled) void playNotificationSound("action", true);
 }
 
+/** Apply a saved account setting without playing a preview sound. */
+export function applyNotificationSoundPreference(enabled: boolean) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SOUND_ENABLED_KEY, String(enabled));
+  window.dispatchEvent(new CustomEvent(SOUND_CHANGE_EVENT, { detail: enabled }));
+}
+
 export function onNotificationSoundChange(listener: (enabled: boolean) => void) {
   if (typeof window === "undefined") return () => undefined;
   const receive = (event: Event) => listener((event as CustomEvent<boolean>).detail);

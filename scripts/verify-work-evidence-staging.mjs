@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { embeddedTestPdf } from './fixtures/work-evidence-pdf.mjs';
 import { verifyWorkPlanningStaging } from './verify-work-planning-staging.mjs';
+import { verifyNotificationPolicyStaging } from './verify-notification-policy-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -31,7 +32,11 @@ const lead = id(), worker = id(), stranger = id();
 const principals = [
   { user: lead, employee: leadEmployee, role: 'ROLE_TEAM_LEAD', name: 'Lead' },
   { user: worker, employee: workerEmployee, role: 'ROLE_EMPLOYEE', name: 'Worker' },
-  { user: stranger, employee: strangerEmployee, role: 'ROLE_EMPLOYEE', name: 'Stranger' }
+  { user: stranger, employee: strangerEmployee, role: 'ROLE_EMPLOYEE', name: 'Stranger' },
+  { user: id(), employee: id(), role: 'ROLE_TEAM_LEAD', name: 'Alternate' },
+  { user: id(), employee: id(), role: 'ROLE_HR_ADMIN', name: 'Hr' },
+  { user: id(), employee: id(), role: 'ROLE_MANAGER', name: 'Manager' },
+  { user: id(), employee: id(), role: 'ROLE_SYSTEM_ADMIN', name: 'Admin' }
 ];
 const auditColumns = 'version,created_at,created_by,updated_at,updated_by';
 const auditValues = "0,now(),'sprint6-staging',now(),'sprint6-staging'";
@@ -53,6 +58,9 @@ insert into iam_refresh_token_session(id,user_id,token_hash,family_id,expires_at
   person.token = `${parts.join('.')}.${createHmac('sha256', config.JWT_SECRET).update(parts.join('.')).digest('base64url')}`;
 }
 sql(`insert into department_team_lead(id,department_id,team_lead_user_id,team_lead_employee_id,active,assigned_by_user_id,assigned_at,${auditColumns}) values('${id()}','${department}','${lead}','${leadEmployee}',true,'${lead}',now(),${auditValues});`);
+for (const [table,prefix,person] of [['department_hr_assignment','hr',principals[4]],['department_manager_assignment','manager',principals[5]]]) {
+  sql(`insert into ${table}(id,department_id,${prefix}_user_id,${prefix}_employee_id,active,assigned_by_user_id,assigned_at,${auditColumns}) values('${id()}','${department}','${person.user}','${person.employee}',true,'${principals[6].user}',now(),${auditValues});`);
+}
 const ca = readFileSync(join(process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence', 'staging-ca.crt'));
 async function call(person, path, method = 'GET', value, expected = 200, accept = 'application/json') {
   let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: accept };
@@ -196,6 +204,7 @@ await call(otherPerson, `${scheduledTaskPath}/planning`, 'GET', undefined, [403,
 console.log('SPRINT8_RECURRENCE_SNAPSHOT_NOTIFICATION_EVIDENCE_VERIFIED');
 await verifyWorkPlanningStaging({ call, sql, leadPerson, employeePerson, otherPerson,
   taskId: created.id, evidence, safe, workerEmployee, strangerEmployee, tomorrow });
+await verifyNotificationPolicyStaging({call,sql,leadPerson,employeePerson,alternatePerson:principals[3],adminPerson:principals[6],workerEmployee,tomorrow});
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

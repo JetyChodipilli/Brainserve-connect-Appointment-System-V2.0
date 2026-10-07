@@ -123,7 +123,7 @@ public class InternalCallNotificationController {
                                        String conversationKey,
                                        InternalCallNotification.DeliveryStatus deliveryStatus,
                                        Instant sentAt, Instant deliveredAt, Instant readAt,
-                                       Instant archivedAt) {
+                                       Instant archivedAt, boolean mandatory, Instant deliveryDueAt, Long preferenceVersion) {
         static NotificationResponse from(InternalCallNotification value,
                                          StaffCommunicationDirectory.StaffMember sender,
                                          StaffCommunicationDirectory.StaffMember recipient) {
@@ -133,7 +133,8 @@ public class InternalCallNotificationController {
                     sender == null ? null : sender.email(), recipient == null ? null : recipient.email(),
                     sender == null ? Set.of() : sender.roles(), recipient == null ? Set.of() : recipient.roles(),
                     value.getMessage(), value.getPriority(), value.getCategory(), value.getConversationKey(), value.getDeliveryStatus(),
-                    value.getSentAt(), value.getDeliveredAt(), value.getReadAt(), value.getArchivedAt());
+                    value.getSentAt(), value.getDeliveredAt(), value.getReadAt(), value.getArchivedAt(),
+                    value.isMandatory(), value.getDeliveryDueAt(), value.getPreferenceVersion());
         }
     }
 }

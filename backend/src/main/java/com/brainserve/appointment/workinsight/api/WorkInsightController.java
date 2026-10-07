@@ -21,6 +21,14 @@ public class WorkInsightController {
     private final WorkInsightService service;
     public WorkInsightController(WorkInsightService service) { this.service = service; }
 
+    @PostMapping("/review-queue/{stageId}/decision")
+    @PreAuthorize("hasAnyRole('TEAM_LEAD','HR_ADMIN','MANAGER','CEO')")
+    void queuedDecision(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID stageId,@Valid @RequestBody QueueDecision request) {
+        service.decideQueued(actor(jwt),stageId,request.expectedVersion(),request.approved(),request.remarks());
+    }
+    public record QueueDecision(@NotNull @jakarta.validation.constraints.PositiveOrZero Long expectedVersion,
+                                @NotNull Boolean approved,@NotBlank @Size(min=2,max=500) String remarks) {}
+
     @GetMapping
     @PreAuthorize("hasAuthority('WORK_INSIGHT_READ')")
     List<WorkInsightService.Insight> list(@AuthenticationPrincipal Jwt jwt,

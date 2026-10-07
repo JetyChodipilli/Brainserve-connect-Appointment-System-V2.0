@@ -54,6 +54,10 @@ public class InternalCallNotificationService implements InternalNotificationGate
     private final EssentialLogService essentialLogs;
     private final long deliveryRetrySeconds;
     private final TransactionOperations transactions;
+    private NotificationPreferenceService preferences;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPreferences(NotificationPreferenceService preferences) { this.preferences=preferences; }
 
     public InternalCallNotificationService(InternalCallNotificationRepository notifications,
                                            StaffCommunicationDirectory staff,
@@ -109,6 +113,10 @@ public class InternalCallNotificationService implements InternalNotificationGate
     public InternalCallNotification send(UUID senderUserId, UUID recipientUserId, String message,
                                          InternalCallNotification.MessagePriority priority,
                                          InternalCallNotification.MessageCategory category) {
+        if (Set.of(InternalCallNotification.MessageCategory.SECURITY, InternalCallNotification.MessageCategory.APPROVAL,
+                InternalCallNotification.MessageCategory.ESCALATION).contains(category == null ? InternalCallNotification.MessageCategory.GENERAL : category)) {
+            throw new BusinessException("SYSTEM_NOTIFICATION_CATEGORY", "This notification category is reserved for system policy.", HttpStatus.FORBIDDEN);
+        }
         if (senderUserId.equals(recipientUserId)) {
             throw new BusinessException("INTERNAL_CALL_SELF_NOT_ALLOWED",
                     "You cannot send an internal call to yourself", HttpStatus.UNPROCESSABLE_ENTITY);
@@ -728,13 +736,14 @@ public class InternalCallNotificationService implements InternalNotificationGate
                                     PageRequest.of(0, 25)
                             );
 
-                    ready.forEach(notification ->
+                    List<InternalCallNotification> eligible = preferences == null ? ready : preferences.prepare(ready, Instant.now());
+                    eligible.forEach(notification ->
                             notification.beginDeliveryAttempt(retryAt)
                     );
 
                     notifications.flush();
 
-                    return ready.stream()
+                    return eligible.stream()
                             .map(notification ->
                                     new ClaimedInternalCall(
                                             notification.getId(),

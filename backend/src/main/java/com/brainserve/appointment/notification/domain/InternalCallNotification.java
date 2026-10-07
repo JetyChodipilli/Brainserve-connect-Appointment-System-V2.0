@@ -13,9 +13,16 @@ import java.util.UUID;
 @Entity
 @Table(name = "internal_call_notification")
 public class InternalCallNotification extends AuditableEntity {
-    public enum DeliveryStatus { QUEUED, DELIVERED, FAILED }
+    public enum DeliveryStatus { QUEUED, DELIVERED, FAILED, SUPPRESSED }
     public enum MessagePriority { NORMAL, HIGH, URGENT }
-    public enum MessageCategory { GENERAL, ACTION_REQUIRED, VISITOR, WORK, INSIGHT, LEAVE }
+    public enum MessageCategory { GENERAL, ACTION_REQUIRED, VISITOR, WORK, INSIGHT, LEAVE, SECURITY, APPROVAL, ESCALATION }
+
+    @Column(nullable = false)
+    private boolean mandatory;
+    @Column(name = "delivery_due_at")
+    private Instant deliveryDueAt;
+    @Column(name = "preference_version")
+    private Long preferenceVersion;
 
     @Column(name = "sender_user_id", nullable = false)
     private UUID senderUserId;
@@ -75,12 +82,22 @@ public class InternalCallNotification extends AuditableEntity {
         this.message = message.trim().replaceAll("\\s+", " ");
         this.priority = priority == null ? MessagePriority.NORMAL : priority;
         this.category = category == null ? MessageCategory.GENERAL : category;
+        this.mandatory = this.priority == MessagePriority.URGENT
+                || java.util.Set.of(MessageCategory.ACTION_REQUIRED, MessageCategory.VISITOR, MessageCategory.LEAVE,
+                MessageCategory.SECURITY, MessageCategory.APPROVAL, MessageCategory.ESCALATION).contains(this.category)
+                || this.priority == MessagePriority.HIGH && java.util.Set.of(MessageCategory.WORK, MessageCategory.INSIGHT).contains(this.category);
         this.conversationKey = conversationKey(senderUserId, recipientUserId);
         this.sentAt = Instant.now();
         this.nextDeliveryAttemptAt = this.sentAt;
     }
 
     public UUID getSenderUserId() { return senderUserId; }
+    public boolean isMandatory() { return mandatory; }
+    public Instant getDeliveryDueAt() { return deliveryDueAt; }
+    public Long getPreferenceVersion() { return preferenceVersion; }
+    public void schedule(Instant due, Long version) { deliveryDueAt=due; preferenceVersion=version; }
+    public void defer(Instant due) { nextDeliveryAttemptAt=due; }
+    public void suppress() { deliveryStatus=DeliveryStatus.SUPPRESSED; nextDeliveryAttemptAt=null; }
     public UUID getRecipientUserId() { return recipientUserId; }
     public String getSenderName() { return senderName; }
     public String getRecipientName() { return recipientName; }

@@ -220,6 +220,13 @@ public class AppointmentController {
         return employeeId != null && employeeId.equals(appointment.getHostEmployeeId());
     }
 
+    @PostMapping("/{id}/review-queue-decision")
+    @PreAuthorize("hasAnyAuthority('APPOINTMENT_APPROVE','HR_VISIT_APPROVE','TEAM_LEAD_VISIT_APPROVE','MANAGER_VISIT_APPROVE','CEO_VISIT_APPROVE')")
+    AppointmentResponse queuedDecision(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id,@Valid @RequestBody QueueDecision request) {
+        return AppointmentResponse.from(service.reviewQueued(UUID.fromString(jwt.getSubject()),id,request.stageId(),request.expectedVersion(),request.approved(),request.remarks()));
+    }
+    public record QueueDecision(@NotNull UUID stageId,@NotNull @jakarta.validation.constraints.PositiveOrZero Long expectedVersion,
+                                @NotNull Boolean approved,@NotBlank @Size(min=2,max=500) String remarks) {}
     public record DecisionRequest(@Size(max = 500) String remarks) {}
     public record SecurityIntakeRequest(@NotBlank @Size(max = 170) String visitorName,
                                         @NotBlank @Size(min = 5, max = 1000) String purpose,
