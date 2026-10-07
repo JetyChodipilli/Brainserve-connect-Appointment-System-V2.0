@@ -8,7 +8,7 @@ Every active account can open Notifications → Delivery preferences, including 
 
 Preferences are versioned, and changes retain an append-only snapshot. Stale writes return a conflict. Pending routine jobs use the current preference version; delivered messages and prior receipts remain intact. A disabled routine channel records suppression rather than deleting the notification. Mandatory security, approval/action, visitor, leave, escalation, urgent and high-priority review notices bypass routine channel/cadence/quiet choices. Existing mandatory account email flows remain required.
 
-Digest email groups share a durable event key. Each source notification has an immutable receipt, so transport retries cannot create another email event. Email contains a sign-in prompt, not private message or evidence content. In-app messages remain individually acknowledgeable. Messages released from an earlier day appear in the current delivery-day inbox while remaining in retained history.
+Digest email groups share a durable event key. Each source notification has an immutable receipt, so transport retries cannot create another email event. Each routine email claim rechecks current quiet hours, channel choice and account status, and uses the current email address. Email contains a sign-in prompt, not private message or evidence content. In-app messages remain individually acknowledgeable. Messages released from an earlier day appear in the current delivery-day inbox while remaining in retained history. Changes cannot recall a message already handed to its transport.
 
 ## Approval policies and queue
 

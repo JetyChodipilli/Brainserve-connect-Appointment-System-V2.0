@@ -7,6 +7,7 @@ import com.brainserve.appointment.document.infrastructure.ClamAvScanner;
 import com.brainserve.appointment.notification.application.NotificationPreferenceService;
 import com.brainserve.appointment.notification.domain.InternalCallNotification;
 import com.brainserve.appointment.notification.infrastructure.InternalCallNotificationRepository;
+import com.brainserve.appointment.notification.infrastructure.OutboxRepository;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.brainserve.appointment.workinsight.application.WorkInsightService;
 import com.brainserve.appointment.worktask.application.DepartmentWorkTaskService;
@@ -60,6 +61,7 @@ class Sprint10NotificationPostgresIntegrationTest {
  @Autowired ReviewDelegations reviews;
  @Autowired NotificationPreferenceService preferences;
  @Autowired InternalCallNotificationRepository notices;
+ @Autowired OutboxRepository emailOutbox;
  @Autowired DepartmentWorkTaskService tasks;
  @Autowired TaskPlanningService planning;
  @Autowired WorkInsightService insights;
@@ -137,6 +139,25 @@ class Sprint10NotificationPostgresIntegrationTest {
   assertThat(preferences.read(USER)).isEqualTo(saved);assertThat(count("select count(*) from notification_preference_history")).isEqualTo(1);
   assertThat(notices.findById(n).orElseThrow().getDeliveryStatus()).isEqualTo(InternalCallNotification.DeliveryStatus.DELIVERED);
   assertThatThrownBy(()->preferences.save(USER,new NotificationPreferenceService.Preference(1,true,false,false,"DAILY","Invalid/Zone",true,"08:00","08:00"))).isInstanceOf(BusinessException.class);
+ }
+ @Test void routineEmailRetriesRespectCurrentQuietHoursAndChannelWhileSecurityEmailRemainsRequired() {
+  preferences.save(USER,new NotificationPreferenceService.Preference(0,true,true,false,"IMMEDIATE","UTC",false,"22:00","08:00"));
+  UUID n=notice(InternalCallNotification.MessageCategory.GENERAL,"2026-10-07T12:10:00Z");prepare(List.of(n),Instant.parse("2026-10-07T13:00:00Z"));
+  UUID email=jdbc.queryForObject("select id from notification_outbox where template='ROUTINE_MESSAGE'",UUID.class);
+  preferences.save(USER,new NotificationPreferenceService.Preference(1,true,true,false,"IMMEDIATE","UTC",true,"22:00","08:00"));
+  transactions.executeWithoutResult(tx->{
+   var copy=emailOutbox.findById(email).orElseThrow();assertThat(preferences.prepareEmails(List.of(copy),Instant.parse("2026-10-07T23:00:00Z"))).isEmpty();emailOutbox.flush();
+  });
+  assertThat(jdbc.queryForObject("select next_attempt_at from notification_outbox where id=?",Timestamp.class,email).toInstant()).isEqualTo("2026-10-08T08:00:00Z");
+  preferences.save(USER,new NotificationPreferenceService.Preference(2,true,false,false,"IMMEDIATE","UTC",true,"22:00","08:00"));
+  var security=emailOutbox.saveAndFlush(new com.brainserve.appointment.notification.domain.OutboxMessage("security-s10", "worker@s10.test","APPOINTMENT_OTP","{}"));
+  transactions.executeWithoutResult(tx->{
+   var copy=emailOutbox.findById(email).orElseThrow();var required=emailOutbox.findById(security.getId()).orElseThrow();
+   assertThat(preferences.prepareEmails(List.of(copy,required),Instant.parse("2026-10-07T23:00:00Z"))).containsExactly(required);emailOutbox.flush();
+   copy.markSent();copy.retry("Late transport callback");emailOutbox.flush();
+  });
+  assertThat(jdbc.queryForObject("select status from notification_outbox where id=?",String.class,email)).isEqualTo("SUPPRESSED");
+  assertThat(count("select count(*) from notification_email_receipt where notification_id=?",n)).isEqualTo(1);
  }
  @Test void newlyEnteredStagesCapturePolicyVersionsWhileExistingStagesKeepTheirDeadline() {
   enable("WORK","TEAM_LEAD");UUID first=submitted("Captured version two");var before=stage(LEAD,first);

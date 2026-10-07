@@ -2,6 +2,7 @@ package com.brainserve.appointment.notification.application;
 
 import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
 import com.brainserve.appointment.notification.domain.InternalCallNotification;
+import com.brainserve.appointment.notification.domain.OutboxMessage;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,6 +98,25 @@ public class NotificationPreferenceService {
             if (due.isAfter(now)) { notification.defer(due); continue; }
             if (p.emailEnabled()) queueEmail(notification, p);
             if (p.inAppEnabled()) deliver.add(notification); else notification.suppress();
+        }
+        return deliver;
+    }
+
+    /** Recheck routine email policy on every transport claim; mandatory templates bypass preferences. */
+    public List<OutboxMessage> prepareEmails(List<OutboxMessage> ready,Instant now) {
+        var deliver=new ArrayList<OutboxMessage>();
+        for(var message:ready) {
+            if(!Set.of("ROUTINE_MESSAGE","ROUTINE_DIGEST").contains(message.getTemplate())) {deliver.add(message);continue;}
+            var owners=jdbc.query("select distinct n.recipient_user_id from notification_email_receipt r join internal_call_notification n on n.id=r.notification_id where r.event_key=?",(rs,n)->rs.getObject(1,UUID.class),message.getEventKey());
+            if(owners.size()!=1) {message.suppress();continue;}
+            UUID user=owners.getFirst();
+            try {authority.requireActive(user);} catch(BusinessException denied) {message.suppress();continue;}
+            Preference p=stored(user);
+            if(!p.emailEnabled()) {message.suppress();continue;}
+            Instant due=NotificationSchedule.afterQuiet(now,ZoneId.of(p.zoneId()),p.quietEnabled(),LocalTime.parse(p.quietStart()),LocalTime.parse(p.quietEnd()));
+            if(due.isAfter(now)) {message.defer(due);continue;}
+            message.currentDestination(jdbc.queryForObject("select email from iam_user_account where id=?",String.class,user));
+            deliver.add(message);
         }
         return deliver;
     }
