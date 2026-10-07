@@ -256,7 +256,12 @@ class Sprint11SupportPostgresIntegrationTest {
 
     @Test void httpRequiresCurrentMfaAndRejectsRoleAndRequestTypeForgery() throws Exception {
         SecurityContextHolder.clearContext();
-        mvc.perform(get("/api/v1/support/diagnostics/preview")).andExpect(status().isUnauthorized());
+        // Method authorization uses the application's safe ACCESS_DENIED problem contract.
+        mvc.perform(get("/api/v1/support/diagnostics/preview"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.supportReference").doesNotExist()).andExpect(jsonPath("$.environment").doesNotExist())
+                .andExpect(jsonPath("$.id").doesNotExist()).andExpect(jsonPath("$.sizeBytes").doesNotExist());
+        assertThat(count("select count(*) from audit_event where event_type='SUPPORT_DIAGNOSTIC_GENERATED'")).isZero();
         mvc.perform(get("/api/v1/support/diagnostics/preview").header("Authorization", bearer(ADMIN, Instant.now().minusSeconds(3600))))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("MFA_STEP_UP_REQUIRED"));
         String employeeToken = bearer(EMPLOYEE, Instant.now());

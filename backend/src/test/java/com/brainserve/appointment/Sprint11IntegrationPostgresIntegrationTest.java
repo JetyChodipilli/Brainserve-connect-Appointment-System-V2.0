@@ -310,7 +310,7 @@ class Sprint11IntegrationPostgresIntegrationTest {
         assertThat(count("select count(*) from integration_business_event")).isZero();
         assertThat(count("select count(*) from integration_resource_revision")).isZero();
     }
-    @ParameterizedTest @ValueSource(strings={"disabled","archived","role","permission","missing-role"})
+    @ParameterizedTest @ValueSource(strings={"disabled","archived","role","permission","pending-approval"})
     void everyOwnerEligibilityChangeFencesAnAlreadyClaimedDelivery(String change) {
         var c=connection(IntegrationModels.Provider.SIMULATOR_CALENDAR);var d=test(c,IntegrationModels.Scenario.SUCCESS);
         var claim=integrations.claim(d.id(),Instant.now().plusSeconds(1)).orElseThrow();
@@ -319,7 +319,7 @@ class Sprint11IntegrationPostgresIntegrationTest {
             case "archived" -> jdbc.update("update iam_user_account set archived=true,archived_at=now(),enabled=false where id=?",ADMIN);
             case "role" -> jdbc.update("update iam_user_role set role_name='ROLE_EMPLOYEE' where user_id=?",ADMIN);
             case "permission" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'SYSTEM_CONFIGURE')",ADMIN);
-            case "missing-role" -> jdbc.update("delete from iam_user_role where user_id=?",ADMIN);
+            case "pending-approval" -> jdbc.update("update iam_user_account set account_status='PENDING_APPROVAL' where id=?",ADMIN);
             default -> throw new AssertionError(change);
         }
         integrations.complete(claim,Instant.now().plusSeconds(2));assertThat(status(d.id())).isEqualTo("CANCELLED");

@@ -37,7 +37,7 @@
 .notice { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); line-height: 1.55; }
 .workspace fieldset { margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
 .workspace legend { font-size: 16px; font-weight: 700; margin: 8px 0; }
-.workspace .check { display: flex; gap: 10px; align-items: start; font-size: 14px; line-height: 1.5; }
+.workspace .check { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 14px; line-height: 1.5; }
 .workspace .check input { min-height: 24px; min-width: 24px; width: 24px; margin: 0; }
 @media (max-width: 900px) { .columns { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 540px) { .panel { padding: 16px; } .fields, .facts { grid-template-columns: minmax(0, 1fr); } .heading { flex-direction: column; } .actions > button { flex: 1 1 140px; } .rowHeader { flex-wrap: wrap; } .workspace input, .workspace select { font-size: 16px; } }
