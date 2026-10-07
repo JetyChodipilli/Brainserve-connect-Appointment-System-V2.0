@@ -15,6 +15,9 @@ CREATE TABLE notification_preference (
 ALTER TABLE internal_call_notification ADD COLUMN delivery_due_at timestamptz,
  ADD COLUMN preference_version bigint,
  ADD COLUMN mandatory boolean NOT NULL DEFAULT false;
+ALTER TABLE internal_call_notification DROP CONSTRAINT ck_internal_call_category;
+ALTER TABLE internal_call_notification ADD CONSTRAINT ck_internal_call_category CHECK(category IN
+ ('GENERAL','ACTION_REQUIRED','VISITOR','WORK','INSIGHT','LEAVE','SECURITY','APPROVAL','ESCALATION'));
 UPDATE internal_call_notification SET mandatory=(priority='URGENT' OR category IN ('ACTION_REQUIRED','VISITOR','LEAVE') OR (priority='HIGH' AND category IN ('WORK','INSIGHT')));
 CREATE TABLE notification_email_receipt (
  notification_id uuid PRIMARY KEY REFERENCES internal_call_notification(id),

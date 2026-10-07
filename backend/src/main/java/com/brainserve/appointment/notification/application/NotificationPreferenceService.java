@@ -63,7 +63,7 @@ public class NotificationPreferenceService {
         Preference saved = stored(actor);
         jdbc.update("insert into notification_preference_history(user_id,version,snapshot_json) values(?,?,?::jsonb)", actor, saved.version(), json(saved));
         // Previously held routine messages are reconsidered; delivered history and mandatory jobs are untouched.
-        jdbc.update("update internal_call_notification set next_delivery_attempt_at=now() where recipient_user_id=? and not mandatory and delivery_status in ('QUEUED','FAILED')", actor);
+        jdbc.update("update internal_call_notification set next_delivery_attempt_at=now() where recipient_user_id=? and not mandatory and delivery_status in ('QUEUED','FAILED') and (delivery_attempts=0 or delivery_status='FAILED')", actor);
         return saved;
     }
 

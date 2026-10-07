@@ -111,6 +111,11 @@ class Sprint10NotificationPostgresIntegrationTest {
   assertThat(notices.findById(routine).orElseThrow().getNextDeliveryAttemptAt()).isEqualTo("2026-10-08T08:00:00Z");
   assertThat(prepare(List.of(routine),Instant.parse("2026-10-08T08:00:00Z"))).isEmpty();
   assertThat(notices.findById(routine).orElseThrow().getDeliveryStatus()).isEqualTo(InternalCallNotification.DeliveryStatus.SUPPRESSED);
+  transactions.executeWithoutResult(tx->{
+   assertThat(notices.acknowledgeIfMatching(routine,HR,USER,Instant.now())).isZero();
+   assertThat(notices.markPublishedIfUnacknowledged(routine,0,Instant.now(),Instant.now().plusSeconds(30))).isZero();
+   assertThat(notices.markFailedIfUnacknowledged(routine,0,"Late transport error",Instant.now().plusSeconds(30),Instant.now())).isZero();
+  });
   assertThat(count("select count(*) from notification_email_receipt")).isZero();
  }
  @Test void hourlyDigestAndTransportRetriesRetainExactlyOneEmailEventAndEachSourceReceipt() {

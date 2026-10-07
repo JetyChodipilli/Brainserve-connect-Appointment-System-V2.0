@@ -56,7 +56,7 @@ public interface InternalCallNotificationRepository
                    updated_by = 'system'
              where id = :id
                and delivery_attempts = :deliveryAttempt
-               and delivery_status <> 'DELIVERED'
+               and delivery_status not in ('DELIVERED','SUPPRESSED')
             """, nativeQuery = true)
     int markPublishedIfUnacknowledged(
             @Param("id") UUID id,
@@ -76,7 +76,7 @@ public interface InternalCallNotificationRepository
                    updated_by = 'system'
              where id = :id
                and delivery_attempts = :deliveryAttempt
-               and delivery_status <> 'DELIVERED'
+               and delivery_status not in ('DELIVERED','SUPPRESSED')
             """, nativeQuery = true)
     int markFailedIfUnacknowledged(
             @Param("id") UUID id,
@@ -99,7 +99,7 @@ public interface InternalCallNotificationRepository
              where id = :id
                and sender_user_id = :senderUserId
                and recipient_user_id = :recipientUserId
-               and delivery_status <> 'DELIVERED'
+               and delivery_status not in ('DELIVERED','SUPPRESSED')
             """, nativeQuery = true)
     int acknowledgeIfMatching(
             @Param("id") UUID id,
