@@ -160,15 +160,23 @@ public interface InternalCallNotificationRepository
                     n.senderUserId = :userId
                     or n.recipientUserId = :userId
                )
-               and n.sentAt < :before
+               and (n.sentAt < :before or (n.recipientUserId = :userId and n.deliveryStatus = :suppressed))
                and n.deletedAt is null
              order by n.sentAt desc
             """)
-    List<InternalCallNotification> findArchive(
+    List<InternalCallNotification> findArchiveIncludingSuppressed(
             @Param("userId") UUID userId,
             @Param("before") Instant before,
-            org.springframework.data.domain.Pageable pageable
+            org.springframework.data.domain.Pageable pageable,
+            @Param("suppressed") InternalCallNotification.DeliveryStatus suppressed
     );
+
+    default List<InternalCallNotification> findArchive(
+            UUID userId, Instant before, org.springframework.data.domain.Pageable pageable
+    ) {
+        return findArchiveIncludingSuppressed(userId, before, pageable,
+                InternalCallNotification.DeliveryStatus.SUPPRESSED);
+    }
 
     Optional<InternalCallNotification>
     findByIdAndDeletedAtIsNull(UUID id);

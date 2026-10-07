@@ -5,6 +5,7 @@ import com.brainserve.appointment.approvalpolicy.application.ApprovalPolicyServi
 import com.brainserve.appointment.appointment.application.AppointmentService;
 import com.brainserve.appointment.document.infrastructure.ClamAvScanner;
 import com.brainserve.appointment.notification.application.NotificationPreferenceService;
+import com.brainserve.appointment.notification.application.InternalCallNotificationService;
 import com.brainserve.appointment.notification.domain.InternalCallNotification;
 import com.brainserve.appointment.notification.infrastructure.InternalCallNotificationRepository;
 import com.brainserve.appointment.notification.infrastructure.OutboxRepository;
@@ -60,6 +61,7 @@ class Sprint10NotificationPostgresIntegrationTest {
  @Autowired ApprovalPolicyService policies;
  @Autowired ReviewDelegations reviews;
  @Autowired NotificationPreferenceService preferences;
+ @Autowired InternalCallNotificationService internalCalls;
  @Autowired InternalCallNotificationRepository notices;
  @Autowired OutboxRepository emailOutbox;
  @Autowired DepartmentWorkTaskService tasks;
@@ -113,6 +115,7 @@ class Sprint10NotificationPostgresIntegrationTest {
   assertThat(notices.findById(routine).orElseThrow().getNextDeliveryAttemptAt()).isEqualTo("2026-10-08T08:00:00Z");
   assertThat(prepare(List.of(routine),Instant.parse("2026-10-08T08:00:00Z"))).isEmpty();
   assertThat(notices.findById(routine).orElseThrow().getDeliveryStatus()).isEqualTo(InternalCallNotification.DeliveryStatus.SUPPRESSED);
+  assertThat(internalCalls.archive(USER,0,20)).extracting(InternalCallNotification::getId).contains(routine);
   transactions.executeWithoutResult(tx->{
    assertThat(notices.acknowledgeIfMatching(routine,HR,USER,Instant.now())).isZero();
    assertThat(notices.markPublishedIfUnacknowledged(routine,0,Instant.now(),Instant.now().plusSeconds(30))).isZero();

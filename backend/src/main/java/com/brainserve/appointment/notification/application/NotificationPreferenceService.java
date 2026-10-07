@@ -135,7 +135,7 @@ public class NotificationPreferenceService {
                 from iam_user_account where id=? and enabled and account_status='ACTIVE' and not archived
                 on conflict(event_key) do nothing
                 """, UUID.randomUUID(), key, "IMMEDIATE".equals(p.cadence())?"ROUTINE_MESSAGE":"ROUTINE_DIGEST",
-                json(Map.of("reference", "your authorized BrainServe inbox")), Timestamp.from(Instant.now()), n.getRecipientUserId());
+                json(Map.of("reference", "your authorized BrainServe notification history")), Timestamp.from(Instant.now()), n.getRecipientUserId());
     }
     private String json(Object value) {
         try { return mapper.writeValueAsString(value); }

@@ -65,7 +65,7 @@ export function NotificationPreferencesPanel() {
                 <label><input type='checkbox' checked={value.inAppEnabled} onChange={e => edit('inAppEnabled', e.target.checked)} />Routine inbox delivery</label>
                 <label><input type='checkbox' checked={value.emailEnabled} onChange={e => edit('emailEnabled', e.target.checked)} />Routine email copies</label>
                 <label><input type='checkbox' checked={value.soundEnabled} onChange={e => edit('soundEnabled', e.target.checked)} />Browser notification sounds</label>
-            </div><p>Email copies contain a sign-in prompt. Private message content stays in the authorized app.</p></fieldset>
+            </div><p>Email copies contain a sign-in prompt. Private message content stays in the authorized app. Routine messages remain available in Archive when inbox delivery is off.</p></fieldset>
             <fieldset disabled={busy || blocked}><legend>Delivery schedule</legend><div className='notification-policy-fields'>
                 <label>Routine cadence<select value={value.cadence} onChange={e => edit('cadence', e.target.value as NotificationPreference['cadence'])}><option value='IMMEDIATE'>Immediately</option><option value='HOURLY'>Hourly digest</option><option value='DAILY'>Daily digest at 09:00</option></select></label>
                 <label>Notification time zone<input required maxLength={80} value={value.zoneId} onChange={e => edit('zoneId', e.target.value)} placeholder='Asia/Kolkata' /><small>Use an IANA time zone, such as Asia/Kolkata or America/New_York.</small></label>

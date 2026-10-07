@@ -24,6 +24,7 @@ async function fixture(page:Page,role:'TEAM_LEAD'|'CEO'|'SYSTEM_ADMIN'='TEAM_LEA
   if(path.endsWith('/decision')||path.endsWith('/review-queue-decision')){state.writes.push({path,body:route.request().postDataJSON()});return state.conflict?route.fulfill({status:409,json:{detail:'Current stage changed'}}):route.fulfill({status:204});}
   if(path==='/approval-policies')return route.fulfill({json:[{id:1,kind:'WORK',stage:'TEAM_LEAD',version:1,enabled:false,deadlineMinutes:120,reminderMinutes:60,escalationRole:'MANAGER'}]});
   if(path===`/work-tasks/${taskId}/planning`)return route.fulfill({json:{taskId,taskVersion:7,submissions:[{version:1,authorName:'Original Worker',employeeUpdate:'Original authored report.',checklist:[],evidence:[]} ]}});
+  if(path==='/internal-notifications/archive')return route.fulfill({json:state.pref.inAppEnabled?[]:[{id:taskId,senderUserId:delegateId,recipientUserId:stageId,senderName:'HR Reviewer',recipientName:'Current Reviewer',senderEmail:'hr@example.invalid',recipientEmail:profile.email,message:'Retained routine message for email delivery.',priority:'NORMAL',category:'GENERAL',deliveryStatus:'SUPPRESSED',sentAt:new Date().toISOString(),readAt:null}]});
   if(['/auth/me','/profile/me'].includes(path))return route.fulfill({json:profile});
   if(path==='/auth/security')return route.fulfill({json:{mfaRequired:true,mfaEnrolled:true,mfaVerified:true,stepUpRequired:false}});
   if(path==='/dashboard/summary')return route.fulfill({json:{awaitingApproval:0,activeVisits:0,totalEmployees:0,activeEmployees:0,scope:role==='CEO'?'COMPANY':'DEPARTMENT',departmentId:stageId}});
@@ -69,4 +70,7 @@ test('account changes clear preferences, private queue details and late save com
 });
 test('system admin deadline editor declares captured versions and inactive policies',async({page})=>{
  await fixture(page,'SYSTEM_ADMIN');const panel=await queue(page);await panel.locator('summary').filter({hasText:'Configure stage deadline policies'}).click();await panel.getByRole('button',{name:'Reload deadline policies'}).click();await expect(panel).toContainText('Policies start disabled');await expect(panel).toContainText('Existing stages retain their captured policy');await expect(panel.getByLabel('Enable reminders for work team lead')).not.toBeChecked();
+});
+test('email-only routine delivery keeps current history available without an inbox badge or current-day deletion',async({page})=>{
+ await fixture(page);const panel=await preferences(page);await panel.getByLabel('Routine inbox delivery').uncheck();await panel.getByLabel('Routine email copies').check();await panel.getByRole('button',{name:'Save delivery preferences'}).click();await expect(panel).toContainText('Delivery preferences saved');await page.getByRole('button',{name:'Archive',exact:true}).click();await expect(page.getByText('Retained routine message for email delivery.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Delete archived message from HR Reviewer'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Open notifications',exact:true})).toBeVisible();
 });
