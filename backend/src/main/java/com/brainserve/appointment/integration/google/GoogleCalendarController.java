@@ -65,7 +65,7 @@ public class GoogleCalendarController {
             browser=cookie.getValue();
         }
         consents.callback(state,code,error,browser);
-        String page="<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Google Calendar consent</title><body><main><h1>Consent received</h1><p>Return to your original BrainServe tab and choose Finish connection. You can close this tab.</p></main></body></html>";
+        String page="<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Google Calendar consent</title><body><main><h1>Google response received</h1><p>Return to your original BrainServe tab and reload consent status. If consent was granted, choose Finish connection. You can close this tab.</p></main></body></html>";
         return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).cacheControl(CacheControl.noStore())
                 .header("Referrer-Policy","no-referrer").header("X-Content-Type-Options","nosniff")
                 .header("Content-Security-Policy","default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")

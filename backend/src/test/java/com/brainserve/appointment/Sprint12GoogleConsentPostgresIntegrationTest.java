@@ -219,7 +219,11 @@ class Sprint12GoogleConsentPostgresIntegrationTest {
         long version=jdbc.queryForObject("select version from integration_connection where id=?",Long.class,connection(start));
         var retry=start(connection(start),version);var navigation=authorize(retry);callback(navigation,"new-code");GOOGLE.reply(200,tokens(true,GoogleCalendarConfiguration.SCOPE));
         complete(retry,200);assertThat(GOOGLE.requests()).hasSize(3);assertThat(GOOGLE.requests().stream().filter(request->request.method().equals("POST")&&request.path().equals("/calendar/v3/calendars")).count()).isEqualTo(1);
-        long latest=jdbc.queryForObject("select version from integration_connection where id=?",Long.class,connection(start));GOOGLE.reply(200,calendar(connection(start),"app@group.calendar.google.com"));recover(connection(start),latest,"app@group.calendar.google.com",200);
+        long latest=jdbc.queryForObject("select version from integration_connection where id=?",Long.class,connection(start));
+        recover(connection(start),latest,"app@group.calendar.google.com",429);assertThat(GOOGLE.requests()).hasSize(3);
+        // Model the next account write window without waiting a minute or disabling the real filter.
+        redis.delete("rate:account:{"+ADMIN+"}:integration-write");
+        GOOGLE.reply(200,calendar(connection(start),"app@group.calendar.google.com"));recover(connection(start),latest,"app@group.calendar.google.com",200);
     }
     @Test void reconsentVerifiesRetainedCalendarAndRotatesCredentialGeneration() throws Exception {
         var connected=connected();UUID id=UUID.fromString(connected.path("id").asText());long generation=connected.path("credentialVersion").asLong();
@@ -355,7 +359,11 @@ class Sprint12GoogleConsentPostgresIntegrationTest {
         mvc.perform(post(ROOT+"/consents").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("requestId",request,"label","Changed")))).andExpect(status().isConflict());
         var navigation=authorize(original);callback(navigation,"private-code");long version=jdbc.queryForObject("select version from integration_connection where id=?",Long.class,connection(original));
         start(connection(original),version);complete(original,409);assertThat(GOOGLE.requests()).isEmpty();
+    }
+    @Test void nullRevocationRetryPayloadIsRejectedBeforeProviderWork() throws Exception {
+        var original=start(null,null);
         mvc.perform(post(ROOT+"/connections/"+connection(original)+"/revocation/retry").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("null")).andExpect(status().isBadRequest());
+        assertThat(GOOGLE.requests()).isEmpty();
     }
     private JsonNode start(UUID id,Long version) throws Exception {
         var command=new java.util.HashMap<String,Object>();command.put("requestId",UUID.randomUUID());command.put("label","S12 Google calendar");if(id!=null){command.put("connectionId",id);command.put("expectedVersion",version);}
