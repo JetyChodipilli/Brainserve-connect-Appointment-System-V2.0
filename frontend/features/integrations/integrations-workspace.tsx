@@ -15,7 +15,8 @@ const localDate = (milliseconds: number) => { const value = new Date(millisecond
 export function IntegrationsWorkspace() {
     const [connections, setConnections] = useState<Connection[]>([]), [loaded, setLoaded] = useState(false);
     const [selectedId, setSelectedId] = useState('');
-    const selectedIdRef = useRef(''); selectedIdRef.current = selectedId;
+    const selectedIdRef = useRef('');
+    useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
     const [deliveries, setDeliveries] = useState<Delivery[]>([]), [deliveryPage, setDeliveryPage] = useState(0), [deliveryPages, setDeliveryPages] = useState(0);
     const [deliveriesLoaded, setDeliveriesLoaded] = useState(false), [attempts, setAttempts] = useState<Record<string, DeliveryAttempt[]>>({});
     const [provider, setProvider] = useState<IntegrationProvider>('SIMULATOR_CALENDAR'), [label, setLabel] = useState('');
@@ -23,14 +24,14 @@ export function IntegrationsWorkspace() {
     const [scenario, setScenario] = useState<TestScenario>('SUCCESS'), [revokeConfirmed, setRevokeConfirmed] = useState(false);
     const [blocked, setBlocked] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
     const credentialRef = useRef<HTMLInputElement>(null), reconnectCredentialRef = useRef<HTMLInputElement>(null), errorRef = useRef<HTMLDivElement>(null);
-    const { begin, busy, sessionEnded } = useAdminSession(() => {
+    const { begin, busy, sessionEnded, clock } = useAdminSession(() => {
         if (credentialRef.current) credentialRef.current.value = '';
         if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
         setConnections([]); setDeliveries([]); setAttempts({}); setSelectedId(''); setLabel(''); setExpires(''); setReconnectExpires(''); setError(''); setMessage('');
     });
     const selected = connections.find(item => item.id === selectedId);
-    const eligible = Boolean(selected?.status === 'ACTIVE' && Date.parse(selected.credentialExpiresAt) > Date.now());
-    const expiryMin = localDate(Date.now() + 60000), expiryMax = localDate(Date.now() + 90 * 86400000);
+    const eligible = Boolean(clock > 0 && selected?.status === 'ACTIVE' && Date.parse(selected.credentialExpiresAt) > clock);
+    const expiryMin = clock > 0 ? localDate(clock + 60000) : undefined, expiryMax = clock > 0 ? localDate(clock + 90 * 86400000) : undefined;
     const load = useCallback(async () => {
         if (!isBackendConfigured) return;
         const operation = begin(); if (!operation) return;
@@ -80,14 +81,14 @@ export function IntegrationsWorkspace() {
         event.preventDefault(); if (busy || blocked || sessionEnded) return;
         const credential = credentialRef.current?.value ?? '';
         if (credentialRef.current) credentialRef.current.value = '';
-        if (!credential || !label.trim() || !expires || Date.parse(expires) <= Date.now()) return;
+        if (!credential || !label.trim() || !expires || Date.parse(expires) <= clock) return;
         void mutate(signal => integrationsApi.create({ requestId: crypto.randomUUID(), provider, label: label.trim(), credential, credentialExpiresAt: new Date(expires).toISOString() }, signal), 'Connection creation accepted.');
     };
     const reconnect = (event: FormEvent) => {
         event.preventDefault(); if (!selected || busy || blocked || sessionEnded) return;
         const credential = reconnectCredentialRef.current?.value ?? '';
         if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
-        if (!credential || !reconnectExpires || Date.parse(reconnectExpires) <= Date.now()) return;
+        if (!credential || !reconnectExpires || Date.parse(reconnectExpires) <= clock) return;
         void mutate(signal => integrationsApi.reconnect(selected.id, selected.version, credential, new Date(reconnectExpires).toISOString(), signal), 'Replacement credential accepted.');
     };
     const loadAttempts = async (id: string) => {

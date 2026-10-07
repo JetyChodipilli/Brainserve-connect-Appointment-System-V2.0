@@ -149,7 +149,7 @@ class Sprint11SupportPostgresIntegrationTest {
         assertThat(current.active()).isEqualTo(1); assertThat(current.needsReconnect()).isEqualTo(2); assertThat(current.revoked()).isEqualTo(1);
     }
 
-    @Test void generationIsIdempotentAuditedOnceAndDownloadIsAuditedForEachSuccessfulAccess() {
+    @Test void generationIsIdempotentAuditedOnceAndDownloadIsAuditedForEachSuccessfulAccess() throws Exception {
         var request = request(24); var first = support.generate(ADMIN, request);
         assertThat(support.generate(ADMIN, request)).isEqualTo(first);
         assertThat(count("select count(*) from support_diagnostic_package")).isEqualTo(1);
@@ -157,8 +157,11 @@ class Sprint11SupportPostgresIntegrationTest {
         support.download(ADMIN, first.id()); support.download(ADMIN, first.id());
         assertThat(support.list(ADMIN).getFirst().downloadCount()).isEqualTo(2);
         assertThat(auditCount(first.id(), "SUPPORT_DIAGNOSTIC_DOWNLOADED")).isEqualTo(2);
-        assertThat(jdbc.queryForList("select details_json::text from audit_event where target_id=?", String.class, first.id().toString()))
-                .allSatisfy(value -> assertThat(value).doesNotContain(PRIVATE, EMAIL, SECRET, URL));
+        // V57 preserves the actor in the internal audit envelope; diagnostics never export that envelope.
+        for (String operation : jdbc.queryForList("select (details_json-'_activity')::text from audit_event where target_id=?", String.class, first.id().toString()))
+            assertThat(mapper.readTree(operation)).isEqualTo(mapper.createObjectNode().put("schemaVersion", 1));
+        assertThat(jdbc.queryForList("select details_json #>> '{_activity,actor,name}' from audit_event where target_id=?", String.class, first.id().toString())).containsOnly(PRIVATE);
+        assertThat(jdbc.queryForList("select actor_id from audit_event where target_id=?", String.class, first.id().toString())).containsOnly(ADMIN.toString());
         code(() -> support.generate(ADMIN, new SupportDiagnosticService.Generate(request.requestId(), 1)), "SUPPORT_REQUEST_CONFLICT");
         code(() -> support.generate(OTHER, request), "SUPPORT_REQUEST_CONFLICT");
     }
@@ -199,7 +202,7 @@ class Sprint11SupportPostgresIntegrationTest {
         jdbc.update("delete from iam_user_permission_deny where user_id=?", ADMIN);
         jdbc.update("update iam_user_account set enabled=false where id=?", ADMIN);
         code(() -> support.download(ADMIN, created.id()), "ACCOUNT_INACTIVE");
-        jdbc.update("update iam_user_account set enabled=true,archived=true where id=?", ADMIN);
+        jdbc.update("update iam_user_account set enabled=false,archived=true,archived_at=now() where id=?", ADMIN);
         code(() -> support.preview(ADMIN, 24), "ACCOUNT_INACTIVE");
     }
 
@@ -252,6 +255,7 @@ class Sprint11SupportPostgresIntegrationTest {
     }
 
     @Test void httpRequiresCurrentMfaAndRejectsRoleAndRequestTypeForgery() throws Exception {
+        SecurityContextHolder.clearContext();
         mvc.perform(get("/api/v1/support/diagnostics/preview")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/support/diagnostics/preview").header("Authorization", bearer(ADMIN, Instant.now().minusSeconds(3600))))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorCode").value("MFA_STEP_UP_REQUIRED"));

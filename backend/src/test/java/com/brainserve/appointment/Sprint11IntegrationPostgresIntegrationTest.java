@@ -101,6 +101,15 @@ class Sprint11IntegrationPostgresIntegrationTest {
         assertThat(c.minimumScopes()).containsExactly("calendar.events.write");
         assertThat(count("select count(*) from flyway_schema_history where version='65' and success")).isEqualTo(1);
     }
+    @Test void maximumMultibyteCredentialIsEncryptedAndCanCompleteSimulatorDelivery() {
+        String multibyte="界".repeat(4096);
+        var c=integrations.create(ADMIN,new IntegrationModels.Create(UUID.randomUUID(),IntegrationModels.Provider.SIMULATOR_CALENDAR,"Multibyte boundary",multibyte,expiry()));
+        String encrypted=jdbc.queryForObject("select credential_ciphertext from integration_connection where id=?",String.class,c.id());
+        assertThat(encrypted).hasSizeGreaterThan(16384).hasSizeLessThanOrEqualTo(32768).doesNotContain(multibyte);
+        var d=test(c,IntegrationModels.Scenario.SUCCESS);completeDue(d.id());
+        assertThat(status(d.id())).isEqualTo("DELIVERED");
+        assertThat(integrations.attempts(ADMIN,d.id())).extracting(IntegrationModels.Attempt::outcome).containsExactly("SUCCESS");
+    }
     @Test void creationAndTestsAreIdempotentButChangedRequestPayloadsConflict() {
         var command = new IntegrationModels.Create(UUID.randomUUID(),IntegrationModels.Provider.SIMULATOR_CALENDAR,"Calendar",SECRET,expiry());
         var c = integrations.create(ADMIN,command);
@@ -301,16 +310,16 @@ class Sprint11IntegrationPostgresIntegrationTest {
         assertThat(count("select count(*) from integration_business_event")).isZero();
         assertThat(count("select count(*) from integration_resource_revision")).isZero();
     }
-    @ParameterizedTest @ValueSource(strings={"disabled","archived","role","permission","second-role"})
+    @ParameterizedTest @ValueSource(strings={"disabled","archived","role","permission","missing-role"})
     void everyOwnerEligibilityChangeFencesAnAlreadyClaimedDelivery(String change) {
         var c=connection(IntegrationModels.Provider.SIMULATOR_CALENDAR);var d=test(c,IntegrationModels.Scenario.SUCCESS);
         var claim=integrations.claim(d.id(),Instant.now().plusSeconds(1)).orElseThrow();
         switch(change) {
             case "disabled" -> jdbc.update("update iam_user_account set enabled=false where id=?",ADMIN);
-            case "archived" -> jdbc.update("update iam_user_account set archived=true where id=?",ADMIN);
+            case "archived" -> jdbc.update("update iam_user_account set archived=true,archived_at=now(),enabled=false where id=?",ADMIN);
             case "role" -> jdbc.update("update iam_user_role set role_name='ROLE_EMPLOYEE' where user_id=?",ADMIN);
             case "permission" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'SYSTEM_CONFIGURE')",ADMIN);
-            case "second-role" -> jdbc.update("insert into iam_user_role(user_id,role_name) values(?,'ROLE_EMPLOYEE')",ADMIN);
+            case "missing-role" -> jdbc.update("delete from iam_user_role where user_id=?",ADMIN);
             default -> throw new AssertionError(change);
         }
         integrations.complete(claim,Instant.now().plusSeconds(2));assertThat(status(d.id())).isEqualTo("CANCELLED");

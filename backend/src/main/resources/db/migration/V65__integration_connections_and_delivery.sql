@@ -16,7 +16,7 @@ CREATE TABLE integration_connection (
  created_at timestamptz NOT NULL DEFAULT now(),
  updated_at timestamptz NOT NULL DEFAULT now(),
  CHECK(status='REVOKED' OR credential_ciphertext IS NOT NULL),
- CHECK(credential_ciphertext IS NULL OR length(credential_ciphertext)<=16384)
+ CHECK(credential_ciphertext IS NULL OR length(credential_ciphertext)<=32768)
 );
 CREATE INDEX ix_integration_connection_status ON integration_connection(status,id);
 

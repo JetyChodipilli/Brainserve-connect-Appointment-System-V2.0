@@ -16,7 +16,7 @@ export function SupportWorkspace() {
     const [packages, setPackages] = useState<DiagnosticPackage[]>([]), [loaded, setLoaded] = useState(false);
     const [accepted, setAccepted] = useState(false), [blocked, setBlocked] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
     const errorRef = useRef<HTMLDivElement>(null);
-    const { begin, busy, sessionEnded } = useAdminSession(() => { setPreview(null); setPackages([]); setAccepted(false); setError(''); setMessage(''); });
+    const { begin, busy, sessionEnded, clock } = useAdminSession(() => { setPreview(null); setPackages([]); setAccepted(false); setError(''); setMessage(''); });
     const load = useCallback(async () => {
         if (!isBackendConfigured) return;
         const operation = begin(); if (!operation) return;
@@ -87,7 +87,7 @@ export function SupportWorkspace() {
             <section className={styles.panel} aria-labelledby='diagnostic-packages-title'><h2 id='diagnostic-packages-title'>Your available packages</h2>
                 {!loaded && <p role='status'>{busy ? 'Loading package metadata…' : 'Reload packages to verify the source.'}</p>}
                 {loaded && packages.length === 0 && <p>No available packages. Preview the fields to create one.</p>}
-                {packages.map(item => <article className={styles.row} key={item.id} aria-label={`Diagnostic package ${item.id}`}><strong>{item.id}</strong><dl className={styles.facts}><div><dt>Generated</dt><dd>{date(item.createdAt)}</dd></div><div><dt>Expires</dt><dd>{date(item.expiresAt)}</dd></div><div><dt>Window</dt><dd>{date(item.windowStart)} to {date(item.windowEnd)}</dd></div><div><dt>Size and downloads</dt><dd>{item.sizeBytes.toLocaleString()} bytes · {item.downloadCount} downloads</dd></div></dl><button type='button' className='button button-secondary' disabled={busy || Date.parse(item.expiresAt) <= Date.now()} onClick={() => void download(item)}>Download diagnostic package</button></article>)}
+                {packages.map(item => <article className={styles.row} key={item.id} aria-label={`Diagnostic package ${item.id}`}><strong>{item.id}</strong><dl className={styles.facts}><div><dt>Generated</dt><dd>{date(item.createdAt)}</dd></div><div><dt>Expires</dt><dd>{date(item.expiresAt)}</dd></div><div><dt>Window</dt><dd>{date(item.windowStart)} to {date(item.windowEnd)}</dd></div><div><dt>Size and downloads</dt><dd>{item.sizeBytes.toLocaleString()} bytes · {item.downloadCount} downloads</dd></div></dl><button type='button' className='button button-secondary' disabled={busy || clock === 0 || Date.parse(item.expiresAt) <= clock} onClick={() => void download(item)}>Download diagnostic package</button></article>)}
             </section>
         </div>}
     </section>;
