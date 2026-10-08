@@ -5,6 +5,7 @@ import type { KioskSession } from './types';
 import styles from './kiosk.module.css';
 
 export function KioskScreen() {
+  const [ready, setReady] = useState(false);
   const [session, setSession] = useState<KioskSession | null>(null), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
   const code = useRef<HTMLInputElement>(null), pass = useRef<HTMLInputElement>(null), token = useRef('');
   const generation = useRef(0), locked = useRef(false), request = useRef<AbortController | null>(null), idle = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -17,10 +18,11 @@ export function KioskScreen() {
   const disconnect = useCallback(() => { reset();token.current='';setSession(null); }, [reset]);
   const touch = useCallback(() => { if (idle.current) clearTimeout(idle.current);idle.current=setTimeout(reset,60_000); }, [reset]);
   useEffect(() => {
+    const initialized = setTimeout(() => setReady(true), 0);
     if (location.search || location.hash) history.replaceState(null,'',location.pathname);
     const hide=()=> { if (document.hidden) reset(); };
     document.addEventListener('visibilitychange',hide);window.addEventListener('pagehide',disconnect);window.addEventListener('popstate',disconnect);
-    return () => {disconnect();document.removeEventListener('visibilitychange',hide);window.removeEventListener('pagehide',disconnect);window.removeEventListener('popstate',disconnect);};
+    return () => {clearTimeout(initialized);disconnect();document.removeEventListener('visibilitychange',hide);window.removeEventListener('pagehide',disconnect);window.removeEventListener('popstate',disconnect);};
   }, [reset,disconnect]);
   useEffect(() => {
     if (!session) return;
@@ -52,6 +54,6 @@ export function KioskScreen() {
   };
   return <main className={styles.screen}><section className={styles.card} aria-label="Visitor kiosk"><p>VISITOR ARRIVALS</p><h1>{session?'Welcome. Scan your visitor pass.':'Connect this visitor device'}</h1><p>{session?'Reception or Security will verify your arrival before check-in.':'Ask your administrator for a device code. It stays active for up to eight hours.'}</p>
     {session ? <form className={styles.form} onSubmit={submit}><label>Scanned QR content<input ref={pass} maxLength={500} autoComplete="off" autoFocus onInput={touch} required disabled={busy}/></label><button className="button button-primary" disabled={busy}>{busy?'Submitting…':'Request arrival'}</button><div className={styles.actions}><button type="button" className="button button-secondary" onClick={()=>{reset();pass.current?.focus();}}>Start again</button><button type="button" className="button button-secondary" onClick={disconnect}>Disconnect device</button></div><small>Visitor details clear after 60 seconds of inactivity.</small></form>
-    : <form className={styles.form} onSubmit={connect}><label>Device code<input ref={code} type="password" minLength={43} maxLength={43} autoComplete="off" spellCheck={false} required disabled={busy}/></label><button className="button button-primary" disabled={busy}>{busy?'Connecting…':'Connect device'}</button></form>}
+    : <form className={styles.form} onSubmit={connect}><label>Device code<input ref={code} type="password" minLength={43} maxLength={43} autoComplete="off" spellCheck={false} required disabled={busy}/></label><button className="button button-primary" disabled={busy||!ready}>{busy?'Connecting…':'Connect device'}</button></form>}
     {message&&<p role="status">{message}</p>}{error&&<p className={styles.error} role="alert">{error}</p>}</section></main>;
 }

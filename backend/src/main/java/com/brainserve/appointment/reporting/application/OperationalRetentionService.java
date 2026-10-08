@@ -146,6 +146,13 @@ public class OperationalRetentionService {
                    )
                 returning source.id
                 """, (result, row) -> result.getObject(1, UUID.class));
+        // Scrub free text only when every member passed the existing archive and legal-hold gates.
+        jdbc.update("""
+                update appointment_visit_group g set label='Retained visit group',payload_hash=repeat('0',64)
+                where g.label <> 'Retained visit group'
+                  and exists(select 1 from appointment a where a.visit_group_id=g.id)
+                  and not exists(select 1 from appointment a where a.visit_group_id=g.id and a.retention_anonymized_at is null)
+                """);
         for (UUID id : ids) {
             ledger.record("RETAINED_APPOINTMENT_ANONYMIZED", "APPOINTMENT", id.toString(),
                     "SUCCESS", Map.of(

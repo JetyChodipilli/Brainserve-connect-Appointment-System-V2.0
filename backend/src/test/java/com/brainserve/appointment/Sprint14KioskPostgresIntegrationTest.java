@@ -68,6 +68,7 @@ class Sprint14KioskPostgresIntegrationTest {
   p.add("spring.data.redis.host",REDIS::getHost);p.add("spring.data.redis.port",()->REDIS.getMappedPort(6379));
  }
  @Autowired JdbcTemplate jdbc; @Autowired TransactionOperations transactions; @Autowired ObjectMapper json; @Autowired MockMvc mvc; @Autowired StringRedisTemplate redis;
+ @Autowired com.brainserve.appointment.reporting.application.OperationalRetentionService retention;
  @Autowired GroupVisitService groups; @Autowired KioskService kiosks; @Autowired VisitorPassService passes; @Autowired VisitorBadgeService badges;
  @MockitoBean S3Client s3; @MockitoBean ClamAvScanner scanner;
  static final UUID ADMIN=id(1),OTHER=id(2),RECEPTION=id(3),SECURITY=id(4),HR=id(5),EMPLOYEE=id(6),HOST=id(7),DEPT=id(8);
@@ -141,6 +142,16 @@ class Sprint14KioskPostgresIntegrationTest {
  }
  @Test void intakeRollsBackWithItsEnclosingTransaction() {
   var d=kiosks.provision(ADMIN,"Gate");UUID visit=visit("APPROVED");String token=passes.issue(reference(visit)).token();transactions.executeWithoutResult(status->{kiosks.intake(d.token(),token);status.setRollbackOnly();});assertThat(count("kiosk_arrival_intake")).isZero();
+ }
+ @Test void retainedGroupTextScrubsOnlyAfterEveryMemberIsAnonymized() {
+  var g=groups.create(RECEPTION,request(UUID.randomUUID(),"Private group label"));
+  jdbc.update("update appointment set status='CANCELLED',retention_anonymized_at=now() where id=?",g.members().getFirst().appointmentId());
+  org.springframework.test.util.ReflectionTestUtils.invokeMethod(retention,"anonymizeExpiredAppointments");
+  assertThat(jdbc.queryForObject("select label from appointment_visit_group where id=?",String.class,g.id())).isEqualTo("Private group label");
+  jdbc.update("update appointment set status='CANCELLED',retention_anonymized_at=now() where visit_group_id=?",g.id());
+  org.springframework.test.util.ReflectionTestUtils.invokeMethod(retention,"anonymizeExpiredAppointments");
+  assertThat(jdbc.queryForObject("select label from appointment_visit_group where id=?",String.class,g.id())).isEqualTo("Retained visit group");
+  assertThat(jdbc.queryForObject("select payload_hash from appointment_visit_group where id=?",String.class,g.id())).isEqualTo("0".repeat(64));
  }
  private GroupVisitController.Request request(UUID requestId,String label) {
   LocalDate day=LocalDate.now(ZoneId.of("Asia/Kolkata")).plusDays(1);while(day.getDayOfWeek()==DayOfWeek.SATURDAY||day.getDayOfWeek()==DayOfWeek.SUNDAY)day=day.plusDays(1);Instant start=day.atTime(9,30).atZone(ZoneId.of("Asia/Kolkata")).toInstant();
