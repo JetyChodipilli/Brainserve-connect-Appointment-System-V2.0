@@ -76,7 +76,7 @@ class Sprint6PostgresIntegrationTest {
     }
     @Test void migrationDefaultsRetainUnknownOriginalCoverageAndDoNotInventLegacySnapshots() {
         Flyway flyway=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).load();flyway.validate();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("69");assertThat(flyway.migrate().migrationsExecuted).isZero();
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("70");assertThat(flyway.migrate().migrationsExecuted).isZero();
         UUID legacy=UUID.randomUUID();
         jdbc.update("insert into department_work_task(id,department_id,employee_id,team_lead_user_id,assigned_by_user_id,assigned_by_role,assignee_role,title,description,department_branch,due_date,status,created_at,created_by,updated_at,updated_by) "
                 + "values (?,?,?,? ,?,'TEAM_LEAD','EMPLOYEE','Legacy boundary','Retained legacy instructions','S6_MAIN',?,'COMPLETED',now(),'fixture',now(),'fixture')",legacy,DEPT,EMP,LEAD,LEAD,LocalDate.now().plusDays(1));
