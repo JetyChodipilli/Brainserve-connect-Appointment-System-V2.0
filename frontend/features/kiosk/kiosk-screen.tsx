@@ -1,6 +1,6 @@
  'use client';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ApiError, kioskRequest } from '../../lib/api-client';
+import { ApiError, kioskRequest, setAccessToken } from '../../lib/api-client';
 import type { KioskSession } from './types';
 import styles from './kiosk.module.css';
 
@@ -18,6 +18,7 @@ export function KioskScreen() {
   const disconnect = useCallback(() => { reset();token.current='';setSession(null); }, [reset]);
   const touch = useCallback(() => { if (idle.current) clearTimeout(idle.current);idle.current=setTimeout(reset,60_000); }, [reset]);
   useEffect(() => {
+    setAccessToken(null);
     const initialized = setTimeout(() => setReady(true), 0);
     if (location.search || location.hash) history.replaceState(null,'',location.pathname);
     const hide=()=> { if (document.hidden) reset(); };
