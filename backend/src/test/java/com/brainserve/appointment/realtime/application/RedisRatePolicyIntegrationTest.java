@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -128,6 +129,13 @@ class RedisRatePolicyIntegrationTest {
         assertTrue(Integer.parseInt(rejected.getHeader("Retry-After")) <= 20);
         assertEquals(204, login(limiter, "198.51.100.2", "203.0.113.99").getStatus());
         assertTrue(redis.getExpire("rate:ip:198.51.100.1:login") <= 20, "denials must not extend the window");
+        // Redis TTL rounds to whole seconds; Retry-After must not precede the actual expiry.
+        redis.expire("rate:ip:198.51.100.1:login", Duration.ofMillis(2400));
+        var fractional = login(limiter, "198.51.100.1", "203.0.113.99");
+        assertEquals(429, fractional.getStatus());
+        assertTrue(Long.parseLong(fractional.getHeader("Retry-After")) * 1000
+                >= redis.getExpire("rate:ip:198.51.100.1:login", TimeUnit.MILLISECONDS),
+                "Retry-After must round remaining milliseconds up, never allow an early retry");
     }
 
     @Test

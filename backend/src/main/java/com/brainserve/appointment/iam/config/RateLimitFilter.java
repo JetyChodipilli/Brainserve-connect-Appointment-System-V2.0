@@ -21,9 +21,9 @@ import java.util.List;
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
     private static final DefaultRedisScript<Long> SCRIPT = new DefaultRedisScript<>(
-            "local n=redis.call('INCR',KEYS[1]); local ttl=redis.call('TTL',KEYS[1]); "
-                    + "if n==1 or ttl<0 then redis.call('EXPIRE',KEYS[1],ARGV[1]); ttl=tonumber(ARGV[1]); end; "
-                    + "if n>tonumber(ARGV[2]) then return math.max(1,ttl); end; return 0;", Long.class);
+            "local n=redis.call('INCR',KEYS[1]); local ttl=redis.call('PTTL',KEYS[1]); "
+                    + "if n==1 or ttl<0 then redis.call('EXPIRE',KEYS[1],ARGV[1]); ttl=tonumber(ARGV[1])*1000; end; "
+                    + "if n>tonumber(ARGV[2]) then return math.max(1,math.ceil(ttl/1000)); end; return 0;", Long.class);
     private final StringRedisTemplate redis;
     private final ObjectMapper mapper;
     private final ClientAddressResolver addresses;

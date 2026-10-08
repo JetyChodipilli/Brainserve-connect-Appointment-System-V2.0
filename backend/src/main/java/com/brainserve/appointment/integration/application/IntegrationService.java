@@ -407,9 +407,10 @@ public class IntegrationService {
         Instant deadline=slackDeadline(d);
         Instant started=Instant.now().isAfter(now)?Instant.now():now;
         if (!List.of("VISITOR_ARRIVED","CONNECTION_TEST").contains(d.eventType()) || !deadline.isAfter(started.plusSeconds(5))) { finishGoogle(c,d,"FAILED","DELIVERY_EXPIRED",now,0); return; }
-        if (leaseUntil.isBefore(Instant.now().plusSeconds(10))) { finishGoogle(c,d,"PENDING","LEASE_EXPIRING",now,30); return; }
         SlackAdapter.Result result;
-        try { result=slack.deliver(c.id(),d.eventType().equals("CONNECTION_TEST"),now,deadline,leaseUntil); }
+        try { result=leaseUntil.isBefore(Instant.now().plusSeconds(10))
+                ? new SlackAdapter.Result("LEASE_EXPIRING",started.plusSeconds(30),null)
+                : slack.deliver(c.id(),d.eventType().equals("CONNECTION_TEST"),now,deadline,leaseUntil); }
         catch (RuntimeException uncertain) { result=new SlackAdapter.Result("DELIVERY_UNKNOWN",now,null); }
         String code=result.code();
         Instant finished=Instant.now().isAfter(now)?Instant.now():now;

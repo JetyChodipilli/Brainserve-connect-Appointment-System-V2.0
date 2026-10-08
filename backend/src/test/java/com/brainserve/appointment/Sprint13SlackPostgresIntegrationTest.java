@@ -169,6 +169,22 @@ class Sprint13SlackPostgresIntegrationTest {
         for(UUID id:ids) {assertThat(deliveryStatus(id)).isEqualTo("DELIVERED");assertThat(service.attempts(ADMIN,id)).hasSize(1);}
         verify(http,times(6)).post(anyString(),anyString(),anyString(),anyBoolean());
     }
+    @Test void shortWorkerLeaseDefersWithoutConsumingSendBudgetAndThenDelivers() {
+        var d=test(connect());Instant now=Instant.now().plusSeconds(1);
+        var claim=service.claim(d.id(),now).orElseThrow();
+        jdbc.update("update integration_delivery set lease_until=? where id=?",Timestamp.from(now.plusSeconds(4)),d.id());
+        service.complete(claim,now);
+        assertThat(deliveryStatus(d.id())).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("select last_result_code from integration_delivery where id=?",String.class,d.id())).isEqualTo("LEASE_EXPIRING");
+        assertThat(jdbc.queryForObject("select attempts from integration_delivery where id=?",Integer.class,d.id())).isZero();
+        assertThat(jdbc.queryForObject("select total_attempts from integration_delivery where id=?",Integer.class,d.id())).isZero();
+        assertThat(service.attempts(ADMIN,d.id())).isEmpty();
+        verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
+        jdbc.update("update integration_delivery set next_attempt_at=now()-interval '1 second' where id=?",d.id());
+        complete(d.id());assertThat(deliveryStatus(d.id())).isEqualTo("DELIVERED");
+        assertThat(service.attempts(ADMIN,d.id())).hasSize(1);
+        verify(http,times(1)).post(anyString(),anyString(),anyString(),anyBoolean());
+    }
     @Test void nearExpiredArrivalDoesNotStartHttpBeyondItsHorizon() {
         var d=test(connect());jdbc.update("update integration_delivery set occurred_at=now()-interval '24 hours'+interval '3 seconds' where id=?",d.id());
         complete(d.id());assertThat(deliveryStatus(d.id())).isEqualTo("FAILED");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
