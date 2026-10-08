@@ -1,0 +1,20 @@
+'use client';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useAdminSession } from '../integrations/use-admin-session';
+import { isBackendConfigured } from '../../lib/api-client';
+import { kioskApi } from './api/kiosk-api';
+import type { Device, Provisioned } from './types';
+import styles from './kiosk.module.css';
+
+export function DeviceAdministration() {
+  const [devices,setDevices]=useState<Device[]>([]),[issued,setIssued]=useState<Provisioned|null>(null),[label,setLabel]=useState(''),[error,setError]=useState(''),[blocked,setBlocked]=useState(true);
+  const {begin,busy,sessionEnded,clock}=useAdminSession(()=>{setDevices([]);setIssued(null);setLabel('');setError('');setBlocked(true);});
+  const load=useCallback(async()=>{const op=begin();if(!op)return;setIssued(null);setError('');setBlocked(true);try{const data=await kioskApi.devices(op.signal);if(op.current()){setDevices(data);setBlocked(false);}}catch{if(op.current())setError('Device list could not be loaded. Reload before making changes.');}finally{op.finish();}},[begin]);
+  useEffect(()=>{if(!isBackendConfigured)return;const timer=setTimeout(()=>void load(),0);return()=>clearTimeout(timer);},[load]);
+  useEffect(()=>{const hide=()=>{if(document.hidden)setIssued(null);};document.addEventListener('visibilitychange',hide);return()=>document.removeEventListener('visibilitychange',hide);},[]);
+  const provision=async(event:FormEvent)=>{event.preventDefault();if(blocked)return;const op=begin();if(!op)return;setIssued(null);setError('');try{const value=await kioskApi.provision(label,op.signal);if(!op.current())return;if(!/^[A-Za-z0-9_-]{43}$/.test(value.token))throw new Error('Invalid device');setIssued(value);setLabel('');setDevices(await kioskApi.devices(op.signal));}catch{if(op.current()){setIssued(null);setBlocked(true);setError('Device creation was not confirmed. Reload the list before creating another.');}}finally{op.finish();}};
+  const revoke=async(device:Device)=>{const op=begin();if(!op)return;setIssued(null);setError('');try{await kioskApi.revoke(device,op.signal);const data=await kioskApi.devices(op.signal);if(op.current())setDevices(data);}catch{if(op.current()){setBlocked(true);setError('Revocation was not confirmed. Reload the current device list.');}}finally{op.finish();}};
+  return <section className={styles.panel} aria-label="Visitor devices"><h2>Visitor devices</h2><p>Create a dedicated code for the visitor kiosk. The code is shown once, expires after eight hours, and grants arrival requests only.</p>{!isBackendConfigured?<p>Configure the backend to manage visitor devices.</p>:<><div className={styles.actions}><button className="button button-secondary" disabled={busy||sessionEnded} onClick={()=>void load()}>Reload devices</button><a href="/kiosk" target="_blank" rel="noopener noreferrer">Open visitor kiosk</a></div><form className={styles.form} onSubmit={provision}><label>Device label<input value={label} onChange={e=>setLabel(e.target.value)} maxLength={80} required disabled={busy||sessionEnded}/></label><button className="button button-primary" disabled={busy||blocked||sessionEnded||!label.trim()}>Create device code</button></form>
+  {issued&&clock<Date.parse(issued.expiresAt)&&<div role="status"><p>Copy this code to your dedicated kiosk now. It cannot be retrieved again.</p><code className={styles.code}>{issued.token}</code><p>Expires {new Date(issued.expiresAt).toLocaleString('en-IN')}</p><button className="button button-secondary" onClick={()=>setIssued(null)}>Hide device code</button></div>}
+  <div className={styles.list}>{devices.map(device=><div className={styles.row} key={device.id}><span><strong>{device.label}</strong><small>{device.revokedAt?'Revoked':clock>=Date.parse(device.expiresAt)?'Expired':'Active'} · {new Date(device.expiresAt).toLocaleString('en-IN')}</small></span><button className="button button-secondary" disabled={busy||blocked||sessionEnded||!!device.revokedAt} onClick={()=>void revoke(device)}>Revoke {device.label}</button></div>)}</div></>}{error&&<p role="alert" className={styles.error}>{error}</p>}</section>;
+}

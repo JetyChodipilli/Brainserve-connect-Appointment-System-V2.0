@@ -1,5 +1,7 @@
 "use client";
 
+import { GroupRegistration } from "../kiosk/group-registration";
+import { ArrivalTools } from "../kiosk/arrival-tools";
 import { brainServeApi, isBackendConfigured } from "../../services/brainserve-api";
 import { formatOfficeTime, officeToday } from "../../lib/appointments";
 import { PageTitle } from "../../components/ui/page-title";
@@ -59,6 +61,8 @@ export function VisitorsView({ role, userEmail, appointments, accessRecords, onC
                    detail="Security captures each arrival, Reception verifies it, and CEO visits go directly to the assigned department Manager for approval."
                    action={<button className="button button-primary" onClick={onRegister}><UserPlus size={17} /> {role === "Security" ? "Create walk-in" : "Register visitor"}</button>} />
         <BulkImportEntry accountScope={`${role}:${userEmail}`} kinds={["VISITORS"]} label="Import pending visits" />
+        {isBackendConfigured && role === "Reception" && <GroupRegistration />}
+        {isBackendConfigured && canProcessAccess && <ArrivalTools appointments={appointments} accessRecords={accessRecords} />}
         <div className="reception-actions">
             <button className="action-tile glass-panel" onClick={onRegister}><span><UserPlus size={24} /></span><div><strong>{role === "Security" ? "Create walk-in appointment" : "Register interview or meeting"}</strong><small>{role === "Security" ? "Capture arrival and notify Reception immediately" : "Start the Security → Reception → approval workflow"}</small></div><ArrowRight size={18} /></button>
             <button className="action-tile glass-panel" onClick={() => document.getElementById("live-occupancy")?.scrollIntoView({ behavior: "smooth", block: "center" })}><span><DoorOpen size={24} /></span><div><strong>Emergency list</strong><small>{accessRecords.length} people currently inside</small></div><ArrowRight size={18} /></button>

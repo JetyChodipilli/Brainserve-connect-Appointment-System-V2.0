@@ -118,6 +118,7 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 || (write && path.matches("/admin/staff-accounts/[^/]+/(reset-password|email|status)"))
                 || path.startsWith("/admin/account-closures/archived-recovery")
                 || (write && path.startsWith("/admin/account-closures/direct-archive"))
+                || (write && path.startsWith("/admin/kiosks"))
                 || (write && path.startsWith("/integrations/"))
                 || path.equals("/integrations/google-calendar/calendar.ics")
                 || path.equals("/support/diagnostics") || path.startsWith("/support/diagnostics/")

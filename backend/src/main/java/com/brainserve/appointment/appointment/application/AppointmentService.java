@@ -152,6 +152,19 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
         return appointment;
     }
 
+    @Transactional
+    public Appointment registerGroupMember(UUID groupId, String key, UUID actor, CreateAppointment command) {
+        Appointment appointment = newAppointment(key, command);
+        appointment.assignVisitGroup(groupId);
+        appointment.submitByReception(actor);
+        appointment = save(appointment);
+        events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(appointment.getId(),
+                appointment.getReferenceNumber(), appointment.getStatus().name(), Instant.now()));
+        publishIntegration(appointment, "APPOINTMENT_CREATED");
+        audit.record("VISITOR_GROUP_MEMBER_REGISTERED", "APPOINTMENT", appointment.getId().toString(), "{}");
+        return appointment;
+    }
+
     private Appointment createAtReception(String idempotencyKey, UUID receptionistUserId, CreateAppointment command) {
         Appointment appointment = newAppointment(idempotencyKey, command);
         appointment.submitByReception(receptionistUserId);

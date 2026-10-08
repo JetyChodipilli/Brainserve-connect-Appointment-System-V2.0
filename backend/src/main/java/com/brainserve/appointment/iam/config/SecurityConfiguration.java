@@ -49,6 +49,7 @@ public class SecurityConfiguration {
                 .cors(withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST, "/api/v1/kiosk/session", "/api/v1/kiosk/intake").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/integrations/google-calendar/authorize",
                                 "/api/v1/integrations/google-calendar/callback").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh",
@@ -132,7 +133,7 @@ public class SecurityConfiguration {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.stream(origins.split(",")).map(String::trim).toList());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID", "If-Match"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID", "If-Match", "X-Kiosk-Token"));
         config.setExposedHeaders(List.of("X-Correlation-ID", "ETag", "Retry-After"));
         config.setAllowCredentials(false);
         config.setMaxAge(3600L);

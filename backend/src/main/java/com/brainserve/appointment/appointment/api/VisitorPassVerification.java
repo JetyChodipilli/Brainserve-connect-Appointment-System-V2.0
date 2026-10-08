@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public interface VisitorPassVerification {
     VerifiedPass verify(String token);
+    VerifiedPass verifyForArrival(String token);
 
     record VerifiedPass(UUID appointmentId, String referenceNumber, String visitorName, String visitorCompany,
                         String appointmentStatus, Instant slotStart, Instant slotEnd, Instant validUntil) {}

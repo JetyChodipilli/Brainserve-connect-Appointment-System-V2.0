@@ -33,6 +33,7 @@ export const navItems: { id: View; label: string; icon: typeof LayoutDashboard }
     { id: "audit", label: "Audit trail", icon: FileClock },
     { id: "logs", label: "Logs", icon: FileText },
     { id: "integrations", label: "Integrations", icon: Plug },
+    { id: "kiosk-devices", label: "Visitor devices", icon: IdCard },
     { id: "support", label: "Support diagnostics", icon: LifeBuoy },
     { id: "settings", label: "Settings", icon: Settings },
 ];
