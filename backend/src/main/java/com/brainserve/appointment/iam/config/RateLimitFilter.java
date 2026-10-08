@@ -77,8 +77,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private Rule rule(HttpServletRequest request) {
-        if (!"POST".equals(request.getMethod()) && !"DELETE".equals(request.getMethod())) return null;
         String path = request.getRequestURI().substring(request.getContextPath().length());
+        if ("GET".equals(request.getMethod())) {
+            if (path.equals("/api/v1/integrations/google-calendar/authorize")) return new Rule("google-calendar-authorize", 30, 60);
+            if (path.equals("/api/v1/integrations/google-calendar/callback")) return new Rule("google-calendar-callback", 30, 60);
+            return null;
+        }
+        if (!"POST".equals(request.getMethod()) && !"DELETE".equals(request.getMethod())) return null;
         // Account failures are still tracked by AuthenticationService. This
         // broad network budget lets coworkers behind one NAT sign in normally.
         if (path.equals("/api/v1/auth/login") || path.equals("/api/auth/login"))
@@ -110,6 +115,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     static void writeProblem(ObjectMapper mapper, HttpServletResponse response, int status, String code, String detail) throws IOException {
         response.setStatus(status); response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        response.setHeader("Cache-Control", "no-store");
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatus.valueOf(status), detail);
         problem.setProperty("errorCode", code); problem.setProperty("timestamp", Instant.now());
         mapper.writeValue(response.getOutputStream(), problem);

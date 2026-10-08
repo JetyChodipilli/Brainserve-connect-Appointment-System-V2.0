@@ -19,9 +19,13 @@ public class IntegrationDispatcher {
     @Scheduled(fixedDelayString="${brainserve.integrations.poll-ms:10000}",initialDelayString="${brainserve.integrations.poll-ms:10000}")
     public void dispatch() {
         if (!enabled) return;
+        for (var id : service.dueReconciliations()) {
+            try { service.reconcileBatch(id); }
+            catch (RuntimeException exception) { LOG.warn("Calendar reconciliation deferred; the durable batch will recover"); }
+        }
         for (var id : service.due()) {
             try { service.claim(id,Instant.now()).ifPresent(claim -> service.complete(claim,Instant.now())); }
-            catch (RuntimeException exception) { LOG.warn("Integration simulator delivery deferred; recovery will use the retained lease"); }
+            catch (RuntimeException exception) { LOG.warn("Integration delivery deferred; recovery will use the retained lease"); }
         }
     }
 }

@@ -73,6 +73,27 @@ class RateLimitFilterTest {
         assertUnavailable();
     }
 
+    @ParameterizedTest
+    @CsvSource({"authorize,google-calendar-authorize", "callback,google-calendar-callback"})
+    void oauthRedirectsAreBoundedBeforeAuthenticationAndFailClosed(String route, String key) throws Exception {
+        AtomicInteger admitted = new AtomicInteger();
+        String path = "/api/v1/integrations/google-calendar/" + route;
+        when(redis.execute(any(RedisScript.class), anyList(), anyString(), anyString())).thenReturn(17L);
+        var rejected = run("GET", path, "192.0.2.8", admitted);
+        assertEquals(429, rejected.getStatus());
+        assertEquals("17", rejected.getHeader("Retry-After"));
+        assertEquals("no-store", rejected.getHeader("Cache-Control"));
+        assertEquals(0, admitted.get());
+        verify(redis).execute(any(RedisScript.class), eq(List.of("rate:ip:192.0.2.8:" + key)), eq("60"), eq("30"));
+        reset(redis);
+        when(redis.execute(any(RedisScript.class), anyList(), anyString(), anyString()))
+                .thenThrow(new RedisConnectionFailureException("unavailable"));
+        var unavailable = run("GET", path, "192.0.2.8", admitted);
+        assertEquals(503, unavailable.getStatus());
+        assertEquals("no-store", unavailable.getHeader("Cache-Control"));
+        assertEquals(0, admitted.get());
+    }
+
     @Test
     void readsAndPreflightDoNotSpendTheLoginBudget() throws Exception {
         AtomicInteger admitted = new AtomicInteger();

@@ -64,7 +64,7 @@ class Sprint5PostgresIntegrationTest {
     }
     @Test void v55IsAdditiveAndLegacySubmissionEvidenceRemainsUnknown() {
         Flyway flyway=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).load();flyway.validate();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("66");assertThat(flyway.migrate().migrationsExecuted).isZero();
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("68");assertThat(flyway.migrate().migrationsExecuted).isZero();
         var task=create("Unknown old delivery");jdbc.update("update department_work_task set submission_version=null,status='COMPLETED',completed_at=now() where id=?",task.getId());
         assertThat(board.detail(USER,task.getId()).item().submissionVersion()).isNull();
         assertThat(count("select count(*) from workboard_preference")).isZero();

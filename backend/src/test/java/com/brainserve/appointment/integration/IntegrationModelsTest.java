@@ -16,10 +16,11 @@ class IntegrationModelsTest {
         assertThat(new IntegrationModels.Create(UUID.randomUUID(),IntegrationModels.Provider.SIMULATOR_CALENDAR,"Calendar",secret,Instant.now()).toString()).doesNotContain(secret);
         assertThat(new IntegrationModels.Reconnect(0L,secret,Instant.now()).toString()).doesNotContain(secret);
     }
-    @Test void scopesAreFixedAndReadOnly() {
+    @Test void scopesAreFixedAndProviderSpecific() {
         assertThat(IntegrationModels.Provider.SIMULATOR_CALENDAR.scopes()).containsExactly("calendar.events.write");
         assertThat(IntegrationModels.Provider.SIMULATOR_MESSAGING.scopes()).containsExactly("messages.send");
-        assertThat(IntegrationModels.Provider.values()).hasSize(2);
+        assertThat(IntegrationModels.Provider.GOOGLE_CALENDAR.scopes()).containsExactly("https://www.googleapis.com/auth/calendar.app.created");
+        assertThat(IntegrationModels.Provider.values()).hasSize(3);
     }
     @Test void retryBackoffIsBoundedAndDoesNotOverflow() {
         assertThat(IntegrationService.retryDelay(1)).isEqualTo(30);

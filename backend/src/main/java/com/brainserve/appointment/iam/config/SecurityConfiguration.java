@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -48,6 +49,8 @@ public class SecurityConfiguration {
                 .cors(withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/api/v1/integrations/google-calendar/authorize",
+                                "/api/v1/integrations/google-calendar/callback").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh",
                                 "/api/auth/logout", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
                                 "/api/auth/recovery/**", "/api/v1/auth/recovery/**",
@@ -142,6 +145,7 @@ public class SecurityConfiguration {
             throws java.io.IOException {
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        response.setHeader("Cache-Control", "no-store");
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatus.valueOf(status), detail);
         problem.setProperty("errorCode", code);
         problem.setProperty("timestamp", Instant.now());

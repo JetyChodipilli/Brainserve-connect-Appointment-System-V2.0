@@ -3,6 +3,7 @@ import { embeddedTestPdf } from './fixtures/work-evidence-pdf.mjs';
 import { verifyWorkPlanningStaging } from './verify-work-planning-staging.mjs';
 import { verifyNotificationPolicyStaging } from './verify-notification-policy-staging.mjs';
 import { verifyIntegrationsStaging } from './verify-integrations-staging.mjs';
+import { verifyCalendarStaging } from './verify-calendar-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -207,6 +208,7 @@ await verifyWorkPlanningStaging({ call, sql, leadPerson, employeePerson, otherPe
   taskId: created.id, evidence, safe, workerEmployee, strangerEmployee, tomorrow });
 await verifyNotificationPolicyStaging({call,sql,leadPerson,employeePerson,alternatePerson:principals[3],adminPerson:principals[6],workerEmployee,tomorrow});
 await verifyIntegrationsStaging({call,sql,adminPerson:principals[6],employeePerson});
+await verifyCalendarStaging({call,sql,adminPerson:principals[6],employeePerson});
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

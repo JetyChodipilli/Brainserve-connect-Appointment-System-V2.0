@@ -36,6 +36,15 @@ class AuthenticatedRequestLimitFilterTest {
             "POST,/api/v1/report-exports,export-job,5", "POST,/api/v1/report-exports/REF/retry,export-job,5",
             "POST,/api/v1/support/diagnostics,export-job,5", "GET,/api/v1/support/diagnostics/REF/download,export,30",
             "GET,/api/v1/support/diagnostics/preview,search,120", "POST,/api/v1/integrations/connections,integration-write,5",
+            "POST,/api/v1/integrations/google-calendar/consents,integration-write,5",
+            "POST,/api/v1/integrations/google-calendar/consents/REF/complete,integration-write,5",
+            "POST,/api/v1/integrations/connections/REF/reconcile,integration-write,5",
+            "POST,/api/v1/integrations/google-calendar/connections/REF/revocation/retry,integration-write,5",
+            "GET,/api/v1/integrations/google-calendar/calendar.ics,export,30",
+            "GET,/api/v1/integrations/google-calendar/config,search,120",
+            "GET,/api/v1/integrations/google-calendar/consents,search,120",
+            "GET,/api/v1/integrations/google-calendar/connections/REF,search,120",
+            "GET,/api/v1/integrations/connections/REF/reconciliation,search,120",
             "GET,/api/v1/report-exports/REF/download-url,export,30", "GET,/api/v1/history,search,120",
             "GET,/api/v1/visitors/search,search,120", "GET,/api/v1/realtime/stream,stream-connect,12"})
     void expensiveRoutesHaveExplicitAccountBudgets(String method, String path, String operation, int limit) throws Exception {
@@ -45,6 +54,7 @@ class AuthenticatedRequestLimitFilterTest {
         var response = run(method, path);
         assertEquals(429, response.getStatus());
         assertEquals("23", response.getHeader("Retry-After"));
+        assertEquals("no-store", response.getHeader("Cache-Control"));
         assertTrue(response.getContentAsString().contains("RATE_LIMIT_EXCEEDED"));
         verify(redis).execute(any(RedisScript.class), eq(List.of("rate:account:{" + account + "}:" + operation)),
                 eq("60"), eq(Integer.toString(limit)));

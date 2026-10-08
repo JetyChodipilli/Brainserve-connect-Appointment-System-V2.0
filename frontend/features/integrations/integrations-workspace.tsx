@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, isBackendConfigured } from '../../lib/api-client';
 import { integrationsApi } from './api/integrations-api';
+import { googleAuthorizationUrl } from './api/google-authorization-url';
 import { useAdminSession } from './use-admin-session';
-import type { Connection, Delivery, DeliveryAttempt, IntegrationProvider, TestScenario } from './types';
+import type { CalendarReconciliation, Connection, Delivery, DeliveryAttempt, GoogleCalendarConfig, GoogleConnectionMetadata, GoogleConsent, IntegrationProvider, TestScenario } from './types';
 import styles from './admin-tools.module.css';
 
 const date = (value: string | null) => value ? new Date(value).toLocaleString('en-IN') : 'Not recorded';
 const human = (value: string) => value.replaceAll('_', ' ').toLowerCase();
-const providerName = (value: IntegrationProvider) => value === 'SIMULATOR_CALENDAR' ? 'Calendar simulator' : 'Messaging simulator';
+const providerName = (value: IntegrationProvider) => value === 'GOOGLE_CALENDAR' ? 'Google Calendar' : value === 'SIMULATOR_CALENDAR' ? 'Calendar simulator' : 'Messaging simulator';
 const localDate = (milliseconds: number) => { const value = new Date(milliseconds); return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 
 export function IntegrationsWorkspace() {
@@ -23,27 +24,52 @@ export function IntegrationsWorkspace() {
     const [expires, setExpires] = useState(''), [reconnectExpires, setReconnectExpires] = useState('');
     const [scenario, setScenario] = useState<TestScenario>('SUCCESS'), [revokeConfirmed, setRevokeConfirmed] = useState(false);
     const [blocked, setBlocked] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
+    const [googleConfig, setGoogleConfig] = useState<GoogleCalendarConfig | null>(null), [googleVerified, setGoogleVerified] = useState(false);
+    const [consents, setConsents] = useState<GoogleConsent[]>([]), [authorization, setAuthorization] = useState<{ url: string; expiresAt: string } | null>(null);
+    const [googleLabel, setGoogleLabel] = useState(''), [consentConfirmed, setConsentConfirmed] = useState(false), [calendarId, setCalendarId] = useState('');
+    const [reconsentConfirmed, setReconsentConfirmed] = useState(false);
+    const [googleMetadata, setGoogleMetadata] = useState<GoogleConnectionMetadata | null>(null), [reconciliation, setReconciliation] = useState<CalendarReconciliation | null>(null);
     const credentialRef = useRef<HTMLInputElement>(null), reconnectCredentialRef = useRef<HTMLInputElement>(null), errorRef = useRef<HTMLDivElement>(null);
     const { begin, busy, sessionEnded, clock } = useAdminSession(() => {
         if (credentialRef.current) credentialRef.current.value = '';
         if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
         setConnections([]); setDeliveries([]); setAttempts({}); setSelectedId(''); setLabel(''); setExpires(''); setReconnectExpires(''); setError(''); setMessage('');
+        setGoogleConfig(null); setGoogleVerified(false); setConsents([]); setAuthorization(null); setGoogleLabel(''); setConsentConfirmed(false); setReconsentConfirmed(false); setCalendarId(''); setGoogleMetadata(null); setReconciliation(null);
     });
     const selected = connections.find(item => item.id === selectedId);
+    const isGoogle = selected?.provider === 'GOOGLE_CALENDAR';
+    const calendarIdValid = /^[A-Za-z0-9._%+@-]{3,512}$/.test(calendarId.trim()) && calendarId.includes('@');
+    const canConsent = Boolean(googleVerified && googleConfig?.configured && !busy && !blocked && !sessionEnded);
     const eligible = Boolean(clock > 0 && selected?.status === 'ACTIVE' && Date.parse(selected.credentialExpiresAt) > clock);
     const expiryMin = clock > 0 ? localDate(clock + 60000) : undefined, expiryMax = clock > 0 ? localDate(clock + 90 * 86400000) : undefined;
+    useEffect(() => {
+        if (!authorization || clock < Date.parse(authorization.expiresAt)) return;
+        const timer = window.setTimeout(() => setAuthorization(null), 0);
+        return () => window.clearTimeout(timer);
+    }, [authorization, clock]);
     const load = useCallback(async () => {
         if (!isBackendConfigured) return;
         const operation = begin(); if (!operation) return;
-        setError('');
+        setError(''); setAuthorization(null); setGoogleVerified(false);
         try {
-            const result = await integrationsApi.connections(operation.signal);
+            // Google metadata availability does not prevent simulator administration.
+            const [connectionRead, configRead] = await Promise.allSettled([integrationsApi.connections(operation.signal), integrationsApi.googleConfig(operation.signal)]);
+            if (connectionRead.status === 'rejected') throw connectionRead.reason;
+            const result = connectionRead.value;
             if (!operation.current()) return;
             const id = result.some(item => item.id === selectedIdRef.current) ? selectedIdRef.current : result[0]?.id ?? '';
+            const google = result.find(item => item.id === id)?.provider === 'GOOGLE_CALENDAR';
+            const config = configRead.status === 'fulfilled' && typeof configRead.value?.configured === 'boolean' ? configRead.value : null;
             // Refresh detail and its observed versions together before unlocking any mutation.
-            const backlog = id ? await integrationsApi.deliveries(id, 0, operation.signal) : null;
+            const [backlog, consentRead, metadataRead, progressRead] = await Promise.all([
+                id ? integrationsApi.deliveries(id, 0, operation.signal) : null,
+                config?.configured ? integrationsApi.googleConsents(operation.signal) : [],
+                google ? integrationsApi.googleConnection(id, operation.signal) : null,
+                google ? integrationsApi.reconciliation(id, operation.signal) : null
+            ]);
             if (!operation.current()) return;
             setConnections(result); setSelectedId(id); setLoaded(true);
+            setGoogleConfig(config); setGoogleVerified(Boolean(config)); setConsents(consentRead); setGoogleMetadata(metadataRead); setReconciliation(progressRead); setCalendarId(''); setConsentConfirmed(false); setReconsentConfirmed(false);
             setDeliveries(backlog?.content ?? []); setDeliveryPage(0); setDeliveryPages(backlog?.totalPages ?? 0); setDeliveriesLoaded(Boolean(id)); setAttempts({});
             setBlocked(false); setRevokeConfirmed(false); setMessage('Current connections and delivery versions loaded.');
         } catch { if (operation.current()) { setBlocked(true); setError('Connections could not be verified. Reload connections before making changes.'); } }
@@ -54,9 +80,11 @@ export function IntegrationsWorkspace() {
         const operation = begin(); if (!operation) return;
         setError('');
         try {
-            const result = await integrationsApi.deliveries(id, requestedPage, operation.signal);
+            const google = connections.find(item => item.id === id)?.provider === 'GOOGLE_CALENDAR';
+            const [result, metadata, progress] = await Promise.all([integrationsApi.deliveries(id, requestedPage, operation.signal), google ? integrationsApi.googleConnection(id, operation.signal) : null, google ? integrationsApi.reconciliation(id, operation.signal) : null]);
             if (!operation.current()) return;
             setSelectedId(id); setDeliveries(result.content); setDeliveryPage(result.number ?? requestedPage); setDeliveryPages(result.totalPages ?? 0); setDeliveriesLoaded(true); setAttempts({}); setRevokeConfirmed(false); setReconnectExpires('');
+            setGoogleMetadata(metadata); setReconciliation(progress); setCalendarId(''); setConsentConfirmed(false); setReconsentConfirmed(false);
             if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
         } catch { if (operation.current()) { setBlocked(true); setError('Delivery status could not be verified. Reload connections before making changes.'); } }
         finally { operation.finish(); }
@@ -64,28 +92,34 @@ export function IntegrationsWorkspace() {
     const mutate = async (action: (signal: AbortSignal) => Promise<unknown>, success: string) => {
         if (blocked) return;
         const operation = begin(); if (!operation) return;
-        setError(''); setMessage('');
+        setError(''); setMessage(''); setAuthorization(null);
         try {
             await action(operation.signal);
             if (operation.current()) { setBlocked(true); setMessage(`${success} Reload connections to verify the current status before another change.`); }
         } catch (reason) {
             if (!operation.current()) return;
             setBlocked(true);
-            setError(reason instanceof ApiError && reason.status === 409
+            setError(reason instanceof ApiError && reason.problem.errorCode === 'MFA_STEP_UP_REQUIRED'
+                ? 'Verify your identity in My profile → Account security, then reload connections before trying again.'
+                : reason instanceof ApiError && reason.problem.errorCode === 'CALENDAR_RECONCILE_LIMIT'
+                ? 'Reconciliation is limited to one active run, five minutes between runs, three runs per 24 hours and 500 resources. Reload connections to check progress before trying again.'
+                : reason instanceof ApiError && reason.problem.errorCode === 'CONSENT_SESSION_MISMATCH'
+                ? 'Finish consent in the original signed-in session. Reload connections to review the request before starting a new consent.'
+                : reason instanceof ApiError && reason.status === 409
                 ? 'The observed version changed in another session. Reload connections before trying again. Your nonsecret form choices are retained.'
                 : 'The change was not confirmed. Reload connections to check the result before trying again. Your nonsecret form choices are retained.');
             window.requestAnimationFrame(() => errorRef.current?.focus());
         } finally { operation.finish(); }
     };
     const create = (event: FormEvent) => {
-        event.preventDefault(); if (busy || blocked || sessionEnded) return;
+        event.preventDefault(); if (provider === 'GOOGLE_CALENDAR' || busy || blocked || sessionEnded) return;
         const credential = credentialRef.current?.value ?? '';
         if (credentialRef.current) credentialRef.current.value = '';
         if (!credential || !label.trim() || !expires || Date.parse(expires) <= clock) return;
         void mutate(signal => integrationsApi.create({ requestId: crypto.randomUUID(), provider, label: label.trim(), credential, credentialExpiresAt: new Date(expires).toISOString() }, signal), 'Connection creation accepted.');
     };
     const reconnect = (event: FormEvent) => {
-        event.preventDefault(); if (!selected || busy || blocked || sessionEnded) return;
+        event.preventDefault(); if (!selected || isGoogle || busy || blocked || sessionEnded) return;
         const credential = reconnectCredentialRef.current?.value ?? '';
         if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
         if (!credential || !reconnectExpires || Date.parse(reconnectExpires) <= clock) return;
@@ -97,14 +131,75 @@ export function IntegrationsWorkspace() {
         catch { if (operation.current()) setError('Delivery attempts could not be loaded. Retry the read when the service is available.'); }
         finally { operation.finish(); }
     };
-    return <section className={styles.workspace} aria-labelledby='integrations-title'>
+    const startConsent = async (connection?: Connection) => {
+        if (!canConsent || !(connection ? reconsentConfirmed : consentConfirmed) || (!connection && !googleLabel.trim())) return;
+        const operation = begin(); if (!operation) return;
+        setAuthorization(null); setError(''); setMessage('');
+        try {
+            const result = await integrationsApi.startGoogleConsent({ requestId: crypto.randomUUID(), label: connection?.label ?? googleLabel.trim(), ...(connection ? { connectionId: connection.id, expectedVersion: connection.version } : {}) }, operation.signal);
+            if (!operation.current()) return;
+            const url = googleAuthorizationUrl(result.authorizationUrl);
+            setConsents(previous => [...previous.filter(item => item.id !== result.id), { id: result.id, connectionId: result.connectionId, status: result.status, expiresAt: result.expiresAt, lastResultCode: null }]);
+            setAuthorization({ url, expiresAt: result.expiresAt }); setBlocked(true); setConsentConfirmed(false); setReconsentConfirmed(false);
+            setMessage('Consent request created. Continue to Google in a new tab, then return here and reload connections.');
+        } catch (reason) {
+            if (!operation.current()) return;
+            setBlocked(true);
+            setError(reason instanceof ApiError && reason.problem.errorCode === 'MFA_STEP_UP_REQUIRED'
+                ? 'Verify your identity in My profile → Account security, then reload connections before starting consent.'
+                : 'Consent was not confirmed. Reload connections to check request metadata before starting again.');
+            window.requestAnimationFrame(() => errorRef.current?.focus());
+        } finally { operation.finish(); }
+    };
+    const recoverCalendar = (event: FormEvent) => {
+        event.preventDefault();
+        if (!selected || !isGoogle || !calendarIdValid) return;
+        void mutate(signal => integrationsApi.recoverGoogleCalendar(selected.id, selected.version, calendarId.trim(), signal), 'Calendar recovery accepted.');
+    };
+    const downloadCalendar = async () => {
+        const operation = begin(); if (!operation) return;
+        setError(''); setMessage('');
+        let objectUrl: string | null = null;
+        try {
+            const blob = await integrationsApi.calendarFile(operation.signal);
+            if (!operation.current()) return;
+            objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement('a'); anchor.href = objectUrl; anchor.download = 'brainserve-calendar.ics';
+            document.body.appendChild(anchor);
+            try { anchor.click(); } finally { anchor.remove(); }
+            setMessage('Calendar file downloaded. Importing it into a calendar does not keep it synchronized.');
+        } catch (reason) {
+            if (operation.current()) setError(reason instanceof ApiError && reason.problem.errorCode === 'MFA_STEP_UP_REQUIRED'
+                ? 'Verify your identity in My profile → Account security before downloading the calendar file.'
+                : reason instanceof ApiError && reason.problem.errorCode === 'CALENDAR_EXPORT_LIMIT'
+                    ? 'The 30-day calendar exceeds the 500-event export limit. No partial file was downloaded.'
+                    : 'The calendar file could not be downloaded. Verify your current access and retry the download.');
+        } finally { if (objectUrl) URL.revokeObjectURL(objectUrl); operation.finish(); }
+    };
+    return <section className={styles.workspace} aria-labelledby='integrations-title' aria-busy={busy}>
         <header className={styles.heading}><div><h1 id='integrations-title'>Integrations</h1><p>Manage connections and check delivery recovery.</p></div><button className='button button-secondary' type='button' disabled={busy || sessionEnded || !isBackendConfigured} onClick={() => void load()}>Reload connections</button></header>
-        <p className={styles.notice}>Calendar and messaging simulators exercise delivery behaviour. Live Microsoft, Google, Teams and Slack connections are planned for a later release. Provider failures leave appointment operations available.</p>
+        <p className={styles.notice}>Google Calendar receives approved appointment times in a dedicated app-created calendar. Visitor details and invitations are excluded. Provider failures leave appointment operations available.</p>
         {!isBackendConfigured && <p role='status'>Sign in to the connected service to manage integrations.</p>}
         {sessionEnded && <p role='status'>The account changed. Open Integrations from the current workspace.</p>}
+        {busy && <p role='status'>Waiting for the service response…</p>}
         {error && <div className='login-error' role='alert' tabIndex={-1} ref={errorRef}>{error}</div>}
         {message && <p className={styles.notice} role='status'>{message}</p>}
         {isBackendConfigured && !sessionEnded && <>
+            <section className={styles.panel} aria-labelledby='google-calendar-title'><h2 id='google-calendar-title'>Google Calendar</h2>
+                {!googleVerified && <p role='status'>{busy ? 'Checking Google Calendar availability…' : 'Google Calendar availability could not be verified. Reload connections to check configuration.'}</p>}
+                {googleVerified && !googleConfig?.configured && <p role='status'>Google Calendar is not configured on this service. Ask your service operator to configure consent, or download a calendar file below.</p>}
+                {googleVerified && googleConfig?.configured && <><p>Consent uses Google’s app-created calendar scope. Only the consenting administrator owns the dedicated calendar. After granting access in the new tab, return here and reload connections, then choose Finish connection.</p>
+                    <form onSubmit={event => { event.preventDefault(); void startConsent(); }}><fieldset disabled={!canConsent}><label className={styles.field}>Google Calendar connection label<input required maxLength={80} value={googleLabel} onChange={event => setGoogleLabel(event.target.value)} /></label><label className={styles.check}><input type='checkbox' checked={consentConfirmed} onChange={event => setConsentConfirmed(event.target.checked)} />I approve granting access to a dedicated BrainServe calendar.</label><div className={styles.actions}><button className='button button-primary' type='submit' disabled={!canConsent || !consentConfirmed || !googleLabel.trim()}>Start Google consent</button></div></fieldset></form>
+                </>}
+                {authorization && Date.parse(authorization.expiresAt) > clock && <p className={styles.actions}><a className='button button-primary' href={authorization.url} target='_blank' rel='noopener noreferrer' referrerPolicy='no-referrer' onClick={() => setAuthorization(null)}>Continue to Google (opens new tab)</a></p>}
+                {consents.length > 0 && <><h3>Consent requests</h3><ul className={styles.list}>{consents.map(item => <li className={styles.row} key={item.id}><strong>{human(item.status)}</strong><p className={styles.muted}>Expires {date(item.expiresAt)}{item.lastResultCode ? ` · ${item.lastResultCode}` : ''}</p>
+                    {item.status === 'DENIED' && <p>Permission was not granted. Start a new consent request only when you are ready to grant access.</p>}
+                    {['INITIATED', 'AUTHORIZED'].includes(item.status) && <p>Waiting for Google consent. Return to this tab after the callback and reload connections.</p>}
+                    {item.status === 'CALLBACK_RECEIVED' && <><p>Consent returned. Finish in this original signed-in session to verify access and connect the calendar.</p><button type='button' className='button button-primary' disabled={busy || blocked || clock === 0 || Date.parse(item.expiresAt) <= clock} onClick={() => void mutate(signal => integrationsApi.completeGoogleConsent(item.id, signal), 'Connection completion accepted.')}>Finish connection</button></>}
+                    {['EXCHANGE_UNKNOWN', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(item.status) && <p>This request cannot be finished again. Review the connection status after reloading; a new consent may be needed.</p>}
+                </li>)}</ul></>}
+                <details><summary>Download calendar file</summary><p>Download upcoming approved appointments for the next 30 days, up to 500 events. The file contains generic titles and UTC times. Larger exports are rejected without a partial file. Importing it is a one-time copy.</p><button type='button' className='button button-secondary' disabled={busy} onClick={() => void downloadCalendar()}>Download calendar (.ics)</button></details>
+            </section>
             <details className={styles.panel}><summary>Add a simulator connection</summary><form onSubmit={create} autoComplete='off' aria-busy={busy}><fieldset disabled={busy || blocked}><legend>Connection details</legend><div className={styles.fields}>
                 <label>Provider<select value={provider} onChange={e => setProvider(e.target.value as IntegrationProvider)}><option value='SIMULATOR_CALENDAR'>Calendar simulator</option><option value='SIMULATOR_MESSAGING'>Messaging simulator</option></select></label>
                 <label>Connection label<input required maxLength={80} value={label} onChange={e => setLabel(e.target.value)} /></label>
@@ -113,13 +208,22 @@ export function IntegrationsWorkspace() {
             </div><p className={styles.muted}>Use a credential of at least 16 characters and an expiry within 90 days. Credentials are cleared when submitted and cannot be viewed again. Minimum scopes are fixed by the service.</p><div className={styles.actions}><button className='button button-primary' type='submit' disabled={busy || blocked}>Create connection</button></div></fieldset></form></details>
             <div className={styles.columns}><section className={styles.panel} aria-labelledby='connection-list-title'><h2 id='connection-list-title'>Connections</h2>
                 {!loaded && <p role='status'>{busy ? 'Loading connections…' : 'Reload connections to verify the source.'}</p>}
-                {loaded && connections.length === 0 && <p>No connections available. Add a simulator to begin.</p>}
+                {loaded && connections.length === 0 && <p>No connections available. {googleConfig?.configured ? 'Connect Google Calendar or add a simulator to begin.' : 'Add a simulator or use the calendar file fallback.'}</p>}
                 <ul className={styles.list}>{connections.map(item => <li key={item.id}><button type='button' className={styles.connection} aria-pressed={selectedId === item.id} disabled={busy} onClick={() => void loadDeliveries(item.id, 0)}><strong>{item.label}</strong><small>{providerName(item.provider)}</small><span className={styles.status}>{human(item.status)}</span></button></li>)}</ul>
             </section><section className={styles.panel} aria-labelledby='connection-detail-title'><h2 id='connection-detail-title'>{selected ? selected.label : 'Connection details'}</h2>
                 {!selected && <p>Select a connection to inspect its status and delivery attempts.</p>}
-                {selected && <><dl className={styles.facts}><div><dt>Status</dt><dd>{human(selected.status)}{selected.status === 'ACTIVE' && !eligible ? ' · credential expired' : ''}</dd></div><div><dt>Provider</dt><dd>{providerName(selected.provider)}</dd></div><div><dt>Credential expiry</dt><dd>{date(selected.credentialExpiresAt)}</dd></div><div><dt>Observed version</dt><dd>{selected.version} · credential version {selected.credentialVersion}</dd></div><div><dt>Owner reference</dt><dd>{selected.ownerId}</dd></div><div><dt>Minimum scopes</dt><dd>{selected.minimumScopes.join(', ')}</dd></div><div><dt>Last checked</dt><dd>{date(selected.lastCheckedAt)}</dd></div><div><dt>Last result</dt><dd>{selected.lastResultCode ?? 'Not checked'}</dd></div></dl>
-                    <details><summary>Test delivery behaviour</summary><label className={styles.field}>Simulator scenario<select value={scenario} disabled={busy || blocked || !eligible} onChange={e => setScenario(e.target.value as TestScenario)}><option value='SUCCESS'>Successful delivery</option><option value='OUTAGE'>Provider outage</option><option value='RATE_LIMITED'>Rate limit</option><option value='REAUTH_REQUIRED'>Reauthentication required</option><option value='PERMANENT_FAILURE'>Permanent failure</option></select></label><p>Creates an explicit simulator test delivery for this connection. Reload to inspect the outcome and attempts.</p><div className={styles.actions}><button type='button' className='button button-primary' disabled={busy || blocked || !eligible} onClick={() => void mutate(signal => integrationsApi.test(selected.id, selected.version, scenario, signal), 'Simulator test accepted.')}>Run simulator test</button></div></details>
-                    <details><summary>Replace credential</summary><form onSubmit={reconnect} autoComplete='off'><fieldset disabled={busy || blocked}><div className={styles.fields}><label>Replacement credential<input ref={reconnectCredentialRef} type='password' required minLength={16} maxLength={4096} autoComplete='off' spellCheck={false} /></label><label>Replacement expiry<input type='datetime-local' required min={expiryMin} max={expiryMax} value={reconnectExpires} onChange={e => setReconnectExpires(e.target.value)} /></label></div><p>Replacing a credential advances its version. Pending deliveries use the new credential only after the service verifies eligibility.</p><div className={styles.actions}><button className='button button-primary' type='submit' disabled={busy || blocked}>Reconnect connection</button></div></fieldset></form></details>
+                {selected && <><dl className={styles.facts}><div><dt>Status</dt><dd>{human(selected.status)}{selected.status === 'ACTIVE' && !eligible ? isGoogle ? ' · consent expired' : ' · credential expired' : ''}</dd></div><div><dt>Provider</dt><dd>{providerName(selected.provider)}</dd></div><div><dt>{isGoogle ? 'Consent eligibility until' : 'Credential expiry'}</dt><dd>{date(selected.credentialExpiresAt)}</dd></div><div><dt>Observed version</dt><dd>{selected.version} · credential version {selected.credentialVersion}</dd></div><div><dt>Owner reference</dt><dd>{selected.ownerId}</dd></div><div><dt>Minimum scopes</dt><dd>{selected.minimumScopes.join(', ')}</dd></div><div><dt>Last checked</dt><dd>{date(selected.lastCheckedAt)}</dd></div><div><dt>Last result</dt><dd>{selected.lastResultCode ?? 'Not checked'}</dd></div></dl>
+                    {isGoogle && <><dl className={styles.facts}><div><dt>Calendar provisioning</dt><dd>{googleMetadata ? human(googleMetadata.provisioningStatus) : 'Not verified'}</dd></div><div><dt>Remote revocation</dt><dd>{googleMetadata ? human(googleMetadata.revocationStatus) : 'Not verified'}</dd></div><div><dt>Google recovery result</dt><dd>{googleMetadata?.lastResultCode ?? 'Not recorded'}</dd></div></dl>
+                        {selected.status !== 'REVOKED' && <details><summary>Reconnect Google Calendar</summary><p>Grant consent again to restore access to the same retained calendar. Reconsent does not create a replacement calendar.</p><label className={styles.check}><input type='checkbox' checked={reconsentConfirmed} disabled={!canConsent} onChange={event => setReconsentConfirmed(event.target.checked)} />I approve renewing access to this BrainServe calendar.</label><button type='button' className='button button-primary' disabled={!canConsent || !reconsentConfirmed} onClick={() => void startConsent(selected)}>Start Google reconsent</button></details>}
+                        {googleMetadata?.provisioningStatus === 'PROVISIONING_UNKNOWN' && selected.status !== 'REVOKED' && <details open><summary>Recover existing Google calendar</summary><p>Calendar creation had an unknown outcome. Find the existing BrainServe calendar in Google Calendar settings and enter its calendar ID. The service verifies the app marker before using it. Do not enter a URL or create another calendar.</p><form onSubmit={recoverCalendar}><fieldset disabled={busy || blocked}><label className={styles.field}>Existing Google calendar ID<input required maxLength={512} value={calendarId} onChange={event => setCalendarId(event.target.value)} aria-invalid={Boolean(calendarId && !calendarIdValid)} aria-describedby='calendar-id-help' /></label><p id='calendar-id-help' className={styles.muted}>{calendarId && !calendarIdValid ? 'Enter a calendar ID containing @, without spaces or a web address.' : 'Use only the calendar ID from its settings, without spaces or a web address.'}</p><button type='submit' className='button button-primary' disabled={busy || blocked || !calendarIdValid}>Verify and recover calendar</button></fieldset></form></details>}
+                        {googleMetadata?.revocationStatus === 'FAILED' && <details><summary>Retry remote revocation</summary><p>Local revocation already stops deliveries. Retry removing the retained Google access grant.</p><button type='button' className='button button-secondary' disabled={busy || blocked} onClick={() => void mutate(signal => integrationsApi.retryGoogleRevocation(selected.id, selected.version, signal), 'Remote revocation retry accepted.')}>Retry Google revocation</button></details>}
+                        <details><summary>Reconcile Google calendar</summary><p>Check the latest approved appointment state and repair missing or drifted BrainServe events in batches, up to 500 resources per run. Reconciliation does not import Google edits. Runs are limited to one every five minutes and three per 24 hours.</p>
+                            {reconciliation && <p role='status'>Reconciliation {human(reconciliation.status)} · {reconciliation.processed} resources processed{reconciliation.completedAt ? ` · finished ${date(reconciliation.completedAt)}` : '. Reload to check progress.'}</p>}
+                            <div className={styles.actions}><button type='button' className='button button-primary' disabled={busy || blocked || !eligible || googleMetadata?.provisioningStatus !== 'READY' || ['QUEUED', 'RUNNING'].includes(reconciliation?.status ?? '')} onClick={() => void mutate(signal => integrationsApi.reconcile(selected.id, selected.version, signal), 'Reconciliation accepted.')}>Start calendar reconciliation</button><button type='button' className='button button-secondary' disabled={busy} onClick={() => void loadDeliveries(selected.id, deliveryPage)}>Check reconciliation progress</button></div>
+                        </details>
+                    </>}
+                    {!isGoogle && <><details><summary>Test delivery behaviour</summary><label className={styles.field}>Simulator scenario<select value={scenario} disabled={busy || blocked || !eligible} onChange={e => setScenario(e.target.value as TestScenario)}><option value='SUCCESS'>Successful delivery</option><option value='OUTAGE'>Provider outage</option><option value='RATE_LIMITED'>Rate limit</option><option value='REAUTH_REQUIRED'>Reauthentication required</option><option value='PERMANENT_FAILURE'>Permanent failure</option></select></label><p>Creates an explicit simulator test delivery for this connection. Reload to inspect the outcome and attempts.</p><div className={styles.actions}><button type='button' className='button button-primary' disabled={busy || blocked || !eligible} onClick={() => void mutate(signal => integrationsApi.test(selected.id, selected.version, scenario, signal), 'Simulator test accepted.')}>Run simulator test</button></div></details>
+                    <details><summary>Replace credential</summary><form onSubmit={reconnect} autoComplete='off'><fieldset disabled={busy || blocked}><div className={styles.fields}><label>Replacement credential<input ref={reconnectCredentialRef} type='password' required minLength={16} maxLength={4096} autoComplete='off' spellCheck={false} /></label><label>Replacement expiry<input type='datetime-local' required min={expiryMin} max={expiryMax} value={reconnectExpires} onChange={e => setReconnectExpires(e.target.value)} /></label></div><p>Replacing a credential advances its version. Pending deliveries use the new credential only after the service verifies eligibility.</p><div className={styles.actions}><button className='button button-primary' type='submit' disabled={busy || blocked}>Reconnect connection</button></div></fieldset></form></details></>}
                     <details><summary>Revoke connection</summary><p>Revocation stops new deliveries and cancels pending work for this connection.</p><label className={styles.check}><input type='checkbox' checked={revokeConfirmed} disabled={busy || blocked || selected.status === 'REVOKED'} onChange={e => setRevokeConfirmed(e.target.checked)} />I confirm revoking this connection.</label><div className={styles.actions}><button type='button' className='button button-secondary' disabled={busy || blocked || !revokeConfirmed || selected.status === 'REVOKED'} onClick={() => void mutate(signal => integrationsApi.revoke(selected.id, selected.version, signal), 'Revocation accepted.')}>Confirm connection revocation</button></div></details>
                     <h3>Delivery backlog</h3><p className={styles.muted}>Statuses and attempt history contain references and result codes; private delivery content stays out of this view.</p>
                     {deliveriesLoaded && deliveries.length === 0 && <p>No deliveries on this page.</p>}
