@@ -105,7 +105,7 @@ class Sprint13SlackPostgresIntegrationTest {
         var c=service.connections(ADMIN).getFirst();
         mvc.perform(get("/api/v1/integrations/slack/connections/"+c.id()).header("Authorization",bearer(OTHER,Instant.now()))).andExpect(status().isNotFound());
         jdbc.update("update iam_user_role set role_name='ROLE_EMPLOYEE' where user_id=?",ADMIN);
-        mvc.perform(get("/api/v1/integrations/slack/config").header("Authorization",fresh)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/integrations/slack/config").header("Authorization",fresh)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorCode").value("ACCOUNT_AUTHORITY_CHANGED"));
     }
     @Test void missingOrExcessScopesAndNonBotCredentialsAreRejected() throws Exception {
         for(Set<String> scopes:List.of(Set.<String>of(),Set.of("chat:write","users:read"),Set.of("chat:write.public"))) {
@@ -211,7 +211,7 @@ class Sprint13SlackPostgresIntegrationTest {
         var d=test(connect());var claim=service.claim(d.id(),Instant.now().plusSeconds(1)).orElseThrow();
         switch(change) {
             case "disabled" -> jdbc.update("update iam_user_account set enabled=false where id=?",ADMIN);
-            case "archived" -> jdbc.update("update iam_user_account set archived=true where id=?",ADMIN);
+            case "archived" -> jdbc.update("update iam_user_account set archived=true,archived_at=now(),enabled=false where id=?",ADMIN);
             case "role" -> jdbc.update("update iam_user_role set role_name='ROLE_EMPLOYEE' where user_id=?",ADMIN);
             case "permission" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'SYSTEM_CONFIGURE')",ADMIN);
             default -> jdbc.update("update iam_user_account set account_status='PENDING_APPROVAL' where id=?",ADMIN);
