@@ -1,4 +1,4 @@
-export type IntegrationProvider = 'SIMULATOR_CALENDAR' | 'SIMULATOR_MESSAGING' | 'GOOGLE_CALENDAR';
+export type IntegrationProvider = 'SIMULATOR_CALENDAR' | 'SIMULATOR_MESSAGING' | 'GOOGLE_CALENDAR' | 'SLACK_MESSAGING';
 export type TestScenario = 'SUCCESS' | 'OUTAGE' | 'RATE_LIMITED' | 'REAUTH_REQUIRED' | 'PERMANENT_FAILURE';
 export type Connection = {
     id: string; provider: IntegrationProvider; kind: string; label: string; ownerId: string;
@@ -17,3 +17,6 @@ export type GoogleConsentStart = Omit<GoogleConsent, 'lastResultCode'> & { autho
 export type StartGoogleConsent = { requestId: string; label: string; connectionId?: string; expectedVersion?: number };
 export type GoogleConnectionMetadata = { provisioningStatus: string; revocationStatus: string; lastResultCode: string | null };
 export type CalendarReconciliation = { id: string; status: string; processed: number; createdAt: string; completedAt: string | null };
+export type SlackConfig = { configured: boolean; scope: 'chat:write'; usesDedicatedBot: true };
+export type CreateSlackConnection = { requestId: string; label: string; channelId: string; credential: string; credentialExpiresAt: string };
+export type SlackConnectionMetadata = { workspaceId: string; channelId: string; botId: string; revocationStatus: string; lastResultCode: string | null };

@@ -75,7 +75,9 @@ public class AuthenticatedRequestLimitFilter extends OncePerRequestFilter {
             if (path.matches("/api/v1/report-exports/[^/]+/download-url")
                     || path.matches("/api/v1/support/diagnostics/[^/]+/download")
                     || path.equals("/api/v1/integrations/google-calendar/calendar.ics")) return new Rule("export", exports);
-            if (path.equals("/api/v1/integrations/google-calendar/config")
+            if (path.equals("/api/v1/integrations/slack/config")
+                    || path.matches("/api/v1/integrations/slack/connections/[^/]+")
+                    || path.equals("/api/v1/integrations/google-calendar/config")
                     || path.equals("/api/v1/integrations/google-calendar/consents")
                     || path.matches("/api/v1/integrations/google-calendar/connections/[^/]+")
                     || path.matches("/api/v1/integrations/connections/[^/]+/reconciliation"))

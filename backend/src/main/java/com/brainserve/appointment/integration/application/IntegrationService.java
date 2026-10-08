@@ -4,6 +4,8 @@ import com.brainserve.appointment.audit.api.AuditService;
 import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
 import com.brainserve.appointment.integration.api.IntegrationModels;
 import com.brainserve.appointment.integration.google.GoogleCalendarAdapter;
+import com.brainserve.appointment.integration.slack.SlackAdapter;
+import com.brainserve.appointment.integration.slack.SlackModels;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.brainserve.appointment.shared.application.SensitiveStringConverter;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -47,12 +49,13 @@ public class IntegrationService {
     private final AuditService audit;
     private final ObjectMapper json;
     private final GoogleCalendarAdapter google;
+    private final SlackAdapter slack;
     private final RowMapper<IntegrationModels.Connection> connections = this::connection;
     private final RowMapper<IntegrationModels.Delivery> deliveries = this::delivery;
 
     public IntegrationService(JdbcTemplate jdbc, CurrentAccountAuthority authority, SensitiveStringConverter secrets,
-                              AuditService audit, ObjectMapper json, GoogleCalendarAdapter google) {
-        this.jdbc = jdbc; this.authority = authority; this.secrets = secrets; this.audit = audit; this.json = json; this.google = google;
+                              AuditService audit, ObjectMapper json, GoogleCalendarAdapter google, SlackAdapter slack) {
+        this.jdbc = jdbc; this.authority = authority; this.secrets = secrets; this.audit = audit; this.json = json; this.google = google; this.slack = slack;
     }
 
     @Transactional(readOnly = true)
@@ -63,9 +66,14 @@ public class IntegrationService {
 
     @Transactional
     public IntegrationModels.Connection create(UUID actor, IntegrationModels.Create command) {
+        if (command == null) throw invalid();
+        simulatorOnly(command.provider());
+        return createConnection(actor,command);
+    }
+
+    private IntegrationModels.Connection createConnection(UUID actor, IntegrationModels.Create command) {
         requireAdmin(actor, true);
         if (command == null || command.requestId() == null || command.provider() == null) throw invalid();
-        simulatorOnly(command.provider());
         credential(command.credential(), command.credentialExpiresAt());
         String label = label(command.label());
         requestLock(command.requestId());
@@ -91,6 +99,54 @@ public class IntegrationService {
         return owned(actor, id, false);
     }
 
+    @Transactional(timeout=20)
+    public IntegrationModels.Connection createSlack(UUID actor, SlackModels.Create command) {
+        requireAdmin(actor,true);
+        if (command==null || command.requestId()==null || !SlackAdapter.channel(command.channelId())) throw invalid();
+        credential(command.credential(),command.credentialExpiresAt());
+        requestLock(command.requestId());
+        var retained=jdbc.query("select * from integration_connection where request_id=?",connections,command.requestId());
+        SlackAdapter.Identity identity=null;
+        if (retained.isEmpty()) identity=slack.authenticate(command.credential());
+        else {
+            var existing=retained.getFirst();
+            if (!existing.ownerId().equals(actor) || existing.provider()!=IntegrationModels.Provider.SLACK_MESSAGING
+                    || !slack.metadata(existing.id()).channelId().equals(command.channelId())) throw conflict();
+        }
+        var result=createConnection(actor,new IntegrationModels.Create(command.requestId(),IntegrationModels.Provider.SLACK_MESSAGING,command.label(),command.credential(),command.credentialExpiresAt()));
+        if (identity!=null) slack.install(result.id(),identity,command.channelId());
+        return result;
+    }
+
+    @Transactional(readOnly=true)
+    public SlackModels.Config slackConfig(UUID actor) {
+        requireAdmin(actor,false); return new SlackModels.Config(slack.configured(),"chat:write",true);
+    }
+    @Transactional(readOnly=true)
+    public SlackAdapter.Metadata slackMetadata(UUID actor,UUID id) {
+        requireAdmin(actor,false); slackOnly(owned(actor,id,false)); return slack.metadata(id);
+    }
+    @Transactional(timeout=20)
+    public IntegrationModels.Connection renewSlack(UUID actor,UUID id,IntegrationModels.Reconnect command) {
+        requireAdmin(actor,true); var current=owned(actor,id,true); slackOnly(current);
+        if (command==null) throw invalid(); expected(command.expectedVersion(),current.version());
+        credential(command.credential(),command.credentialExpiresAt());
+        slack.renew(id,secret(id),command.credential());
+        finishClaims(id,"UNKNOWN","DELIVERY_UNKNOWN",Instant.now());
+        jdbc.update("update integration_connection set credential_ciphertext=?,credential_expires_at=?,credential_version=credential_version+1,status='ACTIVE',version=version+1,last_result_code='CREDENTIAL_RENEWED',last_checked_at=null,updated_at=now() where id=?",secrets.convertToDatabaseColumn(command.credential()),time(command.credentialExpiresAt()),id);
+        audit.record("SLACK_CREDENTIAL_RENEWED","INTEGRATION_CONNECTION",id.toString(),"{}");
+        return owned(actor,id,false);
+    }
+    @Transactional
+    public SlackAdapter.Metadata retrySlackRevocation(UUID actor,UUID id,Long version) {
+        requireAdmin(actor,true); var current=owned(actor,id,true); slackOnly(current); expected(version,current.version());
+        if (!current.status().equals("REVOKED")) throw conflict(); slack.retryRevocation(id);
+        jdbc.update("update integration_connection set version=version+1,updated_at=now() where id=?",id);
+        audit.record("SLACK_REVOCATION_RETRIED","INTEGRATION_CONNECTION",id.toString(),"{}");
+        return slack.metadata(id);
+    }
+    private static void slackOnly(IntegrationModels.Connection current) { if (current.provider()!=IntegrationModels.Provider.SLACK_MESSAGING) throw invalid(); }
+
     @Transactional
     public IntegrationModels.Connection reconnect(UUID actor, UUID id, IntegrationModels.Reconnect command) {
         requireAdmin(actor, true);
@@ -114,11 +170,12 @@ public class IntegrationService {
         var current = owned(actor, id, true);
         expected(version, current.version());
         if (current.provider() == IntegrationModels.Provider.GOOGLE_CALENDAR) google.disconnect(id, current.credentialVersion());
+        if (current.provider() == IntegrationModels.Provider.SLACK_MESSAGING) slack.disconnect(id,current.credentialVersion());
         jdbc.update("update integration_calendar_reconciliation set status='CANCELLED',completed_at=now() where connection_id=? and status in ('QUEUED','RUNNING')", id);
         finishClaims(id, "CANCELLED", "CONNECTION_REVOKED", Instant.now());
         jdbc.update("""
                 update integration_delivery set status='CANCELLED',last_result_code='CONNECTION_REVOKED',version=version+1
-                where connection_id=? and status in ('PENDING','FAILED','NEEDS_RECONNECT')
+                where connection_id=? and status in ('PENDING','FAILED','NEEDS_RECONNECT','UNKNOWN')
                 """, id);
         jdbc.update("""
                 update integration_connection set status='REVOKED',credential_ciphertext=null,credential_version=credential_version+1,
@@ -134,7 +191,9 @@ public class IntegrationService {
         if (command == null || command.requestId() == null || command.scenario() == null) throw invalid();
         requestLock(command.requestId());
         var current = owned(actor, id, true);
-        simulatorOnly(current.provider());
+        if (current.provider()==IntegrationModels.Provider.SLACK_MESSAGING) {
+            if (command.scenario()!=IntegrationModels.Scenario.SUCCESS) throw invalid();
+        } else simulatorOnly(current.provider());
         UUID replay = receipt(actor, command.requestId(), "TEST", id, command.expectedVersion(), command.scenario().name());
         if (replay != null) return delivery(replay, false);
         expected(command.expectedVersion(), current.version());
@@ -172,16 +231,21 @@ public class IntegrationService {
         var observed = delivery(id, false);
         var current = owned(actor, observed.connectionId(), true);
         var d = delivery(id, true);
-        UUID replay = receipt(actor, command.requestId(), "RETRY", id, command.expectedVersion(), null);
+        String acknowledgement=command.acceptDuplicateRisk()?"ACCEPT_DUPLICATE_RISK":null;
+        UUID replay = receipt(actor, command.requestId(), "RETRY", id, command.expectedVersion(), acknowledgement);
         if (replay != null) return d;
         expected(command.expectedVersion(), d.version()); usable(current, Instant.now());
-        if (!List.of("FAILED","NEEDS_RECONNECT").contains(d.status()) || d.manualRetries() >= 3 || d.totalAttempts() >= 20) throw conflict();
+        if (!List.of("FAILED","NEEDS_RECONNECT","UNKNOWN").contains(d.status()) || d.manualRetries() >= 3 || d.totalAttempts() >= 20) throw conflict();
+        if (d.status().equals("UNKNOWN") && (current.provider()!=IntegrationModels.Provider.SLACK_MESSAGING || !command.acceptDuplicateRisk()))
+            throw new BusinessException("SLACK_DUPLICATE_RISK_ACK_REQUIRED","Slack may already have accepted this notice; acknowledge duplicate risk before retry",HttpStatus.CONFLICT);
+        if (current.provider()==IntegrationModels.Provider.SLACK_MESSAGING && !slackDeadline(d).isAfter(Instant.now()))
+            throw new BusinessException("SLACK_DELIVERY_EXPIRED","Arrival notices expire after 24 hours",HttpStatus.CONFLICT);
         if (superseded(d, current.provider())) throw new BusinessException("INTEGRATION_DELIVERY_SUPERSEDED", "A newer revision is already queued; reload deliveries", HttpStatus.CONFLICT);
         jdbc.update("""
                 update integration_delivery set status='PENDING',attempts=0,manual_retries=manual_retries+1,retry_request_id=?,
                 next_attempt_at=now(),last_result_code='RETRY_QUEUED',version=version+1 where id=?
                 """, command.requestId(), id);
-        receipt(command.requestId(), actor, "RETRY", id, command.expectedVersion(), null, id);
+        receipt(command.requestId(), actor, "RETRY", id, command.expectedVersion(), acknowledgement, id);
         audit.record("INTEGRATION_DELIVERY_RETRIED", "INTEGRATION_DELIVERY", id.toString(), "{}");
         return delivery(id, false);
     }
@@ -242,8 +306,10 @@ public class IntegrationService {
         if (d.status().equals("RUNNING")) {
             Instant lease = jdbc.queryForObject("select lease_until from integration_delivery where id=?",Timestamp.class,id).toInstant();
             if (lease.isAfter(now)) return Optional.empty();
-            recordAttempt(d.id(), "LEASE_EXPIRED", now);
-            clearLease(id, "PENDING", "LEASE_EXPIRED", now);
+            String outcome=c.provider()==IntegrationModels.Provider.SLACK_MESSAGING?"DELIVERY_UNKNOWN":"LEASE_EXPIRED";
+            recordAttempt(d.id(), outcome, now);
+            clearLease(id, c.provider()==IntegrationModels.Provider.SLACK_MESSAGING?"UNKNOWN":"PENDING", outcome, now);
+            if (c.provider()==IntegrationModels.Provider.SLACK_MESSAGING) return Optional.empty();
             d = delivery(id, false);
         }
         if (!eligible || !c.status().equals("ACTIVE") || !c.credentialExpiresAt().isAfter(now)) {
@@ -256,6 +322,7 @@ public class IntegrationService {
         if (superseded(d, c.provider())) { clearLease(id,"SUPERSEDED","NEWER_REVISION",now); return Optional.empty(); }
         if (d.attempts() >= 5 || d.totalAttempts() >= 20) { clearLease(id,"FAILED","RETRIES_EXHAUSTED",now); return Optional.empty(); }
         if (d.nextAttemptAt().isAfter(now)) return Optional.empty();
+        if (c.provider()==IntegrationModels.Provider.SLACK_MESSAGING && !slackDeadline(d).isAfter(now)) { clearLease(id,"FAILED","DELIVERY_EXPIRED",now); return Optional.empty(); }
         UUID token = UUID.randomUUID();
         jdbc.update("""
                 update integration_delivery set status='RUNNING',attempts=attempts+1,total_attempts=total_attempts+1,
@@ -280,7 +347,8 @@ public class IntegrationService {
         Map<String,Object> lease = jdbc.queryForMap("select lease_token,lease_until,claimed_credential_version from integration_delivery where id=?", d.id());
         if (!claim.token().equals(lease.get("lease_token")) || claim.credentialVersion() != ((Number)lease.get("claimed_credential_version")).longValue()) return;
         if (!((Timestamp)lease.get("lease_until")).toInstant().isAfter(now)) {
-            recordAttempt(d.id(),"LEASE_EXPIRED",now); clearLease(d.id(),"PENDING","LEASE_EXPIRED",now); return;
+            boolean unknown=c.provider()==IntegrationModels.Provider.SLACK_MESSAGING;
+            recordAttempt(d.id(),unknown?"DELIVERY_UNKNOWN":"LEASE_EXPIRED",now); clearLease(d.id(),unknown?"UNKNOWN":"PENDING",unknown?"DELIVERY_UNKNOWN":"LEASE_EXPIRED",now); return;
         }
         if (!eligible || c.status().equals("REVOKED")) {
             String outcome = eligible ? "CONNECTION_REVOKED" : "OWNER_INELIGIBLE";
@@ -295,6 +363,9 @@ public class IntegrationService {
         if (c.provider() == IntegrationModels.Provider.GOOGLE_CALENDAR) {
             completeGoogle(c, d, now, ((Timestamp) lease.get("lease_until")).toInstant());
             return;
+        }
+        if (c.provider()==IntegrationModels.Provider.SLACK_MESSAGING) {
+            completeSlack(c,d,now,((Timestamp)lease.get("lease_until")).toInstant()); return;
         }
         // Decryption validates the configured key; the secret never enters a result, request URL or log.
         String credential;
@@ -327,6 +398,35 @@ public class IntegrationService {
         clearLease(d.id(),status,result, status.equals("PENDING") ? now.plusSeconds(scenario == IntegrationModels.Scenario.RATE_LIMITED ? Math.max(60,retryDelay(d.attempts())) : retryDelay(d.attempts())) : now);
         if (status.equals("DELIVERED")) jdbc.update("update integration_delivery set delivered_at=? where id=?",time(now),d.id());
         jdbc.update("update integration_connection set last_checked_at=?,last_result_code=?,version=version+1,updated_at=now() where id=?",time(now),result,c.id());
+    }
+
+    private Instant slackDeadline(IntegrationModels.Delivery d) {
+        return jdbc.queryForObject("select occurred_at from integration_delivery where id=?",Timestamp.class,d.id()).toInstant().plus(Duration.ofHours(24));
+    }
+    private void completeSlack(IntegrationModels.Connection c, IntegrationModels.Delivery d, Instant now, Instant leaseUntil) {
+        Instant deadline=slackDeadline(d);
+        if (!List.of("VISITOR_ARRIVED","CONNECTION_TEST").contains(d.eventType()) || !deadline.isAfter(now)) { finishGoogle(c,d,"FAILED","DELIVERY_EXPIRED",now,0); return; }
+        if (leaseUntil.isBefore(Instant.now().plusSeconds(10))) { finishGoogle(c,d,"PENDING","LEASE_EXPIRING",now,30); return; }
+        SlackAdapter.Result result;
+        try { result=slack.deliver(c.id(),d.eventType().equals("CONNECTION_TEST"),now); }
+        catch (RuntimeException uncertain) { result=new SlackAdapter.Result("DELIVERY_UNKNOWN",now,null); }
+        String code=result.code();
+        Instant finished=Instant.now().isAfter(now)?Instant.now():now;
+        String status=switch(code) {
+            case "SUCCESS" -> "DELIVERED";
+            case "DELIVERY_UNKNOWN" -> "UNKNOWN";
+            case "REAUTH_REQUIRED" -> "NEEDS_RECONNECT";
+            case "RATE_WAIT","RATE_LIMITED" -> d.attempts()<5 && d.totalAttempts()<20 && result.nextAttemptAt().isBefore(deadline)?"PENDING":"FAILED";
+            default -> "FAILED";
+        };
+        if (status.equals("NEEDS_RECONNECT")) jdbc.update("update integration_connection set status='NEEDS_RECONNECT' where id=?",c.id());
+        if (status.equals("DELIVERED") && !d.eventType().equals("CONNECTION_TEST")) jdbc.update("""
+                insert into integration_external_mapping(connection_id,resource_id,external_id,business_revision,business_event_id,last_event_type)
+                values(?,?,?,?,?,?) on conflict(connection_id,resource_id) do update set external_id=excluded.external_id,business_revision=excluded.business_revision,business_event_id=excluded.business_event_id,last_event_type=excluded.last_event_type,updated_at=now()
+                where integration_external_mapping.business_revision<excluded.business_revision
+                """,c.id(),d.resourceId(),result.externalId(),d.businessRevision(),d.businessEventId(),d.eventType());
+        long delay=status.equals("PENDING")?Math.max(1,Duration.between(finished,result.nextAttemptAt()).toSeconds()+1):0;
+        finishGoogle(c,d,status,code,finished,delay);
     }
 
     private void completeGoogle(IntegrationModels.Connection c, IntegrationModels.Delivery d, Instant now, Instant leaseUntil) {
@@ -551,6 +651,7 @@ public class IntegrationService {
                 """, d.id(), c.credentialVersion()) > 0;
     }
     private boolean superseded(IntegrationModels.Delivery d, IntegrationModels.Provider provider) {
+        if (provider==IntegrationModels.Provider.SLACK_MESSAGING) return false;
         if (provider == IntegrationModels.Provider.GOOGLE_CALENDAR) {
             // Reconciliation resolves current source again under worker locks; a stale queued snapshot is not replayed.
             if (d.eventType().equals("CALENDAR_RECONCILE")) return false;
@@ -635,6 +736,7 @@ public class IntegrationService {
     }
     private static void simulatorOnly(IntegrationModels.Provider provider) {
         if (provider == IntegrationModels.Provider.GOOGLE_CALENDAR) throw new BusinessException("GOOGLE_CALENDAR_CONSENT_REQUIRED", "Use Google Calendar consent to connect or reconnect", HttpStatus.CONFLICT);
+        if (provider == IntegrationModels.Provider.SLACK_MESSAGING) throw new BusinessException("SLACK_CONNECTION_REQUIRED","Use dedicated Slack connection and renewal controls",HttpStatus.CONFLICT);
     }
     private static void credential(String value, Instant expiry) {
         Instant now = Instant.now();

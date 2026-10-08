@@ -88,6 +88,11 @@ union all select 'google_consents',count(*),md5(coalesce(string_agg(row_to_json(
 union all select 'google_revocations',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from integration_google_revocation t
 union all select 'calendar_reconciliations',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from integration_calendar_reconciliation t;
 SQL
+    "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -At' sh "${database}" > "${evidence}/${database}-sprint13-data.txt" <<'SQL'
+select 'slack_destinations',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by connection_id),'')) from integration_slack_destination t
+union all select 'slack_rate_limits',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by workspace_id,channel_id),'')) from integration_slack_rate_limit t
+union all select 'slack_revocations',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from integration_slack_revocation t;
+SQL
 done
 cmp "${evidence}/brainserve-sprint7-data.txt" "${evidence}/brainserve_restore_sprint1-sprint7-data.txt"
 cmp "${evidence}/brainserve-sprint8-data.txt" "${evidence}/brainserve_restore_sprint1-sprint8-data.txt"
@@ -95,6 +100,7 @@ cmp "${evidence}/brainserve-sprint9-data.txt" "${evidence}/brainserve_restore_sp
 cmp "${evidence}/brainserve-sprint10-data.txt" "${evidence}/brainserve_restore_sprint1-sprint10-data.txt"
 cmp "${evidence}/brainserve-sprint11-data.txt" "${evidence}/brainserve_restore_sprint1-sprint11-data.txt"
 cmp "${evidence}/brainserve-sprint12-data.txt" "${evidence}/brainserve_restore_sprint1-sprint12-data.txt"
+cmp "${evidence}/brainserve-sprint13-data.txt" "${evidence}/brainserve_restore_sprint1-sprint13-data.txt"
 cmp "${evidence}/brainserve-schema.txt" "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^50:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^51:' "${evidence}/brainserve_restore_sprint1-schema.txt"
@@ -115,6 +121,7 @@ grep -q '^65:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^66:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^67:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^68:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^69:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 restored="$("${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select string_agg(id || chr(58) || evidence, chr(44) order by id) from sprint1_recovery_probe"')"
 [ "${restored}" = '1:zero-wait,2:scoped-access' ]
 cat > "${evidence}/restore-compose.yml" <<'YAML'
@@ -129,5 +136,5 @@ smoke
 # migration or volume deletion; this establishes the first verified fallback.
 "${compose[@]}" up -d --no-build --force-recreate --wait --wait-timeout 180 backend frontend
 smoke
-printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nRecurrence snapshots, notifications and retained evidence: passed\nHandover authorship, workload and original-deadline analytics: passed\nNotification preferences, reminders and delegation revocation: passed\nIntegration receipts, retry, revocation and diagnostic expiry: passed\nGoogle Calendar API boundaries and retained restore fixtures: passed\nV68 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nRecurrence snapshots, notifications and retained evidence: passed\nHandover authorship, workload and original-deadline analytics: passed\nNotification preferences, reminders and delegation revocation: passed\nIntegration receipts, retry, revocation and diagnostic expiry: passed\nGoogle Calendar API boundaries and retained restore fixtures: passed\nSlack API boundaries and retained restore fixtures: passed\nV69 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

@@ -16,7 +16,8 @@ public final class IntegrationModels {
     public enum Provider {
         SIMULATOR_CALENDAR("CALENDAR", List.of("calendar.events.write")),
         GOOGLE_CALENDAR("CALENDAR", List.of("https://www.googleapis.com/auth/calendar.app.created")),
-        SIMULATOR_MESSAGING("MESSAGING", List.of("messages.send"));
+        SIMULATOR_MESSAGING("MESSAGING", List.of("messages.send")),
+        SLACK_MESSAGING("MESSAGING", List.of("chat:write"));
         private final String kind;
         private final List<String> scopes;
         Provider(String kind, List<String> scopes) { this.kind = kind; this.scopes = scopes; }
@@ -48,5 +49,7 @@ public final class IntegrationModels {
     public record Test(@NotNull UUID requestId, @NotNull @PositiveOrZero Long expectedVersion, @NotNull Scenario scenario) {}
     public record Reconcile(@NotNull UUID requestId, @NotNull @PositiveOrZero Long expectedVersion) {}
     public record Reconciliation(UUID id, String status, int processed, Instant createdAt, Instant completedAt) {}
-    public record Retry(@NotNull UUID requestId, @NotNull @PositiveOrZero Long expectedVersion) {}
+    public record Retry(@NotNull UUID requestId, @NotNull @PositiveOrZero Long expectedVersion, boolean acceptDuplicateRisk) {
+        public Retry(UUID requestId, Long expectedVersion) { this(requestId,expectedVersion,false); }
+    }
 }
