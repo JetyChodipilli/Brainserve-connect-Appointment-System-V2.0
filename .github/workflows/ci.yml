@@ -17,7 +17,8 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Cold browser dependencies can take 28 minutes; the full browser suite needs another 11.
+    timeout-minutes: 45
 
     defaults:
       run:
