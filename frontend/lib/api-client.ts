@@ -701,3 +701,16 @@ changeMyEmail(currentPassword: string, newEmail: string) {
 };
 
 export function apiDownload(path: string, signal?: AbortSignal): Promise<Blob> { return performApiRequest<Blob>(path, { signal, cache: "no-store" }, true, true); }
+
+// Device transport is deliberately independent of staff tokens, refresh and cookies.
+export async function kioskRequest<T>(operation: 'session' | 'intake', token: string, body: unknown, signal: AbortSignal): Promise<T> {
+  if (!isBackendConfigured) throw new ApiError(503, { detail: 'Kiosk intake is unavailable; ask Reception.' });
+  const response = await fetch(`${API_BASE_URL}/kiosk/${operation}`, {
+    method: 'POST', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
+    headers: { 'Content-Type': 'application/json', 'X-Kiosk-Token': token },
+    body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(API_REQUEST_TIMEOUT_MS)])
+  });
+  if (!response.ok) throw new ApiError(response.status, { detail: response.status === 401
+    ? 'Reconnect this visitor device or ask Reception.' : 'Arrival could not be confirmed. Ask Reception or Security.' });
+  return response.json() as Promise<T>;
+}

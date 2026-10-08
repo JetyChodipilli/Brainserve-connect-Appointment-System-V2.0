@@ -21,6 +21,7 @@ for (const name of [
   "com.brainserve.appointment.Sprint12GoogleConsentPostgresIntegrationTest",
   "com.brainserve.appointment.Sprint12CalendarPostgresIntegrationTest",
   "com.brainserve.appointment.Sprint13SlackPostgresIntegrationTest",
+  "com.brainserve.appointment.Sprint14KioskPostgresIntegrationTest",
   "com.brainserve.appointment.iam.AccountProvisioningIntegrationTest",
   "com.brainserve.appointment.iam.SystemAdminPasswordChangeOtpIntegrationTest",
   "com.brainserve.appointment.iam.PrivilegedSecurityIntegrationTest",

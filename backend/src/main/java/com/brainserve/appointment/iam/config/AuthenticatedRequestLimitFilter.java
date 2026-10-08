@@ -64,6 +64,10 @@ public class AuthenticatedRequestLimitFilter extends OncePerRequestFilter {
     private Rule rule(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         String method = request.getMethod();
+        if (!"GET".equals(method) && path.startsWith("/api/v1/admin/kiosks")) return new Rule("kiosk-admin",5);
+        if (!"GET".equals(method) && path.equals("/api/v1/appointments/groups")) return new Rule("visit-groups",5);
+        if (path.startsWith("/api/v1/reception/kiosk-intakes")) return new Rule("kiosk-intakes",120);
+        if (path.startsWith("/api/v1/reception/badges/")) return new Rule("visitor-badge",30);
         if ("POST".equals(method)) {
             if (path.equals("/api/v1/documents") || path.equals("/api/v1/profile/me/photo") || path.equals("/api/v1/bulk-imports/preview")) return new Rule("upload", uploads);
             if (path.equals("/api/v1/report-exports") || path.matches("/api/v1/report-exports/[^/]+/retry")

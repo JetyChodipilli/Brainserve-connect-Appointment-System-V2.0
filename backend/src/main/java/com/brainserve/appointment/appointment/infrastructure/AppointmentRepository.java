@@ -13,6 +13,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select a from Appointment a where a.referenceNumber = :reference")
+    Optional<Appointment> findPassForUpdate(@org.springframework.data.repository.query.Param("reference") String reference);
     Optional<Appointment> findByReferenceNumber(String referenceNumber);
     Optional<Appointment> findByIdempotencyKey(String idempotencyKey);
     boolean existsByHostEmployeeIdAndSlotStartLessThanAndSlotEndGreaterThanAndStatusIn(

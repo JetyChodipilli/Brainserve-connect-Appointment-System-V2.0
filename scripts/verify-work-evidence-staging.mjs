@@ -4,6 +4,7 @@ import { verifyWorkPlanningStaging } from './verify-work-planning-staging.mjs';
 import { verifyNotificationPolicyStaging } from './verify-notification-policy-staging.mjs';
 import { verifyIntegrationsStaging } from './verify-integrations-staging.mjs';
 import { verifyCalendarStaging } from './verify-calendar-staging.mjs';
+import { verifyKioskStaging } from './verify-kiosk-staging.mjs';
 import { verifySlackStaging } from './verify-slack-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
@@ -65,8 +66,8 @@ for (const [table,prefix,person] of [['department_hr_assignment','hr',principals
   sql(`insert into ${table}(id,department_id,${prefix}_user_id,${prefix}_employee_id,active,assigned_by_user_id,assigned_at,${auditColumns}) values('${id()}','${department}','${person.user}','${person.employee}',true,'${principals[6].user}',now(),${auditValues});`);
 }
 const ca = readFileSync(join(process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence', 'staging-ca.crt'));
-async function call(person, path, method = 'GET', value, expected = 200, accept = 'application/json') {
-  let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: accept };
+async function call(person, path, method = 'GET', value, expected = 200, accept = 'application/json', extraHeaders = {}) {
+  let body; const headers = { Authorization: `Bearer ${person.token}`, Accept: accept, ...extraHeaders };
   if (value instanceof FormData) {
     const encoded = new Request('https://localhost', { method: 'POST', body: value });
     body = Buffer.from(await encoded.arrayBuffer()); headers['Content-Type'] = encoded.headers.get('content-type');
@@ -211,6 +212,7 @@ await verifyNotificationPolicyStaging({call,sql,leadPerson,employeePerson,altern
 await verifyIntegrationsStaging({call,sql,adminPerson:principals[6],employeePerson});
 await verifyCalendarStaging({call,sql,adminPerson:principals[6],employeePerson});
 await verifySlackStaging({call,sql,adminPerson:principals[6],employeePerson});
+await verifyKioskStaging({call,sql,adminPerson:principals[6],employeePerson,hrPerson:principals[4],department});
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

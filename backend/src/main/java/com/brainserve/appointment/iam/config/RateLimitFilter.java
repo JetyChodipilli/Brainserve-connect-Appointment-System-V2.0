@@ -78,6 +78,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private Rule rule(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
+        if (path.equals("/api/v1/kiosk/session") || path.equals("/api/v1/kiosk/intake")) return new Rule("kiosk",600,60);
         if ("GET".equals(request.getMethod())) {
             if (path.equals("/api/v1/integrations/google-calendar/authorize")) return new Rule("google-calendar-authorize", 30, 60);
             if (path.equals("/api/v1/integrations/google-calendar/callback")) return new Rule("google-calendar-callback", 30, 60);

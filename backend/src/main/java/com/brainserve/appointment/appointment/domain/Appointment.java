@@ -23,6 +23,10 @@ import java.util.UUID;
         @UniqueConstraint(name = "uk_appointment_idempotency", columnNames = "idempotency_key")
 })
 public class Appointment extends AuditableEntity {
+    @Column(name = "visit_group_id", updatable = false)
+    private UUID visitGroupId;
+    public void assignVisitGroup(UUID value) { this.visitGroupId = value; }
+
     private static final Map<AppointmentStatus, Set<AppointmentStatus>> TRANSITIONS = transitions();
 
     @Column(name = "reference_number", nullable = false, updatable = false, length = 40)
