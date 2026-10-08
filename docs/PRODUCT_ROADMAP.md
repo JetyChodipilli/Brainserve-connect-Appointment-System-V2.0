@@ -55,8 +55,8 @@ A supervised pilot after S4 is conditional on setup/import UAT, staging recovery
 | S9 | Handover, workload and work analytics | Authorship and original-deadline cohorts preserved |
 | S10 | Notification preferences and approval escalation | Mandatory policy, quiet hours, delegation and deduplication |
 | S11 | Integration connection/delivery foundation and support diagnostics | Credentials, redaction and adapter simulator tests |
-| S12 | Google Calendar consent, approved delivery, reconciliation and calendar-file fallback | Implementation in review; real consent and create/update/cancel reconciliation UAT pending |
-| S13 | First messaging provider | Arrival notice, renewal/revocation and retry UAT |
+| S12 | Google Calendar consent, approved delivery, reconciliation and calendar-file fallback | Merged and CI verified; real consent and create/update/cancel reconciliation UAT pending |
+| S13 | Slack arrival notices, credential renewal/revocation and bounded delivery recovery | Automated implementation verification; live arrival, renewal/revocation and retry UAT pending |
 | S14 | Group preregistration, QR intake, restricted kiosk and badges | Scan/device security and selected printer hardware UAT |
 | S15 | Accessibility completion, monitoring/load/DR drills | Measured performance and restore/rollback reports |
 | S16 | Pilot feedback, compatibility, release docs and commercial UAT | Accepted release gates, limits and support owner |

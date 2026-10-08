@@ -20,7 +20,8 @@ class IntegrationModelsTest {
         assertThat(IntegrationModels.Provider.SIMULATOR_CALENDAR.scopes()).containsExactly("calendar.events.write");
         assertThat(IntegrationModels.Provider.SIMULATOR_MESSAGING.scopes()).containsExactly("messages.send");
         assertThat(IntegrationModels.Provider.GOOGLE_CALENDAR.scopes()).containsExactly("https://www.googleapis.com/auth/calendar.app.created");
-        assertThat(IntegrationModels.Provider.values()).hasSize(3);
+        assertThat(IntegrationModels.Provider.SLACK_MESSAGING.scopes()).containsExactly("chat:write");
+        assertThat(IntegrationModels.Provider.values()).hasSize(4);
     }
     @Test void retryBackoffIsBoundedAndDoesNotOverflow() {
         assertThat(IntegrationService.retryDelay(1)).isEqualTo(30);

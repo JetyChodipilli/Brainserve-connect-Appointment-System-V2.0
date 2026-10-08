@@ -17,7 +17,7 @@ Run npm commands from `frontend/` and Maven from `backend/`. Start with the [fro
 
 The [reliability audit](docs/V2_AUDIT.md), [product roadmap and sprint estimates](docs/PRODUCT_ROADMAP.md), and [requirements and release gates](docs/V2_REQUIREMENTS.md) distinguish completed fixes from planned commercial, enterprise and SaaS work.
 
-[Sprint 11](docs/SPRINT_11.md) adds owner-scoped integration simulators with protected credentials, durable delivery/retry evidence, and authorized redacted support packages. [Sprint 12](docs/SPRINT_12.md) implements Google Calendar consent, one-way approved appointment delivery, reconciliation, and a calendar-file fallback. Real Google UAT remains a release gate; the messaging provider follows in S13.
+[Sprint 11](docs/SPRINT_11.md) adds owner-scoped integration simulators with protected credentials, durable delivery/retry evidence, and authorized redacted support packages. [Sprint 12](docs/SPRINT_12.md) implements Google Calendar consent, one-way approved appointment delivery, reconciliation, and a calendar-file fallback. [Sprint 13](docs/SPRINT_13.md) adds Slack arrival notices, scoped bot credentials, durable pacing/revocation, and explicit uncertain-delivery recovery. Real Google and Slack UAT remain provider release gates.
 
 ```sh
 cd frontend

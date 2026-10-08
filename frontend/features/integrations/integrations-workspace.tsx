@@ -5,13 +5,25 @@ import { ApiError, isBackendConfigured } from '../../lib/api-client';
 import { integrationsApi } from './api/integrations-api';
 import { googleAuthorizationUrl } from './api/google-authorization-url';
 import { useAdminSession } from './use-admin-session';
-import type { CalendarReconciliation, Connection, Delivery, DeliveryAttempt, GoogleCalendarConfig, GoogleConnectionMetadata, GoogleConsent, IntegrationProvider, TestScenario } from './types';
+import type { CalendarReconciliation, Connection, Delivery, DeliveryAttempt, GoogleCalendarConfig, GoogleConnectionMetadata, GoogleConsent, IntegrationProvider, SlackConfig, SlackConnectionMetadata, TestScenario } from './types';
 import styles from './admin-tools.module.css';
 
 const date = (value: string | null) => value ? new Date(value).toLocaleString('en-IN') : 'Not recorded';
 const human = (value: string) => value.replaceAll('_', ' ').toLowerCase();
-const providerName = (value: IntegrationProvider) => value === 'GOOGLE_CALENDAR' ? 'Google Calendar' : value === 'SIMULATOR_CALENDAR' ? 'Calendar simulator' : 'Messaging simulator';
+const providerName = (value: IntegrationProvider) => value === 'GOOGLE_CALENDAR' ? 'Google Calendar' : value === 'SLACK_MESSAGING' ? 'Slack' : value === 'SIMULATOR_CALENDAR' ? 'Calendar simulator' : 'Messaging simulator';
 const localDate = (milliseconds: number) => { const value = new Date(milliseconds); return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+const slackErrors: Record<string, string> = {
+    SLACK_NOT_CONFIGURED: 'Slack is not configured on this service. Ask your service operator to enable arrival notices.',
+    SLACK_INVALID_TOKEN: 'Use a nonrotating Slack bot token beginning with xoxb-.',
+    SLACK_AUTH_REJECTED: 'Slack could not verify this bot with only the chat:write scope. Check its installation and scope in Slack.',
+    SLACK_DEDICATED_BOT_REQUIRED: 'This dedicated bot already belongs to a connection. Use that connection’s renewal controls.',
+    SLACK_REVOCATION_PENDING: 'Finish remote revocation before renewing this Slack connection.',
+    SLACK_ROTATION_REQUIRED: 'Rotate or revoke the old token in Slack before supplying its replacement.',
+    SLACK_DESTINATION_CHANGED: 'Use a replacement token for the same workspace and bot. A different destination needs a new connection.',
+    SLACK_REVOCATION_RETRY_LIMIT: 'No remote revocation retry is available. Review its status; at most three manual retries are allowed.',
+    SLACK_DUPLICATE_RISK_ACK_REQUIRED: 'Check the Slack channel and acknowledge the duplicate-notice risk before retrying this uncertain delivery.',
+    SLACK_DELIVERY_EXPIRED: 'This Slack notice expired 24 hours after its event and cannot be sent again.'
+};
 
 export function IntegrationsWorkspace() {
     const [connections, setConnections] = useState<Connection[]>([]), [loaded, setLoaded] = useState(false);
@@ -29,15 +41,25 @@ export function IntegrationsWorkspace() {
     const [googleLabel, setGoogleLabel] = useState(''), [consentConfirmed, setConsentConfirmed] = useState(false), [calendarId, setCalendarId] = useState('');
     const [reconsentConfirmed, setReconsentConfirmed] = useState(false);
     const [googleMetadata, setGoogleMetadata] = useState<GoogleConnectionMetadata | null>(null), [reconciliation, setReconciliation] = useState<CalendarReconciliation | null>(null);
+    const [slackConfig, setSlackConfig] = useState<SlackConfig | null>(null), [slackVerified, setSlackVerified] = useState(false), [slackMetadata, setSlackMetadata] = useState<SlackConnectionMetadata | null>(null);
+    const [slackLabel, setSlackLabel] = useState(''), [slackChannel, setSlackChannel] = useState(''), [slackExpires, setSlackExpires] = useState('');
+    const [slackConfirmed, setSlackConfirmed] = useState(false), [slackRenewalConfirmed, setSlackRenewalConfirmed] = useState(false), [duplicateRisk, setDuplicateRisk] = useState<Record<string, boolean>>({});
+    const slackCredentialRef = useRef<HTMLInputElement>(null);
     const credentialRef = useRef<HTMLInputElement>(null), reconnectCredentialRef = useRef<HTMLInputElement>(null), errorRef = useRef<HTMLDivElement>(null);
     const { begin, busy, sessionEnded, clock } = useAdminSession(() => {
         if (credentialRef.current) credentialRef.current.value = '';
         if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
+        if (slackCredentialRef.current) slackCredentialRef.current.value = '';
         setConnections([]); setDeliveries([]); setAttempts({}); setSelectedId(''); setLabel(''); setExpires(''); setReconnectExpires(''); setError(''); setMessage('');
         setGoogleConfig(null); setGoogleVerified(false); setConsents([]); setAuthorization(null); setGoogleLabel(''); setConsentConfirmed(false); setReconsentConfirmed(false); setCalendarId(''); setGoogleMetadata(null); setReconciliation(null);
+        setSlackConfig(null); setSlackVerified(false); setSlackMetadata(null); setSlackLabel(''); setSlackChannel(''); setSlackExpires(''); setSlackConfirmed(false); setSlackRenewalConfirmed(false); setDuplicateRisk({});
     });
     const selected = connections.find(item => item.id === selectedId);
     const isGoogle = selected?.provider === 'GOOGLE_CALENDAR';
+    const isSlack = selected?.provider === 'SLACK_MESSAGING';
+    const slackChannelValid = /^[CG][A-Z0-9]{8,31}$/.test(slackChannel.trim());
+    const canSlack = Boolean(slackVerified && slackConfig?.configured && !busy && !blocked && !sessionEnded);
+    const canRenewSlack = Boolean(canSlack && (selected?.status !== 'REVOKED' || slackMetadata?.revocationStatus === 'COMPLETE'));
     const calendarIdValid = /^[A-Za-z0-9._%+@-]{3,512}$/.test(calendarId.trim()) && calendarId.includes('@');
     const canConsent = Boolean(googleVerified && googleConfig?.configured && !busy && !blocked && !sessionEnded);
     const eligible = Boolean(clock > 0 && selected?.status === 'ACTIVE' && Date.parse(selected.credentialExpiresAt) > clock);
@@ -50,26 +72,30 @@ export function IntegrationsWorkspace() {
     const load = useCallback(async () => {
         if (!isBackendConfigured) return;
         const operation = begin(); if (!operation) return;
-        setError(''); setAuthorization(null); setGoogleVerified(false);
+        setError(''); setAuthorization(null); setGoogleVerified(false); setSlackVerified(false);
         try {
-            // Google metadata availability does not prevent simulator administration.
-            const [connectionRead, configRead] = await Promise.allSettled([integrationsApi.connections(operation.signal), integrationsApi.googleConfig(operation.signal)]);
+            // Optional provider configuration does not prevent simulator administration.
+            const [connectionRead, configRead, slackConfigRead] = await Promise.allSettled([integrationsApi.connections(operation.signal), integrationsApi.googleConfig(operation.signal), integrationsApi.slackConfig(operation.signal)]);
             if (connectionRead.status === 'rejected') throw connectionRead.reason;
             const result = connectionRead.value;
             if (!operation.current()) return;
             const id = result.some(item => item.id === selectedIdRef.current) ? selectedIdRef.current : result[0]?.id ?? '';
             const google = result.find(item => item.id === id)?.provider === 'GOOGLE_CALENDAR';
+            const slack = result.find(item => item.id === id)?.provider === 'SLACK_MESSAGING';
             const config = configRead.status === 'fulfilled' && typeof configRead.value?.configured === 'boolean' ? configRead.value : null;
+            const slackConfiguration = slackConfigRead.status === 'fulfilled' && typeof slackConfigRead.value?.configured === 'boolean' && slackConfigRead.value.scope === 'chat:write' && slackConfigRead.value.usesDedicatedBot === true ? slackConfigRead.value : null;
             // Refresh detail and its observed versions together before unlocking any mutation.
-            const [backlog, consentRead, metadataRead, progressRead] = await Promise.all([
+            const [backlog, consentRead, metadataRead, progressRead, slackMetadataRead] = await Promise.all([
                 id ? integrationsApi.deliveries(id, 0, operation.signal) : null,
                 config?.configured ? integrationsApi.googleConsents(operation.signal) : [],
                 google ? integrationsApi.googleConnection(id, operation.signal) : null,
-                google ? integrationsApi.reconciliation(id, operation.signal) : null
+                google ? integrationsApi.reconciliation(id, operation.signal) : null,
+                slack ? integrationsApi.slackConnection(id, operation.signal) : null
             ]);
             if (!operation.current()) return;
             setConnections(result); setSelectedId(id); setLoaded(true);
             setGoogleConfig(config); setGoogleVerified(Boolean(config)); setConsents(consentRead); setGoogleMetadata(metadataRead); setReconciliation(progressRead); setCalendarId(''); setConsentConfirmed(false); setReconsentConfirmed(false);
+            setSlackConfig(slackConfiguration); setSlackVerified(Boolean(slackConfiguration)); setSlackMetadata(slackMetadataRead); setSlackRenewalConfirmed(false); setDuplicateRisk({});
             setDeliveries(backlog?.content ?? []); setDeliveryPage(0); setDeliveryPages(backlog?.totalPages ?? 0); setDeliveriesLoaded(Boolean(id)); setAttempts({});
             setBlocked(false); setRevokeConfirmed(false); setMessage('Current connections and delivery versions loaded.');
         } catch { if (operation.current()) { setBlocked(true); setError('Connections could not be verified. Reload connections before making changes.'); } }
@@ -81,10 +107,12 @@ export function IntegrationsWorkspace() {
         setError('');
         try {
             const google = connections.find(item => item.id === id)?.provider === 'GOOGLE_CALENDAR';
-            const [result, metadata, progress] = await Promise.all([integrationsApi.deliveries(id, requestedPage, operation.signal), google ? integrationsApi.googleConnection(id, operation.signal) : null, google ? integrationsApi.reconciliation(id, operation.signal) : null]);
+            const slack = connections.find(item => item.id === id)?.provider === 'SLACK_MESSAGING';
+            const [result, metadata, progress, slackDetail] = await Promise.all([integrationsApi.deliveries(id, requestedPage, operation.signal), google ? integrationsApi.googleConnection(id, operation.signal) : null, google ? integrationsApi.reconciliation(id, operation.signal) : null, slack ? integrationsApi.slackConnection(id, operation.signal) : null]);
             if (!operation.current()) return;
             setSelectedId(id); setDeliveries(result.content); setDeliveryPage(result.number ?? requestedPage); setDeliveryPages(result.totalPages ?? 0); setDeliveriesLoaded(true); setAttempts({}); setRevokeConfirmed(false); setReconnectExpires('');
             setGoogleMetadata(metadata); setReconciliation(progress); setCalendarId(''); setConsentConfirmed(false); setReconsentConfirmed(false);
+            setSlackMetadata(slackDetail); setSlackRenewalConfirmed(false); setDuplicateRisk({});
             if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
         } catch { if (operation.current()) { setBlocked(true); setError('Delivery status could not be verified. Reload connections before making changes.'); } }
         finally { operation.finish(); }
@@ -99,8 +127,11 @@ export function IntegrationsWorkspace() {
         } catch (reason) {
             if (!operation.current()) return;
             setBlocked(true);
+            const slackRecovery = reason instanceof ApiError && reason.problem.errorCode ? slackErrors[reason.problem.errorCode] : undefined;
             setError(reason instanceof ApiError && reason.problem.errorCode === 'MFA_STEP_UP_REQUIRED'
                 ? 'Verify your identity in My profile → Account security, then reload connections before trying again.'
+                : slackRecovery
+                ? `${slackRecovery} Reload connections to verify the current status before another change.`
                 : reason instanceof ApiError && reason.problem.errorCode === 'CALENDAR_RECONCILE_LIMIT'
                 ? 'Reconciliation is limited to one active run, five minutes between runs, three runs per 24 hours and 500 resources. Reload connections to check progress before trying again.'
                 : reason instanceof ApiError && reason.problem.errorCode === 'CONSENT_SESSION_MISMATCH'
@@ -112,18 +143,29 @@ export function IntegrationsWorkspace() {
         } finally { operation.finish(); }
     };
     const create = (event: FormEvent) => {
-        event.preventDefault(); if (provider === 'GOOGLE_CALENDAR' || busy || blocked || sessionEnded) return;
+        event.preventDefault(); if (!['SIMULATOR_CALENDAR', 'SIMULATOR_MESSAGING'].includes(provider) || busy || blocked || sessionEnded) return;
         const credential = credentialRef.current?.value ?? '';
         if (credentialRef.current) credentialRef.current.value = '';
         if (!credential || !label.trim() || !expires || Date.parse(expires) <= clock) return;
         void mutate(signal => integrationsApi.create({ requestId: crypto.randomUUID(), provider, label: label.trim(), credential, credentialExpiresAt: new Date(expires).toISOString() }, signal), 'Connection creation accepted.');
     };
+    const createSlack = (event: FormEvent) => {
+        event.preventDefault(); if (!canSlack || !slackConfirmed || !slackChannelValid) return;
+        const credential = slackCredentialRef.current?.value ?? '';
+        if (slackCredentialRef.current) slackCredentialRef.current.value = '';
+        if (!credential || !slackLabel.trim() || !slackExpires || Date.parse(slackExpires) <= clock) return;
+        setSlackConfirmed(false);
+        void mutate(signal => integrationsApi.createSlack({ requestId: crypto.randomUUID(), label: slackLabel.trim(), channelId: slackChannel.trim(), credential, credentialExpiresAt: new Date(slackExpires).toISOString() }, signal), 'Slack connection creation accepted.');
+    };
     const reconnect = (event: FormEvent) => {
-        event.preventDefault(); if (!selected || isGoogle || busy || blocked || sessionEnded) return;
+        event.preventDefault(); if (!selected || isGoogle || busy || blocked || sessionEnded || (isSlack && (!canRenewSlack || !slackRenewalConfirmed))) return;
         const credential = reconnectCredentialRef.current?.value ?? '';
         if (reconnectCredentialRef.current) reconnectCredentialRef.current.value = '';
         if (!credential || !reconnectExpires || Date.parse(reconnectExpires) <= clock) return;
-        void mutate(signal => integrationsApi.reconnect(selected.id, selected.version, credential, new Date(reconnectExpires).toISOString(), signal), 'Replacement credential accepted.');
+        if (isSlack) {
+            setSlackRenewalConfirmed(false);
+            void mutate(signal => integrationsApi.renewSlack(selected.id, selected.version, credential, new Date(reconnectExpires).toISOString(), signal), 'Slack credential renewal accepted.');
+        } else void mutate(signal => integrationsApi.reconnect(selected.id, selected.version, credential, new Date(reconnectExpires).toISOString(), signal), 'Replacement credential accepted.');
     };
     const loadAttempts = async (id: string) => {
         const operation = begin(); if (!operation) return;
@@ -200,6 +242,23 @@ export function IntegrationsWorkspace() {
                 </li>)}</ul></>}
                 <details><summary>Download calendar file</summary><p>Download upcoming approved appointments for the next 30 days, up to 500 events. The file contains generic titles and UTC times. Larger exports are rejected without a partial file. Importing it is a one-time copy.</p><button type='button' className='button button-secondary' disabled={busy} onClick={() => void downloadCalendar()}>Download calendar (.ics)</button></details>
             </section>
+            <section className={styles.panel} aria-labelledby='slack-title'><h2 id='slack-title'>Slack arrival notices</h2>
+                <p>Send a generic arrival notice to one Slack channel, with a link to the signed-in BrainServe workspace. Visitor names, appointment details and access codes are excluded.</p>
+                {!slackVerified && <p role='status'>{busy ? 'Checking Slack availability…' : 'Slack availability could not be verified. Reload connections to check configuration.'}</p>}
+                {slackVerified && !slackConfig?.configured && <p role='status'>Slack is not configured on this service. Ask your service operator to enable Slack arrival notices.</p>}
+                {slackVerified && slackConfig?.configured && <><p>Use a dedicated Slack app with only the chat:write bot scope. Invite its bot to the channel first. Use a nonrotating bot token; renew it manually in Slack before its BrainServe expiry, within 90 days.</p>
+                    <details><summary>Add a Slack connection</summary><form onSubmit={createSlack} autoComplete='off' aria-busy={busy}><fieldset disabled={!canSlack}><div className={styles.fields}>
+                        <label>Slack connection label<input required maxLength={80} value={slackLabel} onChange={event => setSlackLabel(event.target.value)} /></label>
+                        <label>Slack channel ID<input required pattern='[CG][A-Z0-9]{8,31}' maxLength={32} value={slackChannel} onChange={event => setSlackChannel(event.target.value)} aria-invalid={Boolean(slackChannel && !slackChannelValid)} aria-describedby='slack-channel-help' /></label>
+                        <label>Slack bot token<input ref={slackCredentialRef} type='password' required pattern='xoxb-(?:[A-Za-z0-9]|-){12,250}' minLength={17} maxLength={255} autoComplete='off' spellCheck={false} /></label>
+                        <label>Slack credential expiry<input type='datetime-local' required min={expiryMin} max={expiryMax} value={slackExpires} onChange={event => setSlackExpires(event.target.value)} /></label>
+                    </div><p id='slack-channel-help' className={styles.muted}>{slackChannel && !slackChannelValid ? 'Enter a Slack channel ID beginning with C or G, without spaces, a channel name or a URL.' : 'Copy the channel ID from Slack. The destination cannot be changed after creation.'}</p>
+                        <p className={styles.muted}>The token is cleared when submitted and cannot be viewed again. A connection check verifies the token; use Send Slack test notice after creation to check delivery to the channel.</p>
+                        <label className={styles.check}><input type='checkbox' checked={slackConfirmed} onChange={event => setSlackConfirmed(event.target.checked)} />I confirm this dedicated bot is invited to the selected channel.</label>
+                        <div className={styles.actions}><button type='submit' className='button button-primary' disabled={!canSlack || !slackConfirmed || !slackLabel.trim() || !slackChannelValid}>Create Slack connection</button></div>
+                    </fieldset></form></details>
+                </>}
+            </section>
             <details className={styles.panel}><summary>Add a simulator connection</summary><form onSubmit={create} autoComplete='off' aria-busy={busy}><fieldset disabled={busy || blocked}><legend>Connection details</legend><div className={styles.fields}>
                 <label>Provider<select value={provider} onChange={e => setProvider(e.target.value as IntegrationProvider)}><option value='SIMULATOR_CALENDAR'>Calendar simulator</option><option value='SIMULATOR_MESSAGING'>Messaging simulator</option></select></label>
                 <label>Connection label<input required maxLength={80} value={label} onChange={e => setLabel(e.target.value)} /></label>
@@ -208,7 +267,7 @@ export function IntegrationsWorkspace() {
             </div><p className={styles.muted}>Use a credential of at least 16 characters and an expiry within 90 days. Credentials are cleared when submitted and cannot be viewed again. Minimum scopes are fixed by the service.</p><div className={styles.actions}><button className='button button-primary' type='submit' disabled={busy || blocked}>Create connection</button></div></fieldset></form></details>
             <div className={styles.columns}><section className={styles.panel} aria-labelledby='connection-list-title'><h2 id='connection-list-title'>Connections</h2>
                 {!loaded && <p role='status'>{busy ? 'Loading connections…' : 'Reload connections to verify the source.'}</p>}
-                {loaded && connections.length === 0 && <p>No connections available. {googleConfig?.configured ? 'Connect Google Calendar or add a simulator to begin.' : 'Add a simulator or use the calendar file fallback.'}</p>}
+                {loaded && connections.length === 0 && <p>No connections available. {slackConfig?.configured ? 'Add a Slack connection, connect an available calendar or add a simulator to begin.' : googleConfig?.configured ? 'Connect Google Calendar or add a simulator to begin.' : 'Add a simulator or use the calendar file fallback.'}</p>}
                 <ul className={styles.list}>{connections.map(item => <li key={item.id}><button type='button' className={styles.connection} aria-pressed={selectedId === item.id} disabled={busy} onClick={() => void loadDeliveries(item.id, 0)}><strong>{item.label}</strong><small>{providerName(item.provider)}</small><span className={styles.status}>{human(item.status)}</span></button></li>)}</ul>
             </section><section className={styles.panel} aria-labelledby='connection-detail-title'><h2 id='connection-detail-title'>{selected ? selected.label : 'Connection details'}</h2>
                 {!selected && <p>Select a connection to inspect its status and delivery attempts.</p>}
@@ -222,12 +281,22 @@ export function IntegrationsWorkspace() {
                             <div className={styles.actions}><button type='button' className='button button-primary' disabled={busy || blocked || !eligible || googleMetadata?.provisioningStatus !== 'READY' || ['QUEUED', 'RUNNING'].includes(reconciliation?.status ?? '')} onClick={() => void mutate(signal => integrationsApi.reconcile(selected.id, selected.version, signal), 'Reconciliation accepted.')}>Start calendar reconciliation</button><button type='button' className='button button-secondary' disabled={busy} onClick={() => void loadDeliveries(selected.id, deliveryPage)}>Check reconciliation progress</button></div>
                         </details>
                     </>}
-                    {!isGoogle && <><details><summary>Test delivery behaviour</summary><label className={styles.field}>Simulator scenario<select value={scenario} disabled={busy || blocked || !eligible} onChange={e => setScenario(e.target.value as TestScenario)}><option value='SUCCESS'>Successful delivery</option><option value='OUTAGE'>Provider outage</option><option value='RATE_LIMITED'>Rate limit</option><option value='REAUTH_REQUIRED'>Reauthentication required</option><option value='PERMANENT_FAILURE'>Permanent failure</option></select></label><p>Creates an explicit simulator test delivery for this connection. Reload to inspect the outcome and attempts.</p><div className={styles.actions}><button type='button' className='button button-primary' disabled={busy || blocked || !eligible} onClick={() => void mutate(signal => integrationsApi.test(selected.id, selected.version, scenario, signal), 'Simulator test accepted.')}>Run simulator test</button></div></details>
+                    {isSlack && <><dl className={styles.facts}><div><dt>Slack workspace ID</dt><dd>{slackMetadata?.workspaceId ?? 'Not verified'}</dd></div><div><dt>Slack channel ID</dt><dd>{slackMetadata?.channelId ?? 'Not verified'}</dd></div><div><dt>Slack bot ID</dt><dd>{slackMetadata?.botId ?? 'Not verified'}</dd></div><div><dt>Remote revocation</dt><dd>{slackMetadata ? human(slackMetadata.revocationStatus) : 'Not verified'}</dd></div><div><dt>Slack recovery result</dt><dd>{slackMetadata?.lastResultCode ?? 'Not recorded'}</dd></div></dl>
+                        <details><summary>Test Slack delivery</summary><p>Sends a fixed test notice to this channel. Reload connections to inspect its delivery status and attempt history.</p><button type='button' className='button button-primary' disabled={!canSlack || !eligible} onClick={() => void mutate(signal => integrationsApi.test(selected.id, selected.version, 'SUCCESS', signal), 'Slack test notice accepted.')}>Send Slack test notice</button></details>
+                        {(selected.status !== 'REVOKED' || slackMetadata?.revocationStatus === 'COMPLETE') && <details><summary>Renew Slack credential</summary><p>Rotate or revoke the old token in Slack first, then provide a replacement for the same workspace and bot. Reinvite the bot to this channel if Slack removed it. BrainServe does not refresh Slack tokens automatically. To change the channel, revoke this connection and create a new one.</p>{selected.status === 'REVOKED' && <p>Remote revocation is complete. A new token from Slack and renewed channel membership reactivate this connection for future notices. Previously cancelled notices stay cancelled.</p>}<form onSubmit={reconnect} autoComplete='off'><fieldset disabled={!canRenewSlack}><div className={styles.fields}>
+                            <label>Replacement Slack bot token<input ref={reconnectCredentialRef} type='password' required pattern='xoxb-(?:[A-Za-z0-9]|-){12,250}' minLength={17} maxLength={255} autoComplete='off' spellCheck={false} /></label><label>Replacement Slack expiry<input type='datetime-local' required min={expiryMin} max={expiryMax} value={reconnectExpires} onChange={event => setReconnectExpires(event.target.value)} /></label>
+                        </div><label className={styles.check}><input type='checkbox' checked={slackRenewalConfirmed} onChange={event => setSlackRenewalConfirmed(event.target.checked)} />I rotated or revoked the old token in Slack before this renewal.</label><div className={styles.actions}><button type='submit' className='button button-primary' disabled={!canRenewSlack || !slackRenewalConfirmed}>Renew Slack credential</button></div></fieldset></form></details>}
+                        {slackMetadata?.revocationStatus === 'FAILED' && <details><summary>Retry Slack remote revocation</summary><p>Local revocation already stops deliveries. Retry revoking the retained bot token in Slack. Revoking this dedicated bot token removes the bot from its channels.</p><button type='button' className='button button-secondary' disabled={busy || blocked} onClick={() => void mutate(signal => integrationsApi.retrySlackRevocation(selected.id, selected.version, signal), 'Slack remote revocation retry accepted.')}>Retry Slack revocation</button></details>}
+                    </>}
+                    {!isGoogle && !isSlack && <><details><summary>Test delivery behaviour</summary><label className={styles.field}>Simulator scenario<select value={scenario} disabled={busy || blocked || !eligible} onChange={e => setScenario(e.target.value as TestScenario)}><option value='SUCCESS'>Successful delivery</option><option value='OUTAGE'>Provider outage</option><option value='RATE_LIMITED'>Rate limit</option><option value='REAUTH_REQUIRED'>Reauthentication required</option><option value='PERMANENT_FAILURE'>Permanent failure</option></select></label><p>Creates an explicit simulator test delivery for this connection. Reload to inspect the outcome and attempts.</p><div className={styles.actions}><button type='button' className='button button-primary' disabled={busy || blocked || !eligible} onClick={() => void mutate(signal => integrationsApi.test(selected.id, selected.version, scenario, signal), 'Simulator test accepted.')}>Run simulator test</button></div></details>
                     <details><summary>Replace credential</summary><form onSubmit={reconnect} autoComplete='off'><fieldset disabled={busy || blocked}><div className={styles.fields}><label>Replacement credential<input ref={reconnectCredentialRef} type='password' required minLength={16} maxLength={4096} autoComplete='off' spellCheck={false} /></label><label>Replacement expiry<input type='datetime-local' required min={expiryMin} max={expiryMax} value={reconnectExpires} onChange={e => setReconnectExpires(e.target.value)} /></label></div><p>Replacing a credential advances its version. Pending deliveries use the new credential only after the service verifies eligibility.</p><div className={styles.actions}><button className='button button-primary' type='submit' disabled={busy || blocked}>Reconnect connection</button></div></fieldset></form></details></>}
-                    <details><summary>Revoke connection</summary><p>Revocation stops new deliveries and cancels pending work for this connection.</p><label className={styles.check}><input type='checkbox' checked={revokeConfirmed} disabled={busy || blocked || selected.status === 'REVOKED'} onChange={e => setRevokeConfirmed(e.target.checked)} />I confirm revoking this connection.</label><div className={styles.actions}><button type='button' className='button button-secondary' disabled={busy || blocked || !revokeConfirmed || selected.status === 'REVOKED'} onClick={() => void mutate(signal => integrationsApi.revoke(selected.id, selected.version, signal), 'Revocation accepted.')}>Confirm connection revocation</button></div></details>
+                    <details><summary>Revoke connection</summary><p>Revocation stops new deliveries and cancels pending work for this connection.</p>{isSlack && <p>Remote revocation is queued and its status appears above after reloading. Revoking the dedicated bot token in Slack removes the bot from its channels. Completed notices remain in Slack.</p>}<label className={styles.check}><input type='checkbox' checked={revokeConfirmed} disabled={busy || blocked || selected.status === 'REVOKED'} onChange={e => setRevokeConfirmed(e.target.checked)} />I confirm revoking this connection.</label><div className={styles.actions}><button type='button' className='button button-secondary' disabled={busy || blocked || !revokeConfirmed || selected.status === 'REVOKED'} onClick={() => void mutate(signal => integrationsApi.revoke(selected.id, selected.version, signal), 'Revocation accepted.')}>Confirm connection revocation</button></div></details>
                     <h3>Delivery backlog</h3><p className={styles.muted}>Statuses and attempt history contain references and result codes; private delivery content stays out of this view.</p>
+                    {isSlack && <p>Arrival notices expire 24 hours after the event. Provider rate limits delay confirmed retries; an unknown acknowledgement requires your review before retrying.</p>}
                     {deliveriesLoaded && deliveries.length === 0 && <p>No deliveries on this page.</p>}
-                    {deliveries.map(item => <article className={styles.row} key={item.id} aria-label={`Delivery ${item.id}`}><div className={styles.rowHeader}><strong>Revision {item.businessRevision}</strong><span className={styles.status}>{human(item.status)}</span></div><dl className={styles.facts}><div><dt>Delivery reference</dt><dd>{item.id}</dd></div><div><dt>Attempts</dt><dd>{item.totalAttempts} of 20 total · {item.manualRetries} of 3 manual retries</dd></div><div><dt>Next attempt</dt><dd>{date(item.nextAttemptAt)}</dd></div><div><dt>Last result</dt><dd>{item.lastResultCode ?? 'Pending'}</dd></div></dl><div className={styles.actions}><button type='button' className='button button-secondary' disabled={busy} onClick={() => void loadAttempts(item.id)}>Load delivery attempts</button><button type='button' className='button button-secondary' disabled={busy || blocked || !eligible || item.manualRetries >= 3 || item.totalAttempts >= 20 || !['FAILED', 'NEEDS_RECONNECT'].includes(item.status)} onClick={() => void mutate(signal => integrationsApi.retry(item.id, item.version, signal), 'Delivery retry accepted.')}>Retry failed delivery</button></div>
+                    {deliveries.map(item => <article className={styles.row} key={item.id} aria-label={`Delivery ${item.id}`}><div className={styles.rowHeader}><strong>Revision {item.businessRevision}</strong><span className={styles.status}>{human(item.status)}</span></div><dl className={styles.facts}><div><dt>Delivery reference</dt><dd>{item.id}</dd></div><div><dt>Attempts</dt><dd>{item.totalAttempts} of 20 total · {item.manualRetries} of 3 manual retries</dd></div><div><dt>Next attempt</dt><dd>{date(item.nextAttemptAt)}</dd></div><div><dt>Last result</dt><dd>{item.lastResultCode ?? 'Pending'}</dd></div></dl>
+                        {item.status === 'UNKNOWN' && <><p>Slack may already have accepted this notice before its acknowledgement was lost. Check the channel before retrying. A retry can send a duplicate notice.</p><label className={styles.check}><input type='checkbox' checked={Boolean(duplicateRisk[item.id])} disabled={busy || blocked} onChange={event => setDuplicateRisk(previous => ({ ...previous, [item.id]: event.target.checked }))} />I accept the duplicate-notice risk for delivery {item.id}.</label></>}
+                        <div className={styles.actions}><button type='button' className='button button-secondary' disabled={busy} onClick={() => void loadAttempts(item.id)}>Load delivery attempts</button><button type='button' className='button button-secondary' disabled={busy || blocked || !eligible || (isSlack && !canSlack) || item.manualRetries >= 3 || item.totalAttempts >= 20 || !['FAILED', 'NEEDS_RECONNECT', 'UNKNOWN'].includes(item.status) || (item.status === 'UNKNOWN' && !duplicateRisk[item.id])} onClick={() => { const acceptDuplicateRisk = item.status === 'UNKNOWN' && duplicateRisk[item.id]; setDuplicateRisk(previous => ({ ...previous, [item.id]: false })); void mutate(signal => integrationsApi.retry(item.id, item.version, signal, acceptDuplicateRisk || undefined), 'Delivery retry accepted.'); }}>{item.status === 'UNKNOWN' ? 'Retry uncertain delivery' : 'Retry failed delivery'}</button></div>
                         {attempts[item.id] && <ol>{attempts[item.id].map(attempt => <li key={attempt.id}>Attempt {attempt.attemptNumber}: {attempt.outcome} · {date(attempt.startedAt)}</li>)}{attempts[item.id].length === 0 && <li>No attempts recorded.</li>}</ol>}
                     </article>)}
                     {deliveryPages > 1 && <div className={styles.actions}><button type='button' className='button button-secondary' aria-label='Previous deliveries page' disabled={busy || deliveryPage === 0} onClick={() => void loadDeliveries(selected.id, deliveryPage - 1)}>Previous</button><span>Page {deliveryPage + 1} of {deliveryPages}</span><button type='button' className='button button-secondary' aria-label='Next deliveries page' disabled={busy || deliveryPage + 1 >= deliveryPages} onClick={() => void loadDeliveries(selected.id, deliveryPage + 1)}>Next</button></div>}

@@ -121,6 +121,13 @@ jobs:
           QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
         run: mvn --batch-mode --no-transfer-progress -Dtest=Sprint12GoogleConsentPostgresIntegrationTest,Sprint12CalendarPostgresIntegrationTest test
 
+      - name: Verify Sprint 13 Slack transport and delivery boundaries
+        env:
+          ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          PII_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
+        run: mvn --batch-mode --no-transfer-progress -Dtest=SlackHttpTransportTest,SlackConfigurationTest,Sprint13SlackPostgresIntegrationTest test
+
       - name: Compile and test backend
         env:
           ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

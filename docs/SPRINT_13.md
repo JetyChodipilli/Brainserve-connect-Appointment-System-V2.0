@@ -1,0 +1,39 @@
+# Sprint 13: Slack arrival notices
+
+Implements P1-09 / FC04 using the existing committed integration outbox. The first messaging provider is Slack, selected by the owner. Provider credentials and live workspace acceptance are supplied by an approved customer administrator.
+
+## Connection and operation
+
+Set `SLACK_APP_BASE_URL` to the HTTPS application origin, for example `https://brainserve.example`. Blank or malformed values disable Slack. The link opens the normal authenticated application homepage; it carries no appointment ID, bearer credential, OTP or bypass grant. The signed-in user's existing role controls the reception workspace. Endpoints are fixed to `https://slack.com/api/`; no administrator-supplied webhook or outbound URL is accepted.
+
+Install a dedicated Slack app with a nonrotating bot token and only `chat:write`. Invite the bot to the selected channel. Enter its C/G channel ID, owner label, token and an application renewal date no more than 90 days away in Integrations. `auth.test` must confirm a workspace bot and an exact `x-oauth-scopes` set. No channel-read, public-channel-write, user-read or history scope is requested. Channel membership is checked by a queued test notice, since no read permission is granted. A dedicated workspace/bot is retained by one connection to prevent one owner's revoke from disabling another connection.
+
+Tokens are write-only, encrypted by the existing PII encryption converter and never returned in connection, attempt, audit or diagnostic projections. The UI clears the password field before awaiting a mutation and on identity/session changes. Administrator writes require current owner authority, fresh MFA, observed version and existing account rate limits. Creation and test/retry receipts are exact-payload idempotent. Destination workspace, bot and channel remain fixed on renewal; a different dedicated bot can create another connection.
+
+Renewal is manual credential replacement. Rotate or invalidate the old token in Slack first, then submit the replacement for the same workspace/bot. BrainServe verifies that the old credential is rejected before accepting the new credential. It increments the credential generation and fences older workers. This release does not implement Slack OAuth installation, expiring rotating credentials or automatic refresh.
+
+Revoke cancels pending/failed/unknown deliveries and stops local use immediately. An encrypted revocation job survives process restarts. `auth.revoke` must explicitly acknowledge `revoked:true`, or return an allowlisted invalid/revoked/expired-token response, before its retained token is erased. Failed/uncertain revocation retries up to ten attempts, with three audited manual recovery cycles. Rate limits are respected per workspace and method. Account deactivation does not prevent cleanup. Slack bot revocation removes channel memberships; after remote completion, renewal can reactivate the same connection with a new token, and the administrator must invite the bot again. Revocation does not uninstall the Slack app.
+
+## Delivery semantics
+
+Only committed `VISITOR_ARRIVED` events and deliberate connection tests are sent. Source capture joins the business transaction and never calls Slack. Duplicate capture and simultaneous workers are fenced by the existing event key, database lease and credential generation. Messages contain only a generic arrival/test sentence and the application homepage link. Formatting, mention parsing and link/media unfurling are disabled; no visitor name, appointment ID, document, purpose, access credential, OTP or private URL is included.
+
+Workers recheck current account/role/permission, connection status, credential expiry and generation under the existing lock order. The native HTTP client refuses redirects and bounds complete requests to five seconds and responses to 64 KiB. A delivery is recorded only after explicit `ok:true` with the configured channel and valid Slack message timestamp. Subsequent appointment revisions do not suppress an independently committed arrival.
+
+Channel pacing defers another post for at least one second after a response. Slack `429` / `Retry-After` creates a durable workspace-wide `chat.postMessage` fence across channels and bot tokens. No clamped delay triggers an earlier retry. All arrival notices expire 24 hours after the original event; a provider delay beyond this horizon fails the delivery, and a full five-second HTTP window must remain before sending. Each cycle is bounded to five attempts, twenty total attempts and three manual retry cycles. Pacing deferrals remain visible on the delivery and do not consume the provider send budget. Known rejections remain failed for an authorized correction/retry; revoked or expired credentials require renewal.
+
+Slack and the database do not commit atomically. A timeout, malformed acknowledgement, ambiguous provider failure or expired worker lease becomes `UNKNOWN` and is not automatically replayed. Slack may already have accepted that notice. Manual retry requires explicit duplicate-risk acknowledgement, remains subject to the original horizon/attempt limits and is audited. This is application deduplication, not a promise of exactly-once remote delivery.
+
+## Verification and recovery
+
+V69 adds Slack destinations, durable rate fences and encrypted revocation jobs, plus the explicit unknown-delivery state. Native HTTP tests cover bounded/malformed responses, scopes, redaction, rate limits and fixed minimal payloads. The mandatory Sprint 13 PostgreSQL suite covers rollback/capture deduplication, concurrent leases, authority loss, credential replacement, uncertain recovery, pacing/horizon and provider revocation. The CI gate requires this and all earlier PostgreSQL/Redis suites to execute without skips.
+
+Frontend regression and browser cases cover secret clearing, session cancellation, all mutation controls, duplicate-risk acknowledgement, disabled configuration, rotation/revocation recovery and responsive 360/768/1440-pixel layouts. The existing dashboard's feature/API/type boundary and visual language are retained. No SDK, UI framework or dependency was added. The requested gstack Work Mode, UI/UX Pro Max, Ponytail, kiranism dashboard and Unlazy workflows informed implementation and review.
+
+The disposable TLS staging drill keeps Slack unconfigured, exercises administrator/employee boundaries, and retains nonempty terminal Slack destination/rate/revocation and unknown-delivery fixtures. Backup/restore compares all new table hashes and the retained integration delivery hashes; it verifies V69 checksums, restored application readiness and pinned release reapply. CI results and exact commit evidence belong on the pull request.
+
+## Live acceptance still required
+
+With an approved dedicated Slack app/workspace and deployed HTTPS origin, record: exact scopes and bot identity; invite/test/send after a real committed reception arrival; generic message and normal role-authorized link; duplicate capture; provider rejection and 429 recovery; uncertain-ack duplicate-risk behavior; old-token invalidation and same-bot renewal; local revoke and explicit remote completion; bot membership removal/reinvite; owner/role/session loss; deployment restore/reapply with retained jobs. Use approved test identities and minimized evidence. Automated transport mocks and disposable staging fixtures do not satisfy this live gate. Keep provider deployment disabled until customer acceptance is recorded.
+
+Provider references: [chat.postMessage](https://docs.slack.dev/reference/methods/chat.postMessage/), [auth.test](https://docs.slack.dev/reference/methods/auth.test/), [auth.revoke](https://docs.slack.dev/reference/methods/auth.revoke/), [rate limits](https://docs.slack.dev/apis/web-api/rate-limits/), [scope response headers](https://docs.slack.dev/authentication/installing-with-oauth/).
