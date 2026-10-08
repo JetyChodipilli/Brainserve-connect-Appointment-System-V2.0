@@ -61,6 +61,7 @@ class Sprint13SlackPostgresIntegrationTest {
     }
     @Autowired IntegrationService service;
     @Autowired SlackRevocationWorker revocations;
+    @Autowired SlackAdapter adapter;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionOperations transactions;
     @Autowired ObjectMapper json;
@@ -150,10 +151,43 @@ class Sprint13SlackPostgresIntegrationTest {
         var d=test(connect());when(http.post(anyString(),anyString(),anyString(),anyBoolean())).thenReturn(reply(429,null,"rate_limited",100_000));complete(d.id());
         assertThat(deliveryStatus(d.id())).isEqualTo("FAILED");assertThat(jdbc.queryForObject("select next_attempt_at from integration_slack_rate_limit where channel_id=''",Timestamp.class).toInstant()).isAfter(Instant.now().plusSeconds(99_000));
     }
-    @Test void channelPacingDefersAnotherNoticeAndRetainsAttemptEvidence() {
+    @Test void channelPacingDefersAnotherNoticeWithoutConsumingSendBudget() {
         var c=connect();var first=test(c);complete(first.id());c=service.connections(ADMIN).getFirst();var second=test(c);complete(second.id());
         verify(http,times(1)).post(anyString(),anyString(),anyString(),anyBoolean());assertThat(deliveryStatus(second.id())).isEqualTo("PENDING");
-        assertThat(service.attempts(ADMIN,second.id()).getFirst().outcome()).isEqualTo("RATE_WAIT");
+        assertThat(service.attempts(ADMIN,second.id())).isEmpty();
+        assertThat(jdbc.queryForObject("select total_attempts from integration_delivery where id=?",Integer.class,second.id())).isZero();
+        assertThat(jdbc.queryForObject("select last_result_code from integration_delivery where id=?",String.class,second.id())).isEqualTo("RATE_WAIT");
+    }
+    @Test void moreThanFiveQueuedNoticesAllDrainAfterPacingDeferrals() {
+        var c=connect();List<UUID> ids=new ArrayList<>();for(int n=0;n<6;n++)ids.add(test(c).id());
+        for(int poll=0;poll<6;poll++) {
+            // Advance the durable clock fences between poll rounds; every round still permits only one post.
+            jdbc.update("update integration_slack_rate_limit set next_attempt_at=now()-interval '1 second'");
+            jdbc.update("update integration_delivery set next_attempt_at=now()-interval '1 second' where status='PENDING'");
+            for(UUID id:ids) if(deliveryStatus(id).equals("PENDING")) complete(id);
+        }
+        for(UUID id:ids) {assertThat(deliveryStatus(id)).isEqualTo("DELIVERED");assertThat(service.attempts(ADMIN,id)).hasSize(1);}
+        verify(http,times(6)).post(anyString(),anyString(),anyString(),anyBoolean());
+    }
+    @Test void nearExpiredArrivalDoesNotStartHttpBeyondItsHorizon() {
+        var d=test(connect());jdbc.update("update integration_delivery set occurred_at=now()-interval '24 hours'+interval '3 seconds' where id=?",d.id());
+        complete(d.id());assertThat(deliveryStatus(d.id())).isEqualTo("FAILED");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
+    }
+    @Test void workspaceLockWaitRechecksTheDeadlineBeforePosting() throws Exception {
+        var c=connect();var held=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var pool=Executors.newFixedThreadPool(2)) {
+            var holder=pool.submit(()->transactions.executeWithoutResult(tx->{
+                jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?,13070))",Object.class,"T12345678");held.countDown();
+                try {if(!release.await(10,TimeUnit.SECONDS))throw new AssertionError("Workspace lock was not released");}
+                catch(InterruptedException interrupted) {Thread.currentThread().interrupt();throw new AssertionError(interrupted);}
+            }));
+            assertThat(held.await(10,TimeUnit.SECONDS)).isTrue();Instant start=Instant.now();
+            var posting=pool.submit(()->transactions.execute(tx->adapter.deliver(c.id(),true,start,start.plusSeconds(6),start.plusSeconds(60))));
+            try {assertThatThrownBy(()->posting.get(2,TimeUnit.SECONDS)).isInstanceOf(TimeoutException.class);}
+            finally {release.countDown();}
+            assertThat(posting.get(10,TimeUnit.SECONDS).code()).isEqualTo("DELIVERY_EXPIRED");holder.get(10,TimeUnit.SECONDS);
+        } finally {release.countDown();}
+        verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
     }
     @Test void uncertainAckRequiresExplicitDuplicateRiskAndExactReplay() throws Exception {
         var d=test(connect());when(http.post(anyString(),anyString(),anyString(),anyBoolean())).thenReturn(reply(0,null,"TRANSPORT_UNKNOWN",0));complete(d.id());

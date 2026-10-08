@@ -72,11 +72,13 @@ public class SlackAdapter {
         jdbc.update("update integration_slack_destination set revocation_status='PENDING',last_result_code='REVOCATION_PENDING' where connection_id=?",id);
     }
     /** A workspace lock serializes postMessage across tokens and channels; network work is <=5 seconds. */
-    public Result deliver(UUID id, boolean test, Instant now) {
+    public Result deliver(UUID id, boolean test, Instant now, Instant deadline, Instant leaseUntil) {
         if (!configured()) return new Result("NOT_CONFIGURED",now,null);
         var target=metadata(id);
         jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?,13070))",Object.class,target.workspaceId());
         Instant started=Instant.now().isAfter(now)?Instant.now():now;
+        if (!deadline.isAfter(started.plusSeconds(5))) return new Result("DELIVERY_EXPIRED",started,null);
+        if (!leaseUntil.isAfter(started.plusSeconds(6))) return new Result("LEASE_EXPIRING",started.plusSeconds(30),null);
         List<Timestamp> fences=jdbc.query("select next_attempt_at from integration_slack_rate_limit where workspace_id=? and channel_id in ('',?)",(rs,n)->rs.getTimestamp(1),target.workspaceId(),target.channelId());
         Instant fence=fences.stream().map(Timestamp::toInstant).max(Instant::compareTo).orElse(started);
         if (fence.isAfter(started)) return new Result("RATE_WAIT",fence,null);
@@ -84,6 +86,9 @@ public class SlackAdapter {
         String token;
         try { token=secrets.convertToEntityAttribute(jdbc.queryForObject("select credential_ciphertext from integration_connection where id=?",String.class,id)); }
         catch (RuntimeException invalid) { return new Result("REAUTH_REQUIRED",started,null); }
+        Instant beforeHttp=Instant.now().isAfter(now)?Instant.now():now;
+        if (!deadline.isAfter(beforeHttp.plusSeconds(5))) return new Result("DELIVERY_EXPIRED",beforeHttp,null);
+        if (!leaseUntil.isAfter(beforeHttp.plusSeconds(6))) return new Result("LEASE_EXPIRING",beforeHttp.plusSeconds(30),null);
         var r=http.post(token,target.channelId(),config.arrivalLink(),test);
         Instant finished=Instant.now().isAfter(now)?Instant.now():now;
         pace(target.workspaceId(),target.channelId(),finished.plusSeconds(1));

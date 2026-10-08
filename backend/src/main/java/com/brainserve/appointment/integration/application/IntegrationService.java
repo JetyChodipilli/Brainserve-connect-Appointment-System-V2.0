@@ -405,18 +405,25 @@ public class IntegrationService {
     }
     private void completeSlack(IntegrationModels.Connection c, IntegrationModels.Delivery d, Instant now, Instant leaseUntil) {
         Instant deadline=slackDeadline(d);
-        if (!List.of("VISITOR_ARRIVED","CONNECTION_TEST").contains(d.eventType()) || !deadline.isAfter(now)) { finishGoogle(c,d,"FAILED","DELIVERY_EXPIRED",now,0); return; }
+        Instant started=Instant.now().isAfter(now)?Instant.now():now;
+        if (!List.of("VISITOR_ARRIVED","CONNECTION_TEST").contains(d.eventType()) || !deadline.isAfter(started.plusSeconds(5))) { finishGoogle(c,d,"FAILED","DELIVERY_EXPIRED",now,0); return; }
         if (leaseUntil.isBefore(Instant.now().plusSeconds(10))) { finishGoogle(c,d,"PENDING","LEASE_EXPIRING",now,30); return; }
         SlackAdapter.Result result;
-        try { result=slack.deliver(c.id(),d.eventType().equals("CONNECTION_TEST"),now); }
+        try { result=slack.deliver(c.id(),d.eventType().equals("CONNECTION_TEST"),now,deadline,leaseUntil); }
         catch (RuntimeException uncertain) { result=new SlackAdapter.Result("DELIVERY_UNKNOWN",now,null); }
         String code=result.code();
         Instant finished=Instant.now().isAfter(now)?Instant.now():now;
+        if (code.equals("RATE_WAIT") || code.equals("LEASE_EXPIRING")) {
+            // No HTTP occurred: refund this lease's send reservation, without inventing a provider attempt.
+            jdbc.update("update integration_delivery set attempts=attempts-1,total_attempts=total_attempts-1 where id=?",d.id());
+            clearLease(d.id(),result.nextAttemptAt().isBefore(deadline)?"PENDING":"FAILED",code,result.nextAttemptAt());
+            return;
+        }
         String status=switch(code) {
             case "SUCCESS" -> "DELIVERED";
             case "DELIVERY_UNKNOWN" -> "UNKNOWN";
             case "REAUTH_REQUIRED" -> "NEEDS_RECONNECT";
-            case "RATE_WAIT","RATE_LIMITED" -> d.attempts()<5 && d.totalAttempts()<20 && result.nextAttemptAt().isBefore(deadline)?"PENDING":"FAILED";
+            case "RATE_LIMITED" -> d.attempts()<5 && d.totalAttempts()<20 && result.nextAttemptAt().isBefore(deadline)?"PENDING":"FAILED";
             default -> "FAILED";
         };
         if (status.equals("NEEDS_RECONNECT")) jdbc.update("update integration_connection set status='NEEDS_RECONNECT' where id=?",c.id());

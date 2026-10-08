@@ -10,7 +10,15 @@ export async function verifySlackStaging({ call, sql, adminPerson, employeePerso
   await call(employeePerson, '/integrations/slack/config', 'GET', undefined, [401, 403]);
   const command = { requestId: randomUUID(), label: 'Disposable Slack', channelId: 'C12345678', credential: 'xoxb-synthetic-never-provider-token', credentialExpiresAt: new Date(Date.now() + 86400000).toISOString() };
   await call(employeePerson, '/integrations/slack/connections', 'POST', command, [401, 403]);
-  await call(adminPerson, '/integrations/slack/connections', 'POST', command, [409]);
+  let rejected = await call(adminPerson, '/integrations/slack/connections', 'POST', command, [409, 429]);
+  if (rejected.status === 429) {
+    // Earlier sprint checks share this administrator's real write budget. Respect its fence.
+    const delay = Number(rejected.headers['retry-after']);
+    assert.ok(Number.isInteger(delay) && delay > 0 && delay <= 60, 'Bounded application rate window required');
+    await new Promise(resolve => setTimeout(resolve, delay * 1000));
+    rejected = await call(adminPerson, '/integrations/slack/connections', 'POST', command, 409);
+  }
+  assert.equal(rejected.json.errorCode, 'SLACK_NOT_CONFIGURED');
 
   const connection = randomUUID(), delivery = randomUUID(), revoke = randomUUID();
   sql(`insert into integration_connection(id,request_id,provider,kind,label,owner_id,minimum_scopes,status,credential_version,credential_expires_at,last_result_code)
