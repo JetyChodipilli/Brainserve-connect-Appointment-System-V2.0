@@ -19,6 +19,9 @@ public class VisitorBadgeService {
         this.jdbc=jdbc;this.passes=passes;this.policy=policy;this.authority=authority;this.audit=audit;
     }
     @Transactional public Badge prepare(UUID actor,UUID recordId) {
+        jdbc.queryForList("select id from iam_user_account where id=? for update",actor);
+        jdbc.queryForList("select user_id from iam_user_role where user_id=? for update",actor);
+        jdbc.queryForList("select user_id from iam_user_permission_deny where user_id=? for update",actor);
         var a=authority.requireActive(actor);
         if(!Set.of("ROLE_RECEPTIONIST","ROLE_SECURITY").contains(a.role())||!a.permissions().containsAll(Set.of("QR_PASS_VERIFY","VISITOR_CHECK_IN")))
             throw new BusinessException("BADGE_ACCESS_DENIED","Reception or Security check-in permission is required",HttpStatus.FORBIDDEN);
