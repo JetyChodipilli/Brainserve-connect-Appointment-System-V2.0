@@ -126,7 +126,7 @@ class Sprint13SlackPostgresIntegrationTest {
         transactions.executeWithoutResult(tx->{service.capture(UUID.randomUUID(),"VISITOR_ARRIVED",Instant.now(),Map.of("arrived",true));tx.setRollbackOnly();});
         assertThat(count("select count(*) from integration_delivery")).isEqualTo(1);
         UUID d=service.deliveries(ADMIN,c.id(),0).getContent().getFirst().id();complete(d);completeIfDue(d);
-        assertThat(status(d)).isEqualTo("DELIVERED");verify(http,times(1)).post(TOKEN,CHANNEL,"https://brainserve.test/",false);
+        assertThat(deliveryStatus(d)).isEqualTo("DELIVERED");verify(http,times(1)).post(TOKEN,CHANNEL,"https://brainserve.test/",false);
         assertThat(count("select count(*) from integration_external_mapping")).isEqualTo(1);
         assertThat(service.attempts(ADMIN,d)).hasSize(1);
     }
@@ -135,24 +135,24 @@ class Sprint13SlackPostgresIntegrationTest {
             service.capture(resource,"VISITOR_ARRIVED",Instant.now(),Map.of("arrived",true));
             service.capture(resource,"APPOINTMENT_UPDATED",Instant.now(),Map.of("status","APPROVED","appointmentType","HR_VISIT","slotStart","2026-10-08T09:00:00Z","slotEnd","2026-10-08T09:30:00Z"));
         });
-        var d=service.deliveries(ADMIN,c.id(),0).getContent().getFirst();complete(d.id());assertThat(status(d.id())).isEqualTo("DELIVERED");
+        var d=service.deliveries(ADMIN,c.id(),0).getContent().getFirst();complete(d.id());assertThat(deliveryStatus(d.id())).isEqualTo("DELIVERED");
     }
     @Test void workspace429FencePreventsAnotherChannelFromPostingEarly() throws Exception {
         var c=connect();var d=test(c);when(http.post(anyString(),anyString(),anyString(),anyBoolean())).thenReturn(reply(429,null,"rate_limited",120));
         complete(d.id());Instant fence=jdbc.queryForObject("select next_attempt_at from integration_slack_rate_limit where channel_id=''",Timestamp.class).toInstant();
-        assertThat(status(d.id())).isEqualTo("PENDING");assertThat(next(d.id())).isAfterOrEqualTo(fence);
+        assertThat(deliveryStatus(d.id())).isEqualTo("PENDING");assertThat(next(d.id())).isAfterOrEqualTo(fence);
         when(http.auth(NEW)).thenReturn(auth("B87654321",Set.of("chat:write")));
         var second=service.createSlack(ADMIN,new SlackModels.Create(UUID.randomUUID(),"second","G12345678",NEW,expiry()));var secondDelivery=test(second);
         complete(secondDelivery.id());verify(http,times(1)).post(anyString(),anyString(),anyString(),anyBoolean());
-        assertThat(next(secondDelivery.id())).isAfterOrEqualTo(fence);assertThat(status(secondDelivery.id())).isEqualTo("PENDING");
+        assertThat(next(secondDelivery.id())).isAfterOrEqualTo(fence);assertThat(deliveryStatus(secondDelivery.id())).isEqualTo("PENDING");
     }
     @Test void providerDelayBeyondHorizonIsTerminalWithoutEarlyRetry() throws Exception {
         var d=test(connect());when(http.post(anyString(),anyString(),anyString(),anyBoolean())).thenReturn(reply(429,null,"rate_limited",100_000));complete(d.id());
-        assertThat(status(d.id())).isEqualTo("FAILED");assertThat(jdbc.queryForObject("select next_attempt_at from integration_slack_rate_limit where channel_id=''",Timestamp.class).toInstant()).isAfter(Instant.now().plusSeconds(99_000));
+        assertThat(deliveryStatus(d.id())).isEqualTo("FAILED");assertThat(jdbc.queryForObject("select next_attempt_at from integration_slack_rate_limit where channel_id=''",Timestamp.class).toInstant()).isAfter(Instant.now().plusSeconds(99_000));
     }
     @Test void channelPacingDefersAnotherNoticeAndRetainsAttemptEvidence() {
         var c=connect();var first=test(c);complete(first.id());c=service.connections(ADMIN).getFirst();var second=test(c);complete(second.id());
-        verify(http,times(1)).post(anyString(),anyString(),anyString(),anyBoolean());assertThat(status(second.id())).isEqualTo("PENDING");
+        verify(http,times(1)).post(anyString(),anyString(),anyString(),anyBoolean());assertThat(deliveryStatus(second.id())).isEqualTo("PENDING");
         assertThat(service.attempts(ADMIN,second.id()).getFirst().outcome()).isEqualTo("RATE_WAIT");
     }
     @Test void uncertainAckRequiresExplicitDuplicateRiskAndExactReplay() throws Exception {
@@ -165,12 +165,12 @@ class Sprint13SlackPostgresIntegrationTest {
         assertThat(count("select count(*) from integration_external_mapping")).isZero();
     }
     @Test void incompleteSuccessAcknowledgementNeverFabricatesDelivered() throws Exception {
-        var d=test(connect());when(http.post(anyString(),anyString(),anyString(),anyBoolean())).thenReturn(reply(200,"{\"ok\":true,\"channel\":\"C12345678\"}",null,0));complete(d.id());assertThat(status(d.id())).isEqualTo("UNKNOWN");
+        var d=test(connect());when(http.post(anyString(),anyString(),anyString(),anyBoolean())).thenReturn(reply(200,"{\"ok\":true,\"channel\":\"C12345678\"}",null,0));complete(d.id());assertThat(deliveryStatus(d.id())).isEqualTo("UNKNOWN");
     }
     @Test void expiredWorkerLeaseIsUnknownAndNeverAutomaticallyReplayed() {
         var d=test(connect());Instant now=Instant.now().plusSeconds(1);var claim=service.claim(d.id(),now).orElseThrow();
         assertThat(service.claim(d.id(),now.plusSeconds(61))).isEmpty();service.complete(claim,now.plusSeconds(62));
-        assertThat(status(d.id())).isEqualTo("UNKNOWN");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
+        assertThat(deliveryStatus(d.id())).isEqualTo("UNKNOWN");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
     }
     @ParameterizedTest @ValueSource(strings={"disabled","archived","role","permission","pending"})
     void accountAuthorityIsRecheckedBeforeHttp(String change) {
@@ -182,7 +182,7 @@ class Sprint13SlackPostgresIntegrationTest {
             case "permission" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'SYSTEM_CONFIGURE')",ADMIN);
             default -> jdbc.update("update iam_user_account set account_status='PENDING_APPROVAL' where id=?",ADMIN);
         }
-        service.complete(claim,Instant.now().plusSeconds(2));assertThat(status(d.id())).isEqualTo("CANCELLED");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
+        service.complete(claim,Instant.now().plusSeconds(2));assertThat(deliveryStatus(d.id())).isEqualTo("CANCELLED");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
     }
     @Test void foreignAdminCannotInspectRenewOrRevoke() {
         var c=connect();assertThatThrownBy(()->service.slackMetadata(OTHER,c.id())).isInstanceOf(BusinessException.class);
@@ -195,10 +195,10 @@ class Sprint13SlackPostgresIntegrationTest {
         assertThatThrownBy(()->service.renewSlack(ADMIN,c.id(),new IntegrationModels.Reconnect(c.version(),NEW,expiry()))).isInstanceOf(BusinessException.class);
         when(http.auth(TOKEN)).thenReturn(reply(200,"{\"ok\":false}","token_revoked",0));
         var renewed=service.renewSlack(ADMIN,c.id(),new IntegrationModels.Reconnect(c.version(),NEW,expiry()));assertThat(renewed.credentialVersion()).isEqualTo(2);
-        service.complete(claim,Instant.now().plusSeconds(2));assertThat(status(d.id())).isEqualTo("UNKNOWN");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
+        service.complete(claim,Instant.now().plusSeconds(2));assertThat(deliveryStatus(d.id())).isEqualTo("UNKNOWN");verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
     }
     @Test void revocationStopsDeliveriesAndWipesOnlyAfterExplicitRemoteProof() throws Exception {
-        var c=connect();var d=test(c);service.revoke(ADMIN,c.id(),c.version());assertThat(status(d.id())).isEqualTo("CANCELLED");
+        var c=connect();var d=test(c);service.revoke(ADMIN,c.id(),c.version());assertThat(deliveryStatus(d.id())).isEqualTo("CANCELLED");
         assertThat(jdbc.queryForObject("select credential_ciphertext from integration_connection where id=?",String.class,c.id())).isNull();
         UUID job=job(c.id());assertThat(jdbc.queryForObject("select token_ciphertext from integration_slack_revocation where id=?",String.class,job)).isNotBlank().doesNotContain(TOKEN);
         when(http.revoke(TOKEN)).thenReturn(reply(200,"{\"ok\":true}",null,0));revocations.process(job);assertThat(service.slackMetadata(ADMIN,c.id()).revocationStatus()).isEqualTo("RETRYING");
@@ -228,7 +228,7 @@ class Sprint13SlackPostgresIntegrationTest {
     }
     @Test void oldArrivalCannotBeDeliveredOrManuallyRetried() {
         var d=test(connect());jdbc.update("update integration_delivery set occurred_at=now()-interval '25 hours' where id=?",d.id());
-        assertThat(service.claim(d.id(),Instant.now().plusSeconds(1))).isEmpty();assertThat(status(d.id())).isEqualTo("FAILED");
+        assertThat(service.claim(d.id(),Instant.now().plusSeconds(1))).isEmpty();assertThat(deliveryStatus(d.id())).isEqualTo("FAILED");
         var observed=service.deliveries(ADMIN,d.connectionId(),0).getContent().getFirst();
         assertThatThrownBy(()->service.retry(ADMIN,d.id(),new IntegrationModels.Retry(UUID.randomUUID(),observed.version()))).isInstanceOf(BusinessException.class);
         verify(http,never()).post(anyString(),anyString(),anyString(),anyBoolean());
@@ -238,7 +238,7 @@ class Sprint13SlackPostgresIntegrationTest {
     private Instant expiry() {return Instant.now().plusSeconds(86400).truncatedTo(ChronoUnit.MICROS);}
     private void complete(UUID id) {Instant now=Instant.now().plusSeconds(1);service.complete(service.claim(id,now).orElseThrow(),now);}
     private void completeIfDue(UUID id) {service.claim(id,Instant.now().plusSeconds(2)).ifPresent(c->service.complete(c,Instant.now().plusSeconds(2)));}
-    private String status(UUID id) {return jdbc.queryForObject("select status from integration_delivery where id=?",String.class,id);}
+    private String deliveryStatus(UUID id) {return jdbc.queryForObject("select status from integration_delivery where id=?",String.class,id);}
     private Instant next(UUID id) {return jdbc.queryForObject("select next_attempt_at from integration_delivery where id=?",Timestamp.class,id).toInstant();}
     private UUID job(UUID id) {return jdbc.queryForObject("select id from integration_slack_revocation where connection_id=?",UUID.class,id);}
     private void dueJob(UUID id) {jdbc.update("update integration_slack_revocation set next_attempt_at=now()-interval '1 second' where id=?",id);}

@@ -94,7 +94,10 @@ test('disabled, unavailable and malformed Slack configuration never enable provi
 test('creation validates a channel ID, clears the token before the response and prevents rapid duplicate submits', async ({ page }) => {
     const state = await fixture(page); state.connections = []; state.deliveries = []; const panel = await navigate(page); await prepareCreation(panel);
     await panel.getByLabel('Slack channel ID', { exact: true }).fill('https://slack.com/example'); await expect(panel.getByRole('button', { name: 'Create Slack connection' })).toBeDisabled(); await expect(panel.getByLabel('Slack channel ID', { exact: true })).toHaveAttribute('aria-invalid', 'true');
-    await panel.getByLabel('Slack channel ID', { exact: true }).fill('C12345678'); state.delay = 450;
+    await panel.getByLabel('Slack channel ID', { exact: true }).fill('C12345678');
+    await panel.getByLabel('Slack bot token', { exact: true }).fill('xoxe-private-browser-rotating-token'); await panel.getByRole('button', { name: 'Create Slack connection' }).click();
+    expect(await panel.getByLabel('Slack bot token', { exact: true }).evaluate((input: HTMLInputElement) => input.validity.patternMismatch)).toBe(true); expect(state.writes).toHaveLength(0);
+    await panel.getByLabel('Slack bot token', { exact: true }).fill(token); state.delay = 450;
     await panel.getByRole('button', { name: 'Create Slack connection' }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
     await expect.poll(() => state.writes.length).toBe(1); await expect(panel.getByLabel('Slack bot token', { exact: true })).toHaveValue(''); await expect(panel.getByRole('button', { name: 'Create Slack connection' })).toBeDisabled();
     await expect(panel).toContainText('Slack connection creation accepted.'); expect(state.writes[0]).toMatchObject({ path: '/integrations/slack/connections', body: { channelId: 'C12345678', credential: token, label: 'Reception notices' } });
