@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "releaseSha": null,
+  "decision": "PENDING",
+  "approvedBy": null,
+  "approvedAt": null,
+  "operationsOwner": null,
+  "supportOwner": null,
+  "supportContact": null,
+  "optionalFeatures": {
+    "googleCalendar": null,
+    "slackArrival": null,
+    "kioskIntake": null
+  },
+  "gates": [
+    {
+      "id": "ci",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "compatibility",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "second-install",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "setup-timing",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "pilot-one",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "pilot-two",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "capacity-soak",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "manual-accessibility",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "full-recovery",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "alert-routing",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "support-handoff",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "offboarding",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "google-live",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "slack-live",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    },
+    {
+      "id": "kiosk-hardware",
+      "status": "PENDING",
+      "evidence": null,
+      "reason": null
+    }
+  ],
+  "pilotFeedback": []
+}

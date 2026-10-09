@@ -13,6 +13,8 @@ public class KioskAdministrationController {
     private final KioskService service;
     public KioskAdministrationController(KioskService service) {this.service=service;}
     private ResponseEntity<?> response(Object value) {return ResponseEntity.ok().header("Cache-Control","no-store").body(value);}
+    @GetMapping("/admin/kiosks/config") @PreAuthorize("hasRole('SYSTEM_ADMIN') and hasAuthority('SYSTEM_CONFIGURE')")
+    public ResponseEntity<?> config(Authentication auth) {return response(java.util.Map.of("enabled",service.configured(UUID.fromString(auth.getName()))));}
     @GetMapping("/admin/kiosks") @PreAuthorize("hasAuthority('SYSTEM_CONFIGURE')")
     public ResponseEntity<?> devices(Authentication auth) {return response(service.devices(UUID.fromString(auth.getName())));}
     @PostMapping("/admin/kiosks") @PreAuthorize("hasAuthority('SYSTEM_CONFIGURE')")

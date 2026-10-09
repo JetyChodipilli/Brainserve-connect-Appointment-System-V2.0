@@ -128,6 +128,18 @@ class ActiveAccountFilterTest {
     }
 
     @Test
+    void encodedEndpointNamesCannotBypassFreshVerification() throws Exception {
+        verified(Instant.now().minusSeconds(301).truncatedTo(ChronoUnit.SECONDS));
+        for (String path : java.util.List.of("/api/v1/release-profile", "/api/v1/release%2Dprofile", "/api/v1/%72elease-profile")) {
+            assertResponse("GET", path, 403, "MFA_STEP_UP_REQUIRED");
+            assertResponse("PUT", path, 403, "MFA_STEP_UP_REQUIRED");
+        }
+        assertResponse("GET", "/api/v1/support/%64iagnostics/preview", 403, "MFA_STEP_UP_REQUIRED");
+        verified(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+        assertResponse("GET", "/api/v1/release%2Dprofile", 200, null);
+    }
+
+    @Test
     void forcedPasswordChangeCannotEnrollMfaUntilNewLogin() throws Exception {
         ReflectionTestUtils.setField(user, "forcePasswordChange", true);
         assertResponse("POST", "/api/v1/auth/change-password/request-otp", 200, null);

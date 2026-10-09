@@ -100,7 +100,14 @@ jobs:
         working-directory: .
         run: node scripts/check-work-metrics.mjs
 
-      - name: Verify Sprint 10 PostgreSQL and Redis behavior first
+      - name: Verify Sprint 16 release record and authorization first
+        env:
+          ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          PII_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ActiveAccountFilterTest,Sprint16ReleasePostgresIntegrationTest test
+
+      - name: Verify Sprint 10 PostgreSQL and Redis behavior
         env:
           ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           PII_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
