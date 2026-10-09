@@ -50,7 +50,7 @@ async function fixture(page: Page) {
         if (path === '/realtime/stream') return route.fulfill({ status: 204 });
         return route.fulfill({ json: [] });
     });
-    await page.goto('/'); await expect(page.getByRole('navigation', { name: 'Role workspace' })).toBeAttached(); return state;
+    await page.goto('/'); await expect(page.getByRole('navigation', { name: 'Role workspace', includeHidden: true })).toBeAttached(); return state;
 }
 
 async function navigate(page: Page) {

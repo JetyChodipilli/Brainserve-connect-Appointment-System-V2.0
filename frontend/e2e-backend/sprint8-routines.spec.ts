@@ -82,7 +82,7 @@ async function fixture(page: Page, role: 'TEAM_LEAD' | 'HR_ADMIN' = 'TEAM_LEAD')
         return route.fulfill({ json: [] });
     });
     await page.goto('/');
-    await expect(page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true })).toBeAttached();
+    await expect(page.getByRole('navigation', { name: 'Role workspace', includeHidden: true }).getByRole('button', { name: 'Work board', exact: true, includeHidden: true })).toBeAttached();
     const menu = page.getByRole('button', { name: 'Open navigation' }); if (await menu.isVisible()) await menu.click();
     await page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Work routines', exact: true })).toBeVisible();

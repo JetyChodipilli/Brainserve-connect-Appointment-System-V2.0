@@ -106,7 +106,7 @@ test("temporary session outage retains credentials, retry remains guarded, then 
     await page.getByRole("button", { name: "Retry connection" }).click();
     await expect(page.getByRole("heading", { name: "Opening your workspace…" })).toBeVisible();
     await expect(nav(page)).toBeVisible();
-    await expect(page.getByRole("region", { name: "Visitors", exact: true }).locator("dl div").filter({ hasText: "Arrived today" }).locator("dd")).toHaveText("12");
+    await expect(page.getByRole("region", { name: "Visitors", exact: true }).locator("dt").filter({ hasText: /^Arrived today$/ }).locator("+ dd")).toHaveText("12");
     await nav(page).getByRole("button", { name: "Visitors", exact: true }).click();
     await expect(page.locator("#live-occupancy").getByText("Review Visitor", { exact: true })).toBeVisible();
     await expect(page.locator("#live-occupancy").getByRole("button", { name: /Check out/ })).toHaveCount(0);

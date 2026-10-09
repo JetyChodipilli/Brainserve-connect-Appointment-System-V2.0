@@ -53,7 +53,7 @@ async function fixture(page: Page, role: 'TEAM_LEAD' | 'CEO' = 'TEAM_LEAD') {
         return route.fulfill({ json: [] });
     });
     await page.goto('/');
-    if (role !== 'CEO') { await expect(page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true })).toBeAttached(); const menu = page.getByRole('button', { name: 'Open navigation' }); if (await menu.isVisible()) await menu.click(); await page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true }).click(); }
+    if (role !== 'CEO') { await expect(page.getByRole('navigation', { name: 'Role workspace', includeHidden: true }).getByRole('button', { name: 'Work board', exact: true, includeHidden: true })).toBeAttached(); const menu = page.getByRole('button', { name: 'Open navigation' }); if (await menu.isVisible()) await menu.click(); await page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Work board', exact: true }).click(); }
     await expect(page.getByRole('button', { name: 'Workload & analytics', exact: true })).toBeVisible(); expect(state.requests).toEqual([]); return state;
 }
 async function openAnalytics(page: Page) { await page.getByRole('button', { name: 'Workload & analytics', exact: true }).click(); await expect(page.getByRole('region', { name: 'Work metrics', exact: true })).toBeVisible(); }

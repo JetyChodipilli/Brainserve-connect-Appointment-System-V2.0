@@ -129,7 +129,7 @@ async function fixture(page: Page, role = "EMPLOYEE") {
     await page.goto("/"); await openWorkboard(page); return { state, pageData };
 }
 async function openWorkboard(page: Page) {
-    await expect(page.getByRole("navigation", { name: "Role workspace" })).toBeAttached();
+    await expect(page.getByRole("navigation", { name: "Role workspace", includeHidden: true })).toBeAttached();
     const menu = page.getByRole("button", { name: "Open navigation" }); if (await menu.isVisible()) await menu.click();
     await page.getByRole("navigation", { name: "Role workspace" }).getByRole("button", { name: "Work board", exact: true }).click();
     await expect(page.getByRole("heading", { name: "43 matching worksheets" })).toBeVisible();
