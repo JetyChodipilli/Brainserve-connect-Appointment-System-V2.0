@@ -228,10 +228,10 @@ await verifyKioskStaging({call,sql,adminPerson:principals[6],employeePerson,hrPe
 const evidenceDir = process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence';
 await verifyLoadStaging({ call, sql, leadPerson, employeePerson, department, roleSource, jwtSecret: config.JWT_SECRET, evidenceDir, resources: async () => {
   const [stats, activity] = await Promise.all([
-    dockerSample(['stats', '--no-stream', '--format', '{{json .}}', 'backend', 'postgres', 'redis']),
+    Promise.all(['backend', 'postgres', 'redis'].map(service => dockerSample(['stats', '--no-stream', '--format', '{{json .}}', service]))),
     dockerSample(['exec', '-T', 'postgres', 'sh', '-c', 'psql -U "$POSTGRES_USER" -d brainserve -v ON_ERROR_STOP=1 -Atc "select count(*) filter (where state=\'active\' and pid<>pg_backend_pid()), count(*) filter (where wait_event_type=\'Lock\') from pg_stat_activity where datname=\'brainserve\'"']),
   ]);
-  const containers = stats.split('\n').map(line => JSON.parse(line));
+  const containers = stats.flatMap(output => output.split('\n').map(line => JSON.parse(line)));
   const [dbActive, dbLockWaiters] = activity.split('|').map(Number);
   return { containers: containers.map(c => ({ service: ['backend','postgres','redis'].find(s => c.Name.includes(s)), cpuPercent: Number(c.CPUPerc.replace('%','')), memoryPercent: Number(c.MemPerc.replace('%','')), memoryUsage: c.MemUsage })),
     dbActive, dbLockWaiters };
