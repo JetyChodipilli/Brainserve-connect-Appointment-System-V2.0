@@ -6,9 +6,12 @@ import { verifyIntegrationsStaging } from './verify-integrations-staging.mjs';
 import { verifyCalendarStaging } from './verify-calendar-staging.mjs';
 import { verifyKioskStaging } from './verify-kiosk-staging.mjs';
 import { verifySlackStaging } from './verify-slack-staging.mjs';
+import { verifyLoadStaging } from './verify-load-staging.mjs';
+import { verifyMonitoringStaging } from './verify-monitoring-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { request as httpsRequest } from 'node:https';
 import { join } from 'node:path';
 
@@ -23,6 +26,11 @@ function docker(args, input) {
 }
 function sql(statement) {
   return docker(['exec', '-T', 'postgres', 'sh', '-c', 'psql -U "$POSTGRES_USER" -d brainserve -v ON_ERROR_STOP=1 -At'], statement);
+}
+const execFileAsync = promisify(execFile);
+async function dockerSample(args) {
+  const { stdout } = await execFileAsync('docker', [...compose, ...args], { encoding: 'utf8', timeout: 20000, maxBuffer: 1024 * 1024 });
+  return stdout.trim();
 }
 assert.equal(sql('select count(*) from iam_user_account;'), '0', 'Refuse to seed a stack with existing accounts');
 const config = Object.fromEntries(readFileSync('backend/.env', 'utf8').split('\n').filter(line => /^[A-Z_]+=/.test(line)).map(line => {
@@ -82,8 +90,12 @@ async function call(person, path, method = 'GET', value, expected = 200, accept 
     });
     req.on('timeout', () => req.destroy(new Error('Evidence request timed out'))); req.on('error', reject); req.end(body);
   });
-  assert.ok(Array.isArray(expected) ? expected.includes(response.status) : response.status === expected, `${method} evidence operation: HTTP ${response.status}, expected ${expected}`);
-  if (response.headers['content-type']?.includes('json')) response.json = JSON.parse(response.bytes.toString('utf8'));
+  if (expected !== null) assert.ok(Array.isArray(expected) ? expected.includes(response.status) : response.status === expected, `${method} evidence operation: HTTP ${response.status}, expected ${expected}`);
+  if (response.headers['content-type']?.includes('json')) {
+    try { response.json = JSON.parse(response.bytes.toString('utf8')); }
+    catch { throw Object.assign(new Error('Invalid JSON response'), { status: response.status }); }
+  }
+  if (expected === null) return { status: response.status };
   return response;
 }
 const [leadPerson, employeePerson, otherPerson] = principals;
@@ -213,6 +225,18 @@ await verifyIntegrationsStaging({call,sql,adminPerson:principals[6],employeePers
 await verifyCalendarStaging({call,sql,adminPerson:principals[6],employeePerson});
 await verifySlackStaging({call,sql,adminPerson:principals[6],employeePerson});
 await verifyKioskStaging({call,sql,adminPerson:principals[6],employeePerson,hrPerson:principals[4],department});
+const evidenceDir = process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence';
+await verifyLoadStaging({ call, sql, leadPerson, employeePerson, department, roleSource, jwtSecret: config.JWT_SECRET, evidenceDir, resources: async () => {
+  const [stats, activity] = await Promise.all([
+    dockerSample(['stats', '--no-stream', '--format', '{{json .}}', 'backend', 'postgres', 'redis']),
+    dockerSample(['exec', '-T', 'postgres', 'sh', '-c', 'psql -U "$POSTGRES_USER" -d brainserve -v ON_ERROR_STOP=1 -Atc "select count(*) filter (where state=\'active\' and pid<>pg_backend_pid()), count(*) filter (where wait_event_type=\'Lock\') from pg_stat_activity where datname=\'brainserve\'"']),
+  ]);
+  const containers = stats.split('\n').map(line => JSON.parse(line));
+  const [dbActive, dbLockWaiters] = activity.split('|').map(Number);
+  return { containers: containers.map(c => ({ service: ['backend','postgres','redis'].find(s => c.Name.includes(s)), cpuPercent: Number(c.CPUPerc.replace('%','')), memoryPercent: Number(c.MemPerc.replace('%','')), memoryUsage: c.MemUsage })),
+    dbActive, dbLockWaiters };
+} });
+await verifyMonitoringStaging({ adminPerson: principals[6], employeePerson, evidenceDir, control: docker });
 // The old authenticated token becomes unusable immediately after a permission change.
 sql(`insert into iam_user_permission_deny(user_id,permission_name) values('${worker}','WORK_TASK_READ');`);
 await call(employeePerson, `${taskPath}/evidence/${evidence.id}/download`, 'GET', undefined, [401, 403, 404]);

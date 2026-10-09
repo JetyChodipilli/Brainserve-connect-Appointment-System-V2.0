@@ -143,3 +143,18 @@ RPO/RTO remain unmeasured until a representative full restore is timed.
 Sprint 1's CI reapply establishes the first verified fallback image. It does not
 claim a previous release has passed rollback acceptance. Later releases must test
 the actual previous verified images against the upgraded schema and record results.
+
+## Sprint 15 evidence
+
+See [Sprint 15](../../docs/SPRINT_15.md) for keyboard coverage, private monitoring,
+load-smoke exclusions and the customer acceptance matrix. Use a full Git history
+(`git fetch --unshallow` if necessary) for the pinned Sprint 14 rollback image.
+The disposable verification now builds both releases, measures a 500-account /
+50-session 30-second API smoke, drills Redis readiness, and produces aggregate
+load, monitoring and timed recovery reports. `STAGING_LOAD_SECONDS=30` is the
+default; values from 30 through 120 are allowed. This is separate from the
+required 60-minute customer soak with genuine session renewal.
+
+Keep the three JSON reports with their exact release SHA and CI run. A report
+with insufficient samples, failed requests, unknown customer RPO or unapproved
+RTO must not be represented as commercial release acceptance.

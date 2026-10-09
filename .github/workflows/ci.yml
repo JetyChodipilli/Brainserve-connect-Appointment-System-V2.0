@@ -17,7 +17,7 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     defaults:
       run:
@@ -157,7 +157,7 @@ jobs:
   staging:
     name: Staging & recovery
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       BRAINSERVE_DISPOSABLE_STACK: "1"
       RELEASE_ID: ${{ github.sha }}
@@ -166,6 +166,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Set up Node.js 24
         uses: actions/setup-node@v7
         with:
@@ -177,13 +179,16 @@ jobs:
       - name: Install staging, restore database, and reapply pinned images
         run: bash ops/staging/verify.sh
       - name: Upload non-sensitive staging evidence
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: staging-recovery-evidence
           path: |
             /tmp/brainserve-staging-evidence/result.txt
             /tmp/brainserve-staging-evidence/*-schema.txt
+            /tmp/brainserve-staging-evidence/load-report.json
+            /tmp/brainserve-staging-evidence/monitoring-report.json
+            /tmp/brainserve-staging-evidence/recovery-report.json
           retention-days: 7
       - name: Clean disposable stack
         if: always()
