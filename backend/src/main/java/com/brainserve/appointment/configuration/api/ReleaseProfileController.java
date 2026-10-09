@@ -2,7 +2,6 @@ package com.brainserve.appointment.configuration.api;
 
 import com.brainserve.appointment.configuration.application.ReleaseProfileService;
 import com.brainserve.appointment.shared.application.BusinessException;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,7 +42,7 @@ public class ReleaseProfileController {
                     .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                     .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT).<ReleaseProfileModels.Write>readValue(request);
             return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.update(command));
-        } catch (JsonProcessingException exception) { throw invalid(); }
+        } catch (java.io.IOException exception) { throw invalid(); }
     }
     private BusinessException invalid() {
         throw new BusinessException("RELEASE_PROFILE_INVALID", "Use the current version and supported agreement fields", org.springframework.http.HttpStatus.BAD_REQUEST);

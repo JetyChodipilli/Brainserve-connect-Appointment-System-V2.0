@@ -66,7 +66,8 @@ for (const width of [375, 768, 1440]) test(`release record fits ${width}px with 
         return (await axe.run(root, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })).violations.map(item => item.id);
     });
     expect(violations).toEqual([]); await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     await page.screenshot({ path: testInfo.outputPath(`sprint16-release-${width}.png`), fullPage: true }); expect(errors).toEqual([]);
 });
 test('versioned agreement saves cannot duplicate pending requests or change configured features', async ({ page }) => {
