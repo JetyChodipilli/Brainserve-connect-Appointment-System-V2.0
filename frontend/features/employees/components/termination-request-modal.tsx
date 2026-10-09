@@ -15,12 +15,14 @@ import { fail } from "../../../utils/errors";
 import { newClientId } from "../../../utils/ids";
 import { Send, ShieldCheck, UserCog, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { useModalDialog } from "../../../hooks/use-modal-dialog";
 
 export function TerminationRequestModal({ employee, userEmail, onClose, onSubmitted }: {
     employee: Employee; userEmail: string; onClose: () => void; onSubmitted: () => void;
 }) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    useModalDialog(onClose);
     const submit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault(); setBusy(true); setError("");
         const data = new FormData(event.currentTarget);
@@ -58,7 +60,7 @@ export function TerminationRequestModal({ employee, userEmail, onClose, onSubmit
         } catch (reasonValue) { setError(reasonValue instanceof Error ? reasonValue.message : "Termination request could not be submitted."); }
         finally { setBusy(false); }
     };
-    return <div className="modal-backdrop"><div className="modal termination-modal"><header><div><span>HR TERMINATION REQUEST</span><h2>Send to CEO for approval</h2><p>No access or employment status changes until CEO approves.</p></div><button className="icon-button" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
+    return <div className="modal-backdrop"><div className="modal termination-modal" role="dialog" aria-modal="true" aria-labelledby="termination-request-title"><header><div><span>HR TERMINATION REQUEST</span><h2 id="termination-request-title">Send to CEO for approval</h2><p>No access or employment status changes until CEO approves.</p></div><button type="button" className="icon-button" aria-label="Close termination request" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}>
         <div className="modal-review-source"><UserCog size={19} /><span><strong>{employee.name} · {employee.id}</strong><small>{employee.role} · {employee.department} · currently {employee.status.toLowerCase()}</small></span></div>
         <label>Reason for termination<textarea name="reason" minLength={5} maxLength={1000} required placeholder="State the documented business and policy reason." /></label>
         <label>Effective date<input name="effectiveDate" type="date" defaultValue={officeToday()} max={officeToday()} required /></label>

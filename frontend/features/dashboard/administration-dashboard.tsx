@@ -167,7 +167,7 @@ export function AdministrationDashboard({ role, userEmail, refreshKey, onNavigat
                     ["Currently inside · live", legacyMetrics.visitorsInside, "Live access records"],
                     ["Active employees", legacyMetrics.activeEmployees, `${metricsKnown ? legacyMetrics.totalEmployees : "Unknown"} total profiles`],
                     ["Arrived today", legacyMetrics.arrivedVisits, "Security intake recorded"],
-                ].map(([label, value, detail]) => <div key={label}><dt>{label}</dt><dd>{metricsKnown ? value : "Unavailable"}</dd><small>{detail}{metricsKnown && legacyState?.state !== "fresh" ? " · Stale or source freshness unknown" : ""}</small></div>)}</dl></>}
+                ].map(([label, value, detail]) => <div key={label}><dt>{label}</dt><dd>{metricsKnown ? value : "Unavailable"}</dd><dd><small>{detail}{metricsKnown && legacyState?.state !== "fresh" ? " · Stale or source freshness unknown" : ""}</small></dd></div>)}</dl></>}
             <div className={styles.supplementaryGrid}>{supplementary.map((card) => <MetricMeasurement key={card.id} card={card} data={data} now={now} retained={retained}
                 loading={resource.phase === "loading"} onRecords={() => setSelected({ scope: resource.scope, card })} />)}</div>
         </section>

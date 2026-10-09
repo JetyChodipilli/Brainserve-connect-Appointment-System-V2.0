@@ -7,6 +7,17 @@ set -euo pipefail
 [ "${BRAINSERVE_DISPOSABLE_STACK:-}" = 1 ] || { echo "Explicit disposable-stack opt-in required" >&2; exit 1; }
 [ "${STAGING_DOMAIN}" = localhost ] || { echo "Disposable rehearsal requires localhost" >&2; exit 1; }
 export STAGING_DOMAIN
+[[ "${RELEASE_ID}" =~ ^[a-f0-9]{40}$ ]] || { echo "Immutable release SHA required" >&2; exit 1; }
+[ "${RELEASE_ID}" = "$(git rev-parse HEAD)" ] || { echo "Release must match the checked-out source" >&2; exit 1; }
+tick() { node -p 'Number(process.hrtime.bigint() / 1000000n)'; }
+install_begin="$(tick)"
+rollback_release=a247b2f70818dd397fb842857014ef8995a08808
+[ "${RELEASE_ID}" != "${rollback_release}" ] || { echo "A distinct rollback release is required" >&2; exit 1; }
+rollback_source="$(mktemp -d)"
+trap 'rm -rf "${rollback_source}"' EXIT
+git archive "${rollback_release}" | tar -x -C "${rollback_source}"
+docker build -t "brainserve-backend:${rollback_release}" "${rollback_source}/backend"
+docker build --build-arg NEXT_PUBLIC_API_BASE_URL=/api/v1 --build-arg NEXT_PUBLIC_DASHBOARD_CARDS_ENABLED=true -t "brainserve-frontend:${rollback_release}" "${rollback_source}/frontend"
 compose=(docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack)
 evidence="${STAGING_EVIDENCE_DIR:-/tmp/brainserve-staging-evidence}"
 mkdir -p "${evidence}"
@@ -28,16 +39,21 @@ smoke() {
     [ "${status}" = 404 ]
 }
 smoke
+install_ready="$(tick)"
 # Work evidence exercises the actual scanner and private object store, with
 # synthetic principals/data only. This script already requires a disposable stack.
 node scripts/verify-work-evidence-staging.mjs
 # Stop writes before measuring/dumping. Recovery happens in a separate database.
+recovery_begin="$(tick)"
 "${compose[@]}" stop backend
 "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve -v ON_ERROR_STOP=1 -c "create table sprint1_recovery_probe(id integer primary key, evidence text not null); insert into sprint1_recovery_probe values (1, '\''zero-wait'\''), (2, '\''scoped-access'\'');"'
 "${compose[@]}" cp ops/postgres/backup-logical.sh postgres:/tmp/backup-logical.sh
 "${compose[@]}" cp ops/postgres/restore-logical.sh postgres:/tmp/restore-logical.sh
+backup_begin="$(tick)"
 "${compose[@]}" exec -T postgres sh -c 'PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" PGDATABASE=brainserve sh /tmp/backup-logical.sh /tmp/sprint1-backup'
+backup_end="$(tick)"
 "${compose[@]}" exec -T postgres sh -c 'PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" sh /tmp/restore-logical.sh /tmp/sprint1-backup brainserve_restore_sprint1'
+restore_end="$(tick)"
 for database in brainserve brainserve_restore_sprint1; do
     "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -Atc "select version || chr(58) || checksum from flyway_schema_history where success order by installed_rank"' sh "${database}" > "${evidence}/${database}-schema.txt"
     "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -At' sh "${database}" > "${evidence}/${database}-sprint7-data.txt" <<'SQL'
@@ -99,7 +115,14 @@ union all select 'group_members',count(*),md5(coalesce(string_agg(row_to_json(t)
 union all select 'kiosk_devices',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from kiosk_device t
 union all select 'kiosk_intakes',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from kiosk_arrival_intake t;
 SQL
+    "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -At' sh "${database}" > "${evidence}/${database}-sprint15-data.txt" <<'SQL'
+select 'load_accounts',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from iam_user_account t
+union all select 'load_employees',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from employee t
+union all select 'load_work_tasks',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from department_work_task t;
+SQL
 done
+cmp "${evidence}/brainserve-sprint15-data.txt" "${evidence}/brainserve_restore_sprint1-sprint15-data.txt"
+grep -Eq '^load_accounts\|500\|' "${evidence}/brainserve_restore_sprint1-sprint15-data.txt"
 cmp "${evidence}/brainserve-sprint7-data.txt" "${evidence}/brainserve_restore_sprint1-sprint7-data.txt"
 cmp "${evidence}/brainserve-sprint8-data.txt" "${evidence}/brainserve_restore_sprint1-sprint8-data.txt"
 cmp "${evidence}/brainserve-sprint9-data.txt" "${evidence}/brainserve_restore_sprint1-sprint9-data.txt"
@@ -143,9 +166,29 @@ services:
 YAML
 "${compose[@]}" -f "${evidence}/restore-compose.yml" up -d --no-build --wait --wait-timeout 180 backend
 smoke
+node scripts/verify-restored-read-staging.mjs brainserve_restore_sprint1 restored
+restored_ready="$(tick)"
+cat > "${evidence}/rollback-compose.yml" <<YAML
+services:
+  backend:
+    image: brainserve-backend:${rollback_release}
+  frontend:
+    image: brainserve-frontend:${rollback_release}
+YAML
+rollback_begin="$(tick)"
+"${compose[@]}" -f "${evidence}/restore-compose.yml" -f "${evidence}/rollback-compose.yml" up -d --no-build --wait --wait-timeout 180 backend frontend
+smoke
+node scripts/verify-restored-read-staging.mjs brainserve_restore_sprint1 rollback
+rollback_end="$(tick)"
+"${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select version || chr(58) || checksum from flyway_schema_history where success order by installed_rank"' > "${evidence}/rollback-schema.txt"
+cmp "${evidence}/brainserve-schema.txt" "${evidence}/rollback-schema.txt"
 # Reapply the pinned release to the original staging database. No schema down-
-# migration or volume deletion; this establishes the first verified fallback.
+# migration or volume deletion. Both restored and original database schemas remain intact.
+reapply_begin="$(tick)"
 "${compose[@]}" up -d --no-build --force-recreate --wait --wait-timeout 180 backend frontend
 smoke
-printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nRecurrence snapshots, notifications and retained evidence: passed\nHandover authorship, workload and original-deadline analytics: passed\nNotification preferences, reminders and delegation revocation: passed\nIntegration receipts, retry, revocation and diagnostic expiry: passed\nGoogle Calendar API boundaries and retained restore fixtures: passed\nSlack API boundaries and retained restore fixtures: passed\nGroup and kiosk nonempty restore fixtures: passed\nV70 restore and application readiness: passed\nPinned release reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+node scripts/verify-restored-read-staging.mjs brainserve reapply
+reapply_end="$(tick)"
+node scripts/write-recovery-report.mjs "${evidence}/recovery-report.json" "${RELEASE_ID}" "${rollback_release}" "${install_begin}" "${install_ready}" "${recovery_begin}" "${backup_begin}" "${backup_end}" "${restore_end}" "${restored_ready}" "${rollback_begin}" "${rollback_end}" "${reapply_begin}" "${reapply_end}"
+printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nRecurrence snapshots, notifications and retained evidence: passed\nHandover authorship, workload and original-deadline analytics: passed\nNotification preferences, reminders and delegation revocation: passed\nIntegration receipts, retry, revocation and diagnostic expiry: passed\nGoogle Calendar API boundaries and retained restore fixtures: passed\nSlack API boundaries and retained restore fixtures: passed\nGroup and kiosk nonempty restore fixtures: passed\nV70 restore and application readiness: passed\nSynthetic load and Redis readiness drill: passed\nAuthenticated restored and prior-release business reads: passed\nTimed compatible-release rollback and reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

@@ -51,7 +51,7 @@ async function fixture(page: Page, role = 'SYSTEM_ADMIN') {
         if (path === '/realtime/stream') return route.fulfill({ status: 204 });
         return route.fulfill({ json: [] });
     });
-    await page.goto('/'); await expect(page.getByRole('navigation', { name: 'Role workspace' })).toBeAttached(); return state;
+    await page.goto('/'); await expect(page.getByRole('navigation', { name: 'Role workspace', includeHidden: true })).toBeAttached(); return state;
 }
 async function navigate(page: Page, name: 'Integrations' | 'Support diagnostics') {
     const menu = page.getByRole('button', { name: 'Open navigation', exact: true }); if (await menu.isVisible()) await menu.click();

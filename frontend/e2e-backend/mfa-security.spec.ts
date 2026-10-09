@@ -59,6 +59,7 @@ test("mobile enrollment shows recovery codes once and requires acknowledgement",
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.evaluate(() => Object.keys(sessionStorage).some((key) => /secret|recovery/i.test(key)))).toBe(false);
     await page.getByRole("button", { name: "I have saved my codes" }).click();
+    await page.getByRole("button", { name: "Open navigation", exact: true }).click();
     await expect(navigation(page)).toBeVisible();
     await expect(page.getByText("01234567-89ABCDEF-01234567-89ABCDEF", { exact: true })).toHaveCount(0);
 });

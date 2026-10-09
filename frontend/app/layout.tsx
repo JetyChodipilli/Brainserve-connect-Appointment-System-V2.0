@@ -4,6 +4,7 @@ import "@fontsource-variable/newsreader/wght.css";
 import "./globals.css";
 import "./professional-ui.css";
 import './notification-policy.css';
+import './accessibility.css';
 
 export const metadata: Metadata = {
   title: "BrainServe Connect | Workplace Access",
