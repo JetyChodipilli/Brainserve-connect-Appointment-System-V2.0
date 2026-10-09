@@ -198,6 +198,8 @@ export function EmployeesView({
         nextStatus: Employee["status"],
     ) => {
         if (!nextStatus) return;
+        // Requesting termination opens an approval form; keep its opener focusable.
+        if (nextStatus === "Terminated") { await onStatus(employee, nextStatus); return; }
         setBusyEmployeeId(employee.uuid ?? employee.id);
         try {
             await onStatus(employee, nextStatus);

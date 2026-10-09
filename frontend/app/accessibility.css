@@ -1,0 +1,9 @@
+[tabindex]:focus-visible, summary:focus-visible { outline: 3px solid var(--red-700); outline-offset: 3px; }
+:where(button, a, input, select, textarea, [tabindex], summary) { scroll-margin-block: 84px 72px; }
+html, .modal, .work-drawer-body { scroll-padding-block: 84px 72px; }
+@media (max-width: 800px) { .sidebar:not(.open) { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .sidebar, .skip-link { transition: none; } }
+@media (forced-colors: active) {
+    :focus-visible { outline: 3px solid Highlight; }
+    .button, .icon-button, .status-pill { border: 1px solid ButtonText; }
+}
