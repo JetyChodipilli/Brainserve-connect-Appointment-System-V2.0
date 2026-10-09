@@ -2,11 +2,32 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+export const METRICS_MAX_BYTES = 8 * 1024 * 1024;
+
+export async function readMonitoringText(response, maxBytes) {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+  const chunks = []; let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      assert.ok(bytes <= maxBytes, `Monitoring response exceeded ${maxBytes} byte limit`);
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks, bytes).toString('utf8');
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally { reader.releaseLock(); }
+}
+
 export async function verifyMonitoringStaging({ adminPerson, employeePerson, evidenceDir, control }) {
   assert.equal(process.env.BRAINSERVE_DISPOSABLE_STACK, '1');
   const get = async (path, person) => {
     const response = await fetch(`http://127.0.0.1:8080/actuator/${path}`, { redirect: 'error', signal: AbortSignal.timeout(20000), headers: person ? { Authorization: `Bearer ${person.token}` } : {} });
-    const text = await response.text(); assert.ok(text.length <= 1024 * 1024);
+    const text = await readMonitoringText(response, path === 'prometheus' ? METRICS_MAX_BYTES : 64 * 1024);
     return { status: response.status, text };
   };
   assert.equal((await get('prometheus')).status, 401);
@@ -34,6 +55,6 @@ export async function verifyMonitoringStaging({ adminPerson, employeePerson, evi
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   assert.ok(recovered, 'Readiness must recover when Redis returns');
-  writeFileSync(join(evidenceDir, 'monitoring-report.json'), JSON.stringify({ schemaVersion: 1, releaseId: process.env.RELEASE_ID, environment: 'disposable-single-runner', metricsAuthorization: 'verified', routeHistogram: 'verified', anonymousHealthRedaction: 'verified', redisOutageReadiness: 'verified', livenessDuringOutage: 'verified', recovered, elapsedSeconds: Math.round((performance.now() - started) / 10) / 100 }, null, 2) + '\n', { mode: 0o600 });
+  writeFileSync(join(evidenceDir, 'monitoring-report.json'), JSON.stringify({ schemaVersion: 1, releaseId: process.env.RELEASE_ID, environment: 'disposable-single-runner', metricsResponseBytes: Buffer.byteLength(metrics.text), metricsAuthorization: 'verified', routeHistogram: 'verified', anonymousHealthRedaction: 'verified', redisOutageReadiness: 'verified', livenessDuringOutage: 'verified', recovered, elapsedSeconds: Math.round((performance.now() - started) / 10) / 100 }, null, 2) + '\n', { mode: 0o600 });
   console.log('SPRINT15_MONITORING_REDIS_RECOVERY_VERIFIED');
 }
