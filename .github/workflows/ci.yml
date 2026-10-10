@@ -209,3 +209,31 @@ jobs:
       - name: Clean disposable stack
         if: always()
         run: docker compose --env-file backend/.env -f docker-compose.yml -f ops/staging/compose.yml --profile full-stack down --volumes
+
+  release-acceptance:
+    name: Release acceptance packet
+    needs: [frontend, backend, staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RELEASE_ID: ${{ github.sha }}
+      CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      BRAINSERVE_CI_RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Prepare candidate-bound pending acceptance
+        run: node scripts/prepare-release-acceptance.mjs --release-sha "$RELEASE_ID" --output "$RUNNER_TEMP/release-acceptance" --ci-run-url "$CI_RUN_URL"
+      - name: Validate prepared acceptance record
+        run: node scripts/verify-release-acceptance.mjs "$RUNNER_TEMP/release-acceptance/acceptance.json" --release-sha "$RELEASE_ID"
+      - name: Upload blank acceptance packet and engineering evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-release-acceptance-packet
+          path: ${{ runner.temp }}/release-acceptance/
+          if-no-files-found: error
+          retention-days: 30

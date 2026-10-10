@@ -17,7 +17,8 @@ public final class ReleaseProfileModels {
     public record Profile(
             @NotNull Status status,
             @NotNull @Size(max = 80) @Pattern(regexp = "[^\\p{Cc}\\p{Cf}]*") String reference,
-            LocalDate startsOn, LocalDate renewsOn,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) LocalDate startsOn,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) LocalDate renewsOn,
             @NotNull @Size(max = 120) @Pattern(regexp = "[^\\p{Cc}\\p{Cf}]*") String supportOwner,
             @NotNull @Email @Size(max = 254) String supportEmail,
             @NotNull @Size(max = 160) @Pattern(regexp = "[^\\p{Cc}\\p{Cf}]*") String supportHours) {}
