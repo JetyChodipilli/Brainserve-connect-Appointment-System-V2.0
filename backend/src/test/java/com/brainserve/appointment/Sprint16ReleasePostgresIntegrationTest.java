@@ -4,6 +4,8 @@ import com.brainserve.appointment.configuration.api.ReleaseProfileModels;
 import com.brainserve.appointment.configuration.application.ReleaseProfileService;
 import com.brainserve.appointment.document.infrastructure.ClamAvScanner;
 import com.brainserve.appointment.iam.application.JwtService;
+import com.brainserve.appointment.iam.application.PermissionAdministrationService;
+import com.brainserve.appointment.iam.domain.Permission;
 import com.brainserve.appointment.iam.infrastructure.UserAccountRepository;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.brainserve.appointment.shared.application.SensitiveStringConverter;
@@ -37,6 +39,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -74,6 +77,7 @@ class Sprint16ReleasePostgresIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JwtService tokens;
     @Autowired JwtDecoder decoder;
+    @Autowired PermissionAdministrationService permissions;
     @Autowired UserAccountRepository users;
     @Autowired SensitiveStringConverter cipher;
     @MockitoBean S3Client s3;
@@ -144,6 +148,7 @@ class Sprint16ReleasePostgresIntegrationTest {
         String token = bearer(ADMIN, Instant.now());
         for (String bad : List.of(body(0).replace("\"expectedVersion\":0", "\"expectedVersion\":0.5"),
                 body(0).replace("\"expectedVersion\":0", "\"expectedVersion\":\"0\""),
+                body(0) + "{}",
                 body(0).replace("\"reference\":\"SYNTHETIC\"", "\"reference\":123"),
                 body(0).replace("\"profile\":{", "\"profile\":{\"enabled\":true,"))) {
             mvc.perform(put("/api/v1/release-profile").header("Authorization", token).contentType(MediaType.APPLICATION_JSON).content(bad))
@@ -224,7 +229,11 @@ class Sprint16ReleasePostgresIntegrationTest {
                 assertThat(waiting).as("PUT reached the profile lock after its admission security check").isTrue();
                 switch (change) {
                     case "disabled" -> jdbc.update("update iam_user_account set enabled=false where id=?", ADMIN);
-                    case "permissionDenied" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'SYSTEM_CONFIGURE')", ADMIN);
+                    case "permissionDenied" -> {
+                        UUID otherAdmin = UUID.fromString("16000000-0000-4000-a000-000000000004");
+                        account(otherAdmin, "ROLE_SYSTEM_ADMIN");
+                        permissions.replaceOverrides(otherAdmin, ADMIN, Set.of(), Set.of(Permission.SYSTEM_CONFIGURE));
+                    }
                     case "revoked" -> jdbc.update("update iam_refresh_token_session set revoked_at=now() where user_id=?", ADMIN);
                     case "proofCleared" -> jdbc.update("update iam_refresh_token_session set mfa_verified_at=null where user_id=?", ADMIN);
                     default -> throw new IllegalArgumentException(change);

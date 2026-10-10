@@ -66,7 +66,7 @@ class DepartmentScopedAdministrationServiceTest {
         UserAccount target = account(targetId, targetEmployeeId,
                 Set.of(SystemRole.ROLE_TEAM_LEAD));
         when(users.findById(actorId)).thenReturn(Optional.of(actor));
-        when(users.findById(targetId)).thenReturn(Optional.of(target));
+        when(users.findByIdForUpdate(targetId)).thenReturn(Optional.of(target));
         when(departmentHrs.requireForUser(actorId)).thenReturn(new DepartmentHrDirectory.Assignment(
                 UUID.randomUUID(), departmentId, actorId, UUID.randomUUID(), "HR", "hr@brainserve.in"));
         when(employees.departmentIdForEmployee(targetEmployeeId)).thenReturn(departmentId);

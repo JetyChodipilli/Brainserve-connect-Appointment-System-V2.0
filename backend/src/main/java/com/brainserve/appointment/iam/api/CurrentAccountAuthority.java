@@ -2,10 +2,17 @@ package com.brainserve.appointment.iam.api;
 
 import com.brainserve.appointment.iam.domain.Permission;
 import com.brainserve.appointment.iam.domain.SystemRole;
+import com.brainserve.appointment.iam.application.JwtService;
+import com.brainserve.appointment.iam.application.PrivilegedSecurityPolicy;
 import com.brainserve.appointment.shared.application.BusinessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import java.sql.Timestamp;
+import java.time.Instant;
 
 import java.util.HashSet;
 import java.util.List;
@@ -16,8 +23,38 @@ import java.util.UUID;
 @Service
 public class CurrentAccountAuthority {
     private final JdbcTemplate jdbc;
+    private final PrivilegedSecurityPolicy securityPolicy;
 
-    public CurrentAccountAuthority(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public CurrentAccountAuthority(JdbcTemplate jdbc, PrivilegedSecurityPolicy securityPolicy) {
+        this.jdbc = jdbc; this.securityPolicy = securityPolicy;
+    }
+
+    /** Call after the business row lock; the owner lock serializes account, permission and session changes until commit. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireFreshConfigurationWriter(Jwt jwt) {
+        UUID userId, familyId;
+        try {
+            userId = UUID.fromString(jwt.getSubject());
+            familyId = UUID.fromString(jwt.getClaimAsString("sid"));
+        } catch (RuntimeException invalid) { throw denied(); }
+        if (jdbc.queryForList("select id from iam_user_account where id=? for update", UUID.class, userId).size() != 1) throw denied();
+        Authority authority = requireActive(userId);
+        if (!authority.role().equals(SystemRole.ROLE_SYSTEM_ADMIN.name())
+                || !authority.permissions().contains(Permission.SYSTEM_CONFIGURE.name())) throw denied();
+        Instant now = Instant.now();
+        if (jwt.getExpiresAt() == null || !jwt.getExpiresAt().isAfter(now)
+                || !Boolean.TRUE.equals(jdbc.queryForObject("select not force_password_change and (locked_until is null or locked_until<=?) from iam_user_account where id=?", Boolean.class, Timestamp.from(now), userId))) throw denied();
+        List<Instant> proofs = jdbc.query("""
+                select s.mfa_verified_at from iam_refresh_token_session s
+                join iam_mfa_credential c on c.user_id=s.user_id and c.enrolled_at is not null
+                where s.user_id=? and s.family_id=? and s.revoked_at is null and s.expires_at>?
+                """, (rs, index) -> rs.getTimestamp(1) == null ? null : rs.getTimestamp(1).toInstant(), userId, familyId, Timestamp.from(now));
+        Instant proof = JwtService.mfaVerifiedAt(jwt);
+        if (proofs.size() != 1 || proofs.getFirst() == null || proof == null || proof.isAfter(proofs.getFirst())
+                || proof.isAfter(now) || !proof.plus(securityPolicy.stepUpAge()).isAfter(now)) {
+            throw new BusinessException("MFA_STEP_UP_REQUIRED", "Verify an authenticator or recovery code before this action", HttpStatus.FORBIDDEN);
+        }
+    }
 
     public Authority requireActive(UUID userId) {
         List<Authority> accounts = jdbc.query("""

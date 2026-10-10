@@ -34,7 +34,8 @@ public class PermissionAdministrationService {
         if (actorId.equals(targetId))
             throw new BusinessException("SELF_PRIVILEGE_CHANGE", "Users cannot change their own privileged access", HttpStatus.FORBIDDEN);
         UserAccount actor = require(actorId);
-        UserAccount target = require(targetId);
+        UserAccount target = users.findByIdForUpdate(targetId).orElseThrow(() ->
+                new BusinessException("USER_NOT_FOUND", "User account was not found", HttpStatus.NOT_FOUND));
         Set<Permission> requested = new java.util.HashSet<>(grants);
         requested.addAll(denies);
         Set<Permission> manageable = manageablePermissions(actor, target);

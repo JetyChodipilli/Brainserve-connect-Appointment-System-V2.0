@@ -6,6 +6,7 @@ import com.brainserve.appointment.configuration.api.ReleaseProfileModels.Profile
 import com.brainserve.appointment.configuration.api.ReleaseProfileModels.View;
 import com.brainserve.appointment.configuration.domain.ReleaseProfile;
 import com.brainserve.appointment.configuration.infrastructure.ReleaseProfileRepository;
+import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
 import com.brainserve.appointment.shared.application.BusinessException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +14,8 @@ import jakarta.validation.Validator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -25,10 +28,11 @@ public class ReleaseProfileService {
     private final ObjectMapper mapper;
     private final Validator validator;
     private final AuditService audit;
+    private final CurrentAccountAuthority authority;
     private final ZoneId zone;
     public ReleaseProfileService(ReleaseProfileRepository settings, ObjectMapper mapper, Validator validator,
-                                 AuditService audit, @Value("${brainserve.appointment.office-zone:Asia/Kolkata}") String officeZone) {
-        this.settings = settings; this.mapper = mapper; this.validator = validator; this.audit = audit; this.zone = ZoneId.of(officeZone);
+                                 AuditService audit, CurrentAccountAuthority authority, @Value("${brainserve.appointment.office-zone:Asia/Kolkata}") String officeZone) {
+        this.settings = settings; this.mapper = mapper; this.validator = validator; this.audit = audit; this.authority = authority; this.zone = ZoneId.of(officeZone);
     }
     @Transactional(readOnly = true)
     public View read() { return view(require(false)); }
@@ -38,6 +42,11 @@ public class ReleaseProfileService {
         if (request == null || !validator.validate(request).isEmpty()) invalid();
         Profile profile = normalize(request.profile());
         ReleaseProfile setting = require(true);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!(authentication instanceof JwtAuthenticationToken jwt) || !jwt.isAuthenticated()) {
+            throw new BusinessException("ACCOUNT_INACTIVE", "An authenticated configuration administrator is required", HttpStatus.FORBIDDEN);
+        }
+        authority.requireFreshConfigurationWriter(jwt.getToken());
         if (setting.getVersion() != request.expectedVersion()) {
             throw new BusinessException("RELEASE_PROFILE_CHANGED", "Reload the current release profile before saving", HttpStatus.CONFLICT);
         }
@@ -60,6 +69,7 @@ public class ReleaseProfileService {
     private View view(ReleaseProfile setting) {
         try {
             Profile profile = normalize(mapper.readerFor(Profile.class)
+                    .with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
                     .with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).readValue(setting.getJson()));
             LocalDate today = LocalDate.now(zone);
             boolean due = profile.renewsOn() != null && !profile.renewsOn().isAfter(today)
