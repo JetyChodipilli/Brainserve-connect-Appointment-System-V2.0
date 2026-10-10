@@ -4,7 +4,7 @@ Scope: finish the engineering review, repair proven OpenAPI defects, generate a 
 
 Verification uses the existing GitHub Actions workflow and its candidate-bound artifacts. Prior local runtime/gate attempts were rejected by automatic approval review for unexplained Cloudflare connections, including narrowed static checks. Local reruns are not credited or retried. All gates below are manual assessment of retrieved CI/reviewer evidence; no runnable oracle was replaced with a handwritten automatic receipt. Closing receipts are recorded on the acceptance-closure PR with the exact tested head and merged-main revision.
 
-- [ ] G1: Generated OpenAPI matches the required nullable date fields and supported JSON body media types
+- [ ] G1: Generated OpenAPI matches required nullable dates, supported JSON body media types and the typed kiosk configuration response
   EVIDENCE: pending; test-first CI must reproduce the incorrect contract before repair, followed by successful real PostgreSQL API-documentation tests.
 
 - [ ] G2: Acceptance packet generation preserves pending approval and rejects invalid or destructive preparation
