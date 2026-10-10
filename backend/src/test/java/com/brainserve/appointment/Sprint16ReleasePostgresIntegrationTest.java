@@ -196,10 +196,18 @@ class Sprint16ReleasePostgresIntegrationTest {
     void apiDocumentationDeclaresRequiredNullableDates(String field) throws Exception {
         SecurityContextHolder.clearContext();
         mvc.perform(get("/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.openapi").value("3.1.0"))
                 .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.required", org.hamcrest.Matchers.hasItem(field)))
-                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".type").value("string"))
-                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".format").value("date"))
-                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".nullable").value(true));
+                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".type", org.hamcrest.Matchers.containsInAnyOrder("string", "null")))
+                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".format").value("date"));
+    }
+
+    @Test void apiDocumentationDeclaresTheKioskConfigurationResponse() throws Exception {
+        SecurityContextHolder.clearContext();
+        mvc.perform(get("/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/admin/kiosks/config'].get.responses['200'].content['*/*'].schema['$ref']").value("#/components/schemas/KioskConfig"))
+                .andExpect(jsonPath("$.components.schemas.KioskConfig.required", org.hamcrest.Matchers.hasItem("enabled")))
+                .andExpect(jsonPath("$.components.schemas.KioskConfig.properties.enabled.type").value("boolean"));
     }
 
     @ParameterizedTest
