@@ -180,6 +180,55 @@ class Sprint16ReleasePostgresIntegrationTest {
         assertThat(service.read().version()).isZero(); assertThat(audits()).isZero();
     }
 
+    @Test void apiDocumentationDeclaresTheRequiredTypedUpdateBody() throws Exception {
+        SecurityContextHolder.clearContext();
+        mvc.perform(get("/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.required").value(true))
+                .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.content['application/json'].schema['$ref']").value("#/components/schemas/Write"))
+                .andExpect(jsonPath("$.components.schemas.Write.properties.expectedVersion.type").value("integer"))
+                .andExpect(jsonPath("$.components.schemas.Write.properties.profile['$ref']").value("#/components/schemas/Profile"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"grant", "deny", "clear"})
+    void existingPermissionFlushLocksTheAccountBeforeChangingItsCollections(String change) throws Exception {
+        UUID otherAdmin = UUID.fromString("16000000-0000-4000-a000-000000000004");
+        account(otherAdmin, "ROLE_SYSTEM_ADMIN");
+        if (change.equals("clear")) jdbc.update("insert into iam_user_permission_grant(user_id,permission_name) values(?,'WORK_TASK_READ')", ADMIN);
+        long version = jdbc.queryForObject("select version from iam_user_account where id=?", Long.class, ADMIN);
+        long originalRows = jdbc.queryForObject("select (select count(*) from iam_user_permission_grant where user_id=?) + (select count(*) from iam_user_permission_deny where user_id=?)", Long.class, ADMIN, ADMIN);
+        try (var connection = jdbc.getDataSource().getConnection(); var pool = Executors.newSingleThreadExecutor()) {
+            connection.setAutoCommit(false);
+            try (var lock = connection.prepareStatement("select id from iam_user_account where id=? for update")) {
+                lock.setObject(1, ADMIN); lock.executeQuery().close();
+            }
+            var result = pool.submit(() -> {
+                try {
+                    permissions.replaceOverrides(otherAdmin, ADMIN,
+                            change.equals("grant") ? Set.of(Permission.WORK_TASK_READ) : Set.of(),
+                            change.equals("deny") ? Set.of(Permission.SYSTEM_CONFIGURE) : Set.of());
+                    return true;
+                } finally { SecurityContextHolder.clearContext(); }
+            });
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                boolean waiting = false;
+                while (System.nanoTime() < deadline && !result.isDone()) {
+                    waiting = Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%update iam_user_account%')", Boolean.class));
+                    if (waiting) break;
+                    Thread.sleep(25);
+                }
+                assertThat(waiting).as("permission flush waits on its owner UPDATE before collection actions").isTrue();
+                assertThat(jdbc.queryForObject("select (select count(*) from iam_user_permission_grant where user_id=?) + (select count(*) from iam_user_permission_deny where user_id=?)", Long.class, ADMIN, ADMIN)).isEqualTo(originalRows);
+            } finally { connection.rollback(); }
+            assertThat(result.get(15, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(jdbc.queryForObject("select version from iam_user_account where id=?", Long.class, ADMIN)).isEqualTo(version + 1);
+        assertThat(jdbc.queryForObject("select count(*) from iam_user_permission_grant where user_id=?", Long.class, ADMIN)).isEqualTo(change.equals("grant") ? 1L : 0L);
+        assertThat(jdbc.queryForObject("select count(*) from iam_user_permission_deny where user_id=?", Long.class, ADMIN)).isEqualTo(change.equals("deny") ? 1L : 0L);
+        assertThat(service.read().version()).isZero(); assertThat(audits()).isZero();
+    }
+
     @Test void oversizedJsonIsRejectedForDeclaredAndUnknownBodyLengths() throws Exception {
         SecurityContextHolder.clearContext();
         String token = bearer(ADMIN, Instant.now()), oversized = body(0) + " ".repeat(8193);
