@@ -11,13 +11,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -68,6 +73,7 @@ class Sprint16ReleasePostgresIntegrationTest {
     @Autowired ObjectMapper mapper;
     @Autowired MockMvc mvc;
     @Autowired JwtService tokens;
+    @Autowired JwtDecoder decoder;
     @Autowired UserAccountRepository users;
     @Autowired SensitiveStringConverter cipher;
     @MockitoBean S3Client s3;
@@ -158,6 +164,77 @@ class Sprint16ReleasePostgresIntegrationTest {
         assertThat(service.read().version()).isZero();
     }
 
+    @Test void quotedStatusOrdinalsCannotSilentlyChangeAgreementState() throws Exception {
+        SecurityContextHolder.clearContext();
+        String token = bearer(ADMIN, Instant.now());
+        for (String ordinal : List.of("2", "4")) {
+            mvc.perform(put("/api/v1/release-profile").header("Authorization", token)
+                    .contentType(MediaType.APPLICATION_JSON).content(body(0).replace("\"ACTIVE\"", "\"" + ordinal + "\"")))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(service.read().version()).isZero(); assertThat(audits()).isZero();
+    }
+
+    @Test void oversizedJsonIsRejectedForDeclaredAndUnknownBodyLengths() throws Exception {
+        SecurityContextHolder.clearContext();
+        String token = bearer(ADMIN, Instant.now()), oversized = body(0) + " ".repeat(8193);
+        mvc.perform(put("/api/v1/release-profile").header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content(oversized))
+                .andExpect(status().isPayloadTooLarge());
+        mvc.perform(context -> {
+            var request = new MockHttpServletRequest(context) {
+                @Override public long getContentLengthLong() { return -1; }
+                @Override public int getContentLength() { return -1; }
+            };
+            request.setMethod("PUT"); request.setRequestURI("/api/v1/release-profile");
+            request.addHeader("Authorization", token); request.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            request.setContent(oversized.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return request;
+        }).andExpect(status().isPayloadTooLarge());
+        assertThat(service.read().version()).isZero(); assertThat(audits()).isZero();
+        mvc.perform(put("/api/v1/release-profile").header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content(body(0))).andExpect(status().isOk());
+        assertThat(service.read().version()).isEqualTo(1); assertThat(audits()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"disabled", "permissionDenied", "revoked", "proofCleared"})
+    void authorizationChangedWhileWaitingForTheProfileLockCannotCommit(String change) throws Exception {
+        SecurityContextHolder.clearContext();
+        String token = bearer(ADMIN, Instant.now()), requestBody = body(0);
+        try (var connection = jdbc.getDataSource().getConnection(); var pool = Executors.newSingleThreadExecutor()) {
+            connection.setAutoCommit(false);
+            try (var lock = connection.prepareStatement("select id from release_profile where id=? for update")) {
+                lock.setObject(1, ReleaseProfileService.ID); lock.executeQuery().close();
+            }
+            var response = pool.submit(() -> {
+                try {
+                    return mvc.perform(put("/api/v1/release-profile").header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON).content(requestBody)).andReturn().getResponse().getStatus();
+                } finally { SecurityContextHolder.clearContext(); }
+            });
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                boolean waiting = false;
+                while (System.nanoTime() < deadline && !response.isDone()) {
+                    waiting = Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%release_profile%')", Boolean.class));
+                    if (waiting) break;
+                    Thread.sleep(25);
+                }
+                assertThat(waiting).as("PUT reached the profile lock after its admission security check").isTrue();
+                switch (change) {
+                    case "disabled" -> jdbc.update("update iam_user_account set enabled=false where id=?", ADMIN);
+                    case "permissionDenied" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'SYSTEM_CONFIGURE')", ADMIN);
+                    case "revoked" -> jdbc.update("update iam_refresh_token_session set revoked_at=now() where user_id=?", ADMIN);
+                    case "proofCleared" -> jdbc.update("update iam_refresh_token_session set mfa_verified_at=null where user_id=?", ADMIN);
+                    default -> throw new IllegalArgumentException(change);
+                }
+            } finally { connection.rollback(); }
+            assertThat(response.get(15, TimeUnit.SECONDS)).isIn(401, 403);
+        }
+        assertThat(service.read().version()).isZero(); assertThat(audits()).isZero();
+    }
+
     @Test void encodedMvcRoutesStillRequireRecentProof() throws Exception {
         SecurityContextHolder.clearContext();
         var path = java.net.URI.create("/api/v1/release%2Dprofile");
@@ -186,7 +263,11 @@ class Sprint16ReleasePostgresIntegrationTest {
         catch (BusinessException problem) { return problem.getErrorCode(); }
         finally { SecurityContextHolder.clearContext(); }
     }
-    private void actor() { SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(ADMIN.toString(), null, List.of())); }
+    private void actor() {
+        var jwt = decoder.decode(bearer(ADMIN, Instant.now()).substring(7));
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt,
+                jwt.getClaimAsStringList("authorities").stream().map(SimpleGrantedAuthority::new).toList()));
+    }
     private ReleaseProfileModels.Profile profile(String reference, ReleaseProfileModels.Status status) {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
         return new ReleaseProfileModels.Profile(status, reference, today.minusDays(30), today.minusDays(1), "Synthetic Support Owner", "support@sprint16.invalid", "Mon–Fri 09:00–17:00 Asia/Kolkata");

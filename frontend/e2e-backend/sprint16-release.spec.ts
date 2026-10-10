@@ -86,10 +86,16 @@ test('native required fields and inverted dates prevent a write', async ({ page 
     await complete(panel); await panel.getByLabel('Renewal date').fill('2025-01-01'); await panel.getByRole('button', { name: 'Save agreement and support' }).click();
     await expect(panel.getByLabel('Renewal date')).toBeFocused(); expect(state.writes).toHaveLength(0);
 });
-for (const failure of ['conflict', 'unknown'] as const) test(`${failure} saves require reload and never replay automatically`, async ({ page }) => {
+for (const failure of ['conflict', 'unknown'] as const) test(`${failure} saves require reload and never replay automatically`, async ({ page }, testInfo) => {
     const state = await fixture(page); const panel = await navigate(page); await complete(panel); state[failure] = true;
     await panel.getByRole('button', { name: 'Save agreement and support' }).click(); await expect(panel.getByRole('alert')).toBeFocused();
     await expect(panel.getByRole('button', { name: 'Save agreement and support' })).toBeDisabled(); expect(state.writes).toHaveLength(1);
+    for (const width of [375, 768]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+        await page.screenshot({ path: testInfo.outputPath(`sprint16-${failure}-alert-${width}.png`), fullPage: true });
+    }
     state[failure] = false;
     if (failure === 'conflict') state.record = { ...state.record, version: 7, profile: { ...state.writes[0].profile, reference: 'Other administrator record' } };
     await panel.getByRole('button', { name: 'Reload saved record' }).click(); await expect(panel.getByLabel('Agreement status')).toBeEnabled();
@@ -124,13 +130,16 @@ for (const operation of ['read', 'save'] as const) test(`account changes clear p
     const state = await fixture(page); if (operation === 'read') { state.readDelay = 400; state.record.profile.reference = 'Private prior account record'; }
     const panel = await navigate(page);
     if (operation === 'save') { await complete(panel); state.delay = 400; await panel.getByRole('button', { name: 'Save agreement and support' }).click(); }
+    await expect.poll(() => operation === 'save' ? state.writes.length : state.reads).toBe(1);
     await page.evaluate(() => window.dispatchEvent(new Event('brainserve:auth-session-changed')));
     await expect(panel).toContainText('account changed'); await expect(panel.getByLabel('Agreement reference')).toHaveCount(0);
     await page.waitForTimeout(500); await expect(panel).not.toContainText('record saved'); await expect(panel).not.toContainText('Private prior account record');
 });
 test('session expiry clears the release workspace while a save is pending', async ({ page }) => {
     const state = await fixture(page); const panel = await navigate(page); await complete(panel); state.delay = 400;
-    await panel.getByRole('button', { name: 'Save agreement and support' }).click(); await page.evaluate(() => window.dispatchEvent(new Event('brainserve:auth-session-expired')));
+    await panel.getByRole('button', { name: 'Save agreement and support' }).click();
+    await expect.poll(() => state.writes.length).toBe(1);
+    await page.evaluate(() => window.dispatchEvent(new Event('brainserve:auth-session-expired')));
     await expect(panel).toHaveCount(0); await page.waitForTimeout(500); await expect(page.getByText('Synthetic support owner')).toHaveCount(0);
 });
 for (const role of ['CEO', 'HR_ADMIN', 'MANAGER', 'TEAM_LEAD', 'EMPLOYEE', 'SECURITY', 'RECEPTIONIST']) test(`${role} has no release navigation or private profile requests`, async ({ page }) => {

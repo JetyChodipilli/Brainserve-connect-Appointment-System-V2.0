@@ -85,7 +85,7 @@ export function ReleaseWorkspace() {
         {!isBackendConfigured && <p role='status'>Sign in to the connected service to manage the release record.</p>}
         {sessionEnded && <p role='status'>The account changed. Open Release and support from the current workspace.</p>}
         {busy && <p role='status'>Waiting for the service response…</p>}
-        {error && <div className='login-error' role='alert' tabIndex={-1} ref={errorRef}>{error}</div>}
+        {error && <div className={`login-error ${styles.alert}`} role='alert' tabIndex={-1} ref={errorRef}>{error}</div>}
         {message && <p className={styles.notice} role='status'>{message}</p>}
         {snapshot && draft && !sessionEnded && <>
             <section className={styles.panel} aria-labelledby='agreement-title'><h2 id='agreement-title'>Agreement and renewal</h2>
