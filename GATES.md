@@ -1,26 +1,23 @@
-# Gates: Sprint 16 release preparation implementation
+# Gates: V2.0 engineering review and acceptance preparation
 
-Scope: Protected manual subscription/support metadata, a System Admin release screen, compatibility and commercial handoff documents, and a release-acceptance record that exposes missing customer evidence. Customer pilot/UAT and production approval remain external release gates; no customer signoff is fabricated.
+Scope: finish the engineering review, repair proven OpenAPI defects, generate a candidate-bound acceptance packet, and publish/merge only after CI succeeds. The user selected release-candidate preparation with operations/support owners not yet appointed. Real customer/operator approvals remain pending inputs; they are not software completion claims.
 
-Verification source: the existing BrainServe CI workflow and its synthetic screenshots/recovery artifacts, bound to the published implementation revision. Automatic approval review blocked local gate execution for unexplained Cloudflare network access, including an attempt limited to type/lint/regression/acceptance checks. Those local reruns are not credited. Closing receipts for this ledger are recorded on Sprint 16 PR #39, so publishing a receipt does not substitute for verification of the implementation it identifies.
+Verification uses the existing GitHub Actions workflow and its candidate-bound artifacts. Prior local runtime/gate attempts were rejected by automatic approval review for unexplained Cloudflare connections, including narrowed static checks. Local reruns are not credited or retried. All gates below are manual assessment of retrieved CI/reviewer evidence; no runnable oracle was replaced with a handwritten automatic receipt. Closing receipts are recorded on the acceptance-closure PR with the exact tested head and merged-main revision.
 
-- [ ] G1: Frontend types and lint accept the release screen and contracts
-  EVIDENCE: pending; published-head CI Type-check and Run lint steps must both succeed.
+- [ ] G1: Generated OpenAPI matches the required nullable date fields and supported JSON body media types
+  EVIDENCE: pending; test-first CI must reproduce the incorrect contract before repair, followed by successful real PostgreSQL API-documentation tests.
 
-- [ ] G2: Existing frontend behavior passes its regression suite
-  EVIDENCE: pending; published-head CI source/regression suite must pass all 400 tests with zero failures.
+- [ ] G2: Acceptance packet generation preserves pending approval and rejects invalid or destructive preparation
+  EVIDENCE: pending; the operational CI suite must verify candidate binding, pending human gates/owners, private output permissions, refusal to overwrite a packet, malformed candidate and incomplete/failed CI inputs.
 
-- [ ] G3: Release forms preserve keyboard, recovery and account boundaries in browser scenarios
-  EVIDENCE: pending; require published-head CI browser success without flaky outcomes, all 22 Sprint 16 cases, and visual review of its synthetic narrow/tablet/desktop and recovery screenshots. Local re-execution was blocked by automatic approval review over unexplained Cloudflare network access; the existing CI run supplies the browser evidence instead.
+- [ ] G3: CI publishes engineering evidence only after all required predecessor jobs succeed
+  EVIDENCE: pending; review the needs graph and require the Release acceptance packet job to succeed with a SHA-bound artifact containing three successful predecessor results. Customer approval must remain pending.
 
-- [ ] G4: Acceptance validation rejects missing evidence and inconsistent approval records
-  EVIDENCE: pending; published-head CI operational tests must pass all eight release-acceptance tests within the 24-test operational suite, including invalid/oversized/approval-negative cases.
+- [ ] G4: Native final review covers Sprint 16 and the acceptance follow-up
+  EVIDENCE: pending; all eight applicable specialists, the red team, the parent critical pass and the native adversarial pass must finish on the final source candidate. Record actual coverage, fixed findings and unavailable logger/outside-model tooling without fabricated certification.
 
-- [ ] G5: Production frontend build succeeds in the Docker application's local backend mode
-  EVIDENCE: pending; require published-head CI frontend build success and the staging application's successful Docker build in BRAINSERVE_LOCAL_BACKEND=1 mode. Automatic approval review blocked local build re-execution for unexplained Cloudflare network access; only these existing CI results may close this gate.
+- [ ] G5: The published follow-up and merged main pass the complete CI workflow
+  EVIDENCE: pending; Backend, Frontend, Staging & recovery and Release acceptance packet jobs must succeed, including required real PostgreSQL/Redis coverage. Reconfirm immutable main SHA after merge.
 
-- [ ] G6: Published implementation passes all CI jobs with real database metadata, authorization and restore coverage
-  EVIDENCE: pending
-
-- [ ] G7: Final review verifies commercial metadata cannot grant access and handoff documents expose customer acceptance gaps
-  EVIDENCE: pending
+- [ ] G6: Pilot, operations and support handoff is actionable and honestly incomplete
+  EVIDENCE: pending; the generated candidate packet must cover all fifteen existing customer gates, two distinct pilots, measurements, operations/support/approval ownership, private evidence and final acceptance commands. No sign-off, named owner, provider/hardware success or customer capacity/recovery approval is invented.
