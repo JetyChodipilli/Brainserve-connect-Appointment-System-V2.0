@@ -44,6 +44,9 @@ public class KioskService {
         requireAdmin(actor,false);
         return jdbc.query("select * from kiosk_device where owner_id=? order by created_at desc,id limit 50",(rs,n)->new Device(rs.getObject("id",UUID.class),rs.getString("label"),rs.getTimestamp("expires_at").toInstant(),rs.getTimestamp("revoked_at")==null?null:rs.getTimestamp("revoked_at").toInstant(),rs.getLong("version")),actor);
     }
+    @Transactional(readOnly=true) public boolean configured(UUID actor) {
+        requireAdmin(actor,false); return enabled;
+    }
     @Transactional public void revoke(UUID actor,UUID id,long version) {
         requireAdmin(actor,true);
         if(jdbc.update("update kiosk_device set revoked_at=now(),version=version+1 where id=? and owner_id=? and version=? and revoked_at is null",id,actor,version)!=1)

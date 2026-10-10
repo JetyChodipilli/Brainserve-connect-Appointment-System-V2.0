@@ -148,7 +148,7 @@ the actual previous verified images against the upgraded schema and record resul
 
 See [Sprint 15](../../docs/SPRINT_15.md) for keyboard coverage, private monitoring,
 load-smoke exclusions and the customer acceptance matrix. Use a full Git history
-(`git fetch --unshallow` if necessary) for the pinned Sprint 14 rollback image.
+(`git fetch --unshallow` if necessary) for the pinned Sprint 15 rollback image.
 The disposable verification now builds both releases, measures a 500-account /
 50-session 30-second API smoke, drills Redis readiness, and produces aggregate
 load, monitoring and timed recovery reports. `STAGING_LOAD_SECONDS=30` is the
@@ -158,3 +158,7 @@ required 60-minute customer soak with genuine session renewal.
 Keep the three JSON reports with their exact release SHA and CI run. A report
 with insufficient samples, failed requests, unknown customer RPO or unapproved
 RTO must not be represented as commercial release acceptance.
+
+## Sprint 16 release preparation
+
+See [Sprint 16](../../docs/SPRINT_16.md) and the [release candidate](../../docs/RELEASE_CANDIDATE.md) for the private agreement/support record and commercial acceptance gaps. The drill retains V71, compares private-profile fingerprints after restore and prior-image startup, reads the record through current images, and verifies the older settings API cannot expose it. Cancellation remains recorded during the Workboard load drill. This does not supply customer pilot signoffs or approve a commercial launch.

@@ -58,6 +58,15 @@ jobs:
       - name: Run browser tests
         run: npm run test:e2e
 
+      - name: Upload synthetic Sprint 16 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sprint16-release-screenshots
+          path: frontend/test-results/**/sprint16-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v7
@@ -100,7 +109,14 @@ jobs:
         working-directory: .
         run: node scripts/check-work-metrics.mjs
 
-      - name: Verify Sprint 10 PostgreSQL and Redis behavior first
+      - name: Verify Sprint 16 release record and authorization first
+        env:
+          ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          PII_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          QR_PASS_SIGNING_SECRET: ci-only-qr-pass-signing-secret-at-least-thirty-two-characters
+        run: mvn --batch-mode --no-transfer-progress -Dtest=ActiveAccountFilterTest,Sprint16ReleasePostgresIntegrationTest test
+
+      - name: Verify Sprint 10 PostgreSQL and Redis behavior
         env:
           ARCHIVE_ENCRYPTION_KEYS: v1=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           PII_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

@@ -8,6 +8,7 @@ import { verifyKioskStaging } from './verify-kiosk-staging.mjs';
 import { verifySlackStaging } from './verify-slack-staging.mjs';
 import { verifyLoadStaging } from './verify-load-staging.mjs';
 import { verifyMonitoringStaging } from './verify-monitoring-staging.mjs';
+import { verifyReleaseProfileStaging } from './verify-release-profile-staging.mjs';
 import { readFileSync } from 'node:fs';
 import { randomUUID, createHash, createHmac } from 'node:crypto';
 import { spawnSync, execFile } from 'node:child_process';
@@ -225,6 +226,7 @@ await verifyIntegrationsStaging({call,sql,adminPerson:principals[6],employeePers
 await verifyCalendarStaging({call,sql,adminPerson:principals[6],employeePerson});
 await verifySlackStaging({call,sql,adminPerson:principals[6],employeePerson});
 await verifyKioskStaging({call,sql,adminPerson:principals[6],employeePerson,hrPerson:principals[4],department});
+await verifyReleaseProfileStaging({call,sql,adminPerson:principals[6],employeePerson,hrPerson:principals[4]});
 const evidenceDir = process.env.STAGING_EVIDENCE_DIR ?? '/tmp/brainserve-staging-evidence';
 await verifyLoadStaging({ call, sql, leadPerson, employeePerson, department, roleSource, jwtSecret: config.JWT_SECRET, evidenceDir, resources: async () => {
   const [stats, activity] = await Promise.all([

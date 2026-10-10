@@ -1,6 +1,7 @@
 package com.brainserve.appointment.reporting.application;
 
 import com.brainserve.appointment.iam.api.CurrentAccountAuthority;
+import com.brainserve.appointment.iam.application.PrivilegedSecurityPolicy;
 import com.brainserve.appointment.operations.api.DashboardDependencyProbe;
 import com.brainserve.appointment.operations.application.IntegrationHealthService;
 import com.brainserve.appointment.reporting.application.RoleDashboardQueryService.PeriodPreset;
@@ -339,7 +340,7 @@ class AdministrationDashboardIntegrationTest {
                 List.of(new IntegrationHealthService.ServiceStatus("PostgreSQL", "db", false, "postgres://secret-user:secret-pass@private", 1),
                         new IntegrationHealthService.ServiceStatus("Redis", "cache", true, "redis://private", 1),
                         new IntegrationHealthService.ServiceStatus("Untrusted name with secret", "bad", false, "password", 1))));
-        service = new AdministrationDashboardService(new NamedParameterJdbcTemplate(jdbc), new CurrentAccountAuthority(jdbc),
+        service = new AdministrationDashboardService(new NamedParameterJdbcTemplate(jdbc), new CurrentAccountAuthority(jdbc, new PrivilegedSecurityPolicy("ROLE_SYSTEM_ADMIN", 300)),
                 new DashboardDependencyProbe(integrations), ZoneId.of("Asia/Kolkata"), Clock.fixed(AS_OF, ZoneOffset.UTC));
         var response = records(ADMIN, "OPS04", DAY, DAY, 0, 100);
         assertThat(response.items()).hasSize(2);
@@ -350,7 +351,7 @@ class AdministrationDashboardIntegrationTest {
         var named = new NamedParameterJdbcTemplate(jdbc);
         var probe = mock(DashboardDependencyProbe.class);
         when(probe.inspect()).thenReturn(new DashboardDependencyProbe.Snapshot(now, List.of(new DashboardDependencyProbe.Observation("PostgreSQL", true))));
-        return new AdministrationDashboardService(named, new CurrentAccountAuthority(jdbc), probe, ZoneId.of(zone), Clock.fixed(now, ZoneOffset.UTC));
+        return new AdministrationDashboardService(named, new CurrentAccountAuthority(jdbc, new PrivilegedSecurityPolicy("ROLE_SYSTEM_ADMIN", 300)), probe, ZoneId.of(zone), Clock.fixed(now, ZoneOffset.UTC));
     }
     private AdministrationDashboardService.DashboardCards cards(UUID actor, LocalDate from, LocalDate to) { return service.cards(actor, PeriodPreset.CUSTOM, from, to); }
     private AdministrationDashboardService.MetricRecords records(UUID actor, String id, LocalDate from, LocalDate to, int page, int size) { return service.records(actor, id, PeriodPreset.CUSTOM, from, to, page, size); }

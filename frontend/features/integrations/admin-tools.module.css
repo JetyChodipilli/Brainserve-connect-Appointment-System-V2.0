@@ -1,4 +1,6 @@
 .workspace { display: grid; gap: 16px; min-width: 0; color: var(--ink); }
+.workspace .alert { font-size: 1rem; line-height: 1.55; overflow-wrap: anywhere; }
+.workspace .alert:focus { outline: 3px solid var(--ink); outline-offset: 3px; }
 .heading { display: flex; gap: 16px; justify-content: space-between; align-items: start; }
 .heading h1 { font-family: var(--font-display); font-size: clamp(25px, 3vw, 34px); font-weight: 500; line-height: 1.15; margin: 0 0 8px; text-wrap: balance; overflow-wrap: anywhere; }
 .heading p, .panel p { line-height: 1.55; margin: 8px 0; overflow-wrap: anywhere; }

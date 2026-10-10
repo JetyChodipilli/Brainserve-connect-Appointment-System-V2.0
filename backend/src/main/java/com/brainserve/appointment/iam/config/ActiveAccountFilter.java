@@ -19,6 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UriUtils;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -76,7 +77,11 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
         jwt.getAuthorities().forEach(authority -> tokenAuthorities.add(authority.getAuthority()));
         if (!currentAuthorities.equals(tokenAuthorities)) return reject(response, HttpStatus.UNAUTHORIZED,
                 "ACCOUNT_AUTHORITY_CHANGED", "Your role or permissions changed. Sign in again to continue.");
-        String path = canonicalPath(request);
+        String path;
+        try { path = canonicalPath(request); }
+        catch (IllegalArgumentException invalidPath) {
+            return reject(response, HttpStatus.BAD_REQUEST, "REQUEST_PATH_INVALID", "Use a valid request path.");
+        }
         if (account.isForcePasswordChange() && !isPasswordChangePath(path, request.getMethod())) {
             return reject(response, HttpStatus.UNAUTHORIZED, "PASSWORD_CHANGE_REQUIRED", "Change the temporary password before accessing BrainServe Connect.");
         }
@@ -96,7 +101,7 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
     }
 
     private String canonicalPath(HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
+        String path = UriUtils.decode(request.getRequestURI().substring(request.getContextPath().length()), java.nio.charset.StandardCharsets.UTF_8);
         if (path.startsWith("/api/v1/")) return path.substring(7);
         if (path.startsWith("/api/")) return path.substring(4);
         return path;
@@ -122,6 +127,7 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 || (write && path.startsWith("/integrations/"))
                 || path.equals("/integrations/google-calendar/calendar.ics")
                 || path.equals("/support/diagnostics") || path.startsWith("/support/diagnostics/")
+                || path.equals("/release-profile")
                 || path.equals("/report-exports") || path.startsWith("/report-exports/");
     }
     private boolean reject(HttpServletResponse response, HttpStatus status, String code, String detail) throws IOException {

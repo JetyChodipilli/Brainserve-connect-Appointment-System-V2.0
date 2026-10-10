@@ -30,6 +30,7 @@ import { SettingsView } from "../../features/settings/settings-view";
 import { IntegrationsWorkspace } from "../../features/integrations/integrations-workspace";
 import { DeviceAdministration } from "../../features/kiosk/device-administration";
 import { SupportWorkspace } from "../../features/support/support-workspace";
+import { ReleaseWorkspace } from "../../features/release/release-workspace";
 import { SecurityIntakeModal } from "../../features/visitors/components/security-intake-modal";
 import { VisitorsView } from "../../features/visitors/visitors-view";
 import { isBackendConfigured } from "../../services/brainserve-api";
@@ -201,6 +202,7 @@ export function DashboardApp({ role, userEmail, onLogout }: WorkspaceIdentity) {
                 {view === "integrations" && role === "System Admin" && <IntegrationsWorkspace key={`${role}:${userEmail}`} />}
                 {view === "kiosk-devices" && role === "System Admin" && <DeviceAdministration key={`${role}:${userEmail}`} />}
                 {view === "support" && role === "System Admin" && <SupportWorkspace key={`${role}:${userEmail}`} />}
+                {view === "release" && role === "System Admin" && <ReleaseWorkspace key={`${role}:${userEmail}`} />}
                 {view === "profile" && <MyProfileView key={`profile:${workspaceRevision}`} role={role} userEmail={userEmail}
                                                       departments={departments} employees={employees} staffAccounts={staffAccounts}
                                                       onProfileUpdated={handleProfileUpdated} />}

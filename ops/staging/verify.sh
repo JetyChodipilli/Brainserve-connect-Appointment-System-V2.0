@@ -11,7 +11,7 @@ export STAGING_DOMAIN
 [ "${RELEASE_ID}" = "$(git rev-parse HEAD)" ] || { echo "Release must match the checked-out source" >&2; exit 1; }
 tick() { node -p 'Number(process.hrtime.bigint() / 1000000n)'; }
 install_begin="$(tick)"
-rollback_release=a247b2f70818dd397fb842857014ef8995a08808
+rollback_release=3d51d65af1b7a026c1fd7fa9f55aa52063d6234e
 [ "${RELEASE_ID}" != "${rollback_release}" ] || { echo "A distinct rollback release is required" >&2; exit 1; }
 rollback_source="$(mktemp -d)"
 trap 'rm -rf "${rollback_source}"' EXIT
@@ -55,6 +55,7 @@ backup_end="$(tick)"
 "${compose[@]}" exec -T postgres sh -c 'PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" sh /tmp/restore-logical.sh /tmp/sprint1-backup brainserve_restore_sprint1'
 restore_end="$(tick)"
 for database in brainserve brainserve_restore_sprint1; do
+    "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -Atc "select count(*), md5(string_agg(row_to_json(t)::text, chr(124) order by id)) from release_profile t"' sh "${database}" > "${evidence}/${database}-sprint16-data.txt"
     "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -Atc "select version || chr(58) || checksum from flyway_schema_history where success order by installed_rank"' sh "${database}" > "${evidence}/${database}-schema.txt"
     "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -At' sh "${database}" > "${evidence}/${database}-sprint7-data.txt" <<'SQL'
 select 'drafts',count(*),md5(coalesce(string_agg(row_to_json(t)::text, '|' order by owner_id,form_type,context_key),'')) from owned_form_draft t
@@ -121,6 +122,8 @@ union all select 'load_employees',count(*),md5(coalesce(string_agg(row_to_json(t
 union all select 'load_work_tasks',count(*),md5(coalesce(string_agg(row_to_json(t)::text,'|' order by id),'')) from department_work_task t;
 SQL
 done
+cmp "${evidence}/brainserve-sprint16-data.txt" "${evidence}/brainserve_restore_sprint1-sprint16-data.txt"
+grep -Eq '^1\|' "${evidence}/brainserve_restore_sprint1-sprint16-data.txt"
 cmp "${evidence}/brainserve-sprint15-data.txt" "${evidence}/brainserve_restore_sprint1-sprint15-data.txt"
 grep -Eq '^load_accounts\|500\|' "${evidence}/brainserve_restore_sprint1-sprint15-data.txt"
 cmp "${evidence}/brainserve-sprint7-data.txt" "${evidence}/brainserve_restore_sprint1-sprint7-data.txt"
@@ -155,6 +158,7 @@ grep -q '^66:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^67:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^68:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^70:' "${evidence}/brainserve_restore_sprint1-schema.txt"
+grep -q '^71:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 grep -q '^69:' "${evidence}/brainserve_restore_sprint1-schema.txt"
 restored="$("${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select string_agg(id || chr(58) || evidence, chr(44) order by id) from sprint1_recovery_probe"')"
 [ "${restored}" = '1:zero-wait,2:scoped-access' ]
@@ -179,6 +183,8 @@ rollback_begin="$(tick)"
 "${compose[@]}" -f "${evidence}/restore-compose.yml" -f "${evidence}/rollback-compose.yml" up -d --no-build --wait --wait-timeout 180 backend frontend
 smoke
 node scripts/verify-restored-read-staging.mjs brainserve_restore_sprint1 rollback
+"${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select count(*), md5(string_agg(row_to_json(t)::text, chr(124) order by id)) from release_profile t"' > "${evidence}/rollback-sprint16-data.txt"
+cmp "${evidence}/brainserve-sprint16-data.txt" "${evidence}/rollback-sprint16-data.txt"
 rollback_end="$(tick)"
 "${compose[@]}" exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d brainserve_restore_sprint1 -v ON_ERROR_STOP=1 -Atc "select version || chr(58) || checksum from flyway_schema_history where success order by installed_rank"' > "${evidence}/rollback-schema.txt"
 cmp "${evidence}/brainserve-schema.txt" "${evidence}/rollback-schema.txt"
@@ -190,5 +196,5 @@ smoke
 node scripts/verify-restored-read-staging.mjs brainserve reapply
 reapply_end="$(tick)"
 node scripts/write-recovery-report.mjs "${evidence}/recovery-report.json" "${RELEASE_ID}" "${rollback_release}" "${install_begin}" "${install_ready}" "${recovery_begin}" "${backup_begin}" "${backup_end}" "${restore_end}" "${restored_ready}" "${rollback_begin}" "${rollback_end}" "${reapply_begin}" "${reapply_end}"
-printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nRecurrence snapshots, notifications and retained evidence: passed\nHandover authorship, workload and original-deadline analytics: passed\nNotification preferences, reminders and delegation revocation: passed\nIntegration receipts, retry, revocation and diagnostic expiry: passed\nGoogle Calendar API boundaries and retained restore fixtures: passed\nSlack API boundaries and retained restore fixtures: passed\nGroup and kiosk nonempty restore fixtures: passed\nV70 restore and application readiness: passed\nSynthetic load and Redis readiness drill: passed\nAuthenticated restored and prior-release business reads: passed\nTimed compatible-release rollback and reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
+printf 'Release: %s\nTLS and API authorization: passed\nScanned private work evidence: passed\nScoped search, comments, draft receipts and restored data: passed\nRecurrence snapshots, notifications and retained evidence: passed\nHandover authorship, workload and original-deadline analytics: passed\nNotification preferences, reminders and delegation revocation: passed\nIntegration receipts, retry, revocation and diagnostic expiry: passed\nGoogle Calendar API boundaries and retained restore fixtures: passed\nSlack API boundaries and retained restore fixtures: passed\nGroup and kiosk nonempty restore fixtures: passed\nV71 restore and application readiness: passed\nPrivate release record, staff access and prior-release privacy: passed\nSynthetic load and Redis readiness drill: passed\nAuthenticated restored and prior-release business reads: passed\nTimed compatible-release rollback and reapply: passed\nSTAGING_RECOVERY_VERIFIED\n' "${RELEASE_ID}" > "${evidence}/result.txt"
 cat "${evidence}/result.txt"

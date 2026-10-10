@@ -11,6 +11,7 @@ import {
     MessageSquare,
     Plug,
     LifeBuoy,
+    PackageCheck,
     Settings,
     Sparkles,
     UserCog,
@@ -35,5 +36,6 @@ export const navItems: { id: View; label: string; icon: typeof LayoutDashboard }
     { id: "integrations", label: "Integrations", icon: Plug },
     { id: "kiosk-devices", label: "Visitor devices", icon: IdCard },
     { id: "support", label: "Support diagnostics", icon: LifeBuoy },
+    { id: "release", label: "Release and support", icon: PackageCheck },
     { id: "settings", label: "Settings", icon: Settings },
 ];
