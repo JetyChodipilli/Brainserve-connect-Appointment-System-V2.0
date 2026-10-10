@@ -1,5 +1,6 @@
 package com.brainserve.appointment.kiosk.api;
 import com.brainserve.appointment.kiosk.application.KioskService;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.ResponseEntity;
@@ -12,9 +13,9 @@ import java.util.UUID;
 public class KioskAdministrationController {
     private final KioskService service;
     public KioskAdministrationController(KioskService service) {this.service=service;}
-    private ResponseEntity<?> response(Object value) {return ResponseEntity.ok().header("Cache-Control","no-store").body(value);}
+    private <T> ResponseEntity<T> response(T value) {return ResponseEntity.ok().header("Cache-Control","no-store").body(value);}
     @GetMapping("/admin/kiosks/config") @PreAuthorize("hasRole('SYSTEM_ADMIN') and hasAuthority('SYSTEM_CONFIGURE')")
-    public ResponseEntity<?> config(Authentication auth) {return response(java.util.Map.of("enabled",service.configured(UUID.fromString(auth.getName()))));}
+    public ResponseEntity<KioskConfig> config(Authentication auth) {return response(new KioskConfig(service.configured(UUID.fromString(auth.getName()))));}
     @GetMapping("/admin/kiosks") @PreAuthorize("hasAuthority('SYSTEM_CONFIGURE')")
     public ResponseEntity<?> devices(Authentication auth) {return response(service.devices(UUID.fromString(auth.getName())));}
     @PostMapping("/admin/kiosks") @PreAuthorize("hasAuthority('SYSTEM_CONFIGURE')")
@@ -25,6 +26,8 @@ public class KioskAdministrationController {
     public ResponseEntity<?> pending(Authentication auth) {return response(service.pending(UUID.fromString(auth.getName())));}
     @PostMapping("/reception/kiosk-intakes/{id}/resolve") @PreAuthorize("hasAuthority('QR_PASS_VERIFY')")
     public ResponseEntity<?> resolve(Authentication auth,@PathVariable UUID id,@Valid @RequestBody Version request) {service.resolve(UUID.fromString(auth.getName()),id,request.version());return response(java.util.Map.of("resolved",true));}
+    @Schema(name = "KioskConfig")
+    public record KioskConfig(@Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean enabled) {}
     public record Label(@NotBlank @Size(max=80) String label) {}
     public record Version(@NotNull @Min(0) Long version) {}
 }
