@@ -5,7 +5,7 @@ import type { ReleaseSnapshot } from '../features/release/types';
 const require = createRequire(import.meta.url);
 const initial: ReleaseSnapshot = { version: 0, profile: { status: 'UNCONFIGURED', reference: '', startsOn: null, renewsOn: null, supportOwner: '', supportEmail: '', supportHours: '' }, officeZone: 'Asia/Kolkata', officeDate: '2026-10-09', renewalDue: false };
 async function fixture(page: Page, role = 'SYSTEM_ADMIN') {
-    const state = { record: structuredClone(initial), reads: 0, writes: [] as { expectedVersion: number; profile: ReleaseSnapshot['profile'] }[], delay: 0, readDelay: 0, readFailure: false, conflict: false, unknown: false, invalid: false, badVersion: false, unknownFeature: false };
+    const state = { record: structuredClone(initial), reads: 0, writes: [] as { expectedVersion: number; profile: ReleaseSnapshot['profile'] }[], delay: 0, readDelay: 0, readFailure: false, conflict: false, unknown: false, invalid: false, badVersion: false, unknownFeature: false, emptyFeatures: false };
     const profile = { userId: '11111111-1111-4111-8111-111111111111', employeeId: null, email: 'admin@sprint16.invalid', fullName: 'Synthetic admin', roles: [`ROLE_${role}`], permissions: [], forcePasswordChange: false, departmentId: null, photoUrl: null };
     const empty = { content: [], number: 0, size: 20, totalElements: 0, totalPages: 0, last: true };
     await page.addInitScript(() => { sessionStorage.setItem('brainserve.connect.access-token', 'sprint16-access'); sessionStorage.setItem('brainserve.connect.refresh-token', 'sprint16-refresh'); });
@@ -25,9 +25,9 @@ async function fixture(page: Page, role = 'SYSTEM_ADMIN') {
             if (state.unknown) return route.fulfill({ status: 503, json: { detail: 'Response unavailable after save' } });
             return route.fulfill({ json: state.record });
         }
-        if (path === '/integrations/google-calendar/config') return route.fulfill({ json: { configured: true } });
-        if (path === '/integrations/slack/config') return route.fulfill({ json: { configured: state.unknownFeature ? 'yes' : false } });
-        if (path === '/admin/kiosks/config') return state.unknownFeature ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { enabled: false } });
+        if (path === '/integrations/google-calendar/config') return route.fulfill({ json: state.emptyFeatures ? null : { configured: true } });
+        if (path === '/integrations/slack/config') return state.emptyFeatures ? route.fulfill({ status: 204 }) : route.fulfill({ json: { configured: state.unknownFeature ? 'yes' : false } });
+        if (path === '/admin/kiosks/config') return state.emptyFeatures ? route.fulfill({ json: null }) : state.unknownFeature ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { enabled: false } });
         if (['/auth/me', '/profile/me'].includes(path)) return route.fulfill({ json: profile });
         if (path === '/auth/security') return route.fulfill({ json: { mfaRequired: true, mfaEnrolled: true, mfaVerified: true, stepUpRequired: false } });
         if (path === '/dashboard/summary') return route.fulfill({ json: { awaitingApproval: 0, activeVisits: 0, totalEmployees: 0, activeEmployees: 0, scope: 'COMPANY', departmentId: null } });
@@ -111,6 +111,14 @@ for (const failure of ['readFailure', 'badVersion'] as const) test(`${failure} n
 test('unavailable and malformed feature configuration is reported as unverified', async ({ page }) => {
     const state = await fixture(page); state.unknownFeature = true; const panel = await navigate(page);
     await expect(panel.locator('dl')).toContainText('Google Calendar'); await expect(panel.locator('dd').filter({ hasText: 'Could not verify' })).toHaveCount(2);
+});
+test('empty optional configuration keeps the verified agreement editable and feature rows visible', async ({ page }) => {
+    const state = await fixture(page); state.emptyFeatures = true; const panel = await navigate(page);
+    await expect(panel.locator('dd').filter({ hasText: 'Could not verify' })).toHaveCount(3);
+    await expect(panel.locator('dt')).toHaveText(['Google Calendar', 'Slack arrival notices', 'Visitor kiosk intake']);
+    await expect(panel.getByRole('alert')).toHaveCount(0); await complete(panel);
+    await panel.getByRole('button', { name: 'Save agreement and support' }).click();
+    await expect(panel).toContainText('Agreement and support record saved'); expect(state.writes).toHaveLength(1);
 });
 for (const operation of ['read', 'save'] as const) test(`account changes clear private records and fence late ${operation} responses`, async ({ page }) => {
     const state = await fixture(page); if (operation === 'read') { state.readDelay = 400; state.record.profile.reference = 'Private prior account record'; }

@@ -43,9 +43,9 @@ export function ReleaseWorkspace() {
             if (record.status === 'rejected') throw record.reason;
             const value = checked(record.value); setSnapshot(value); setDraft({ ...value.profile }); setBlocked(false);
             setAvailability([
-                { name: 'Google Calendar', configured: google.status === 'fulfilled' && typeof google.value.configured === 'boolean' ? google.value.configured : null },
-                { name: 'Slack arrival notices', configured: slack.status === 'fulfilled' && typeof slack.value.configured === 'boolean' ? slack.value.configured : null },
-                { name: 'Visitor kiosk intake', configured: kiosk.status === 'fulfilled' && typeof kiosk.value.enabled === 'boolean' ? kiosk.value.enabled : null },
+                { name: 'Google Calendar', configured: google.status === 'fulfilled' && typeof google.value?.configured === 'boolean' ? google.value.configured : null },
+                { name: 'Slack arrival notices', configured: slack.status === 'fulfilled' && typeof slack.value?.configured === 'boolean' ? slack.value.configured : null },
+                { name: 'Visitor kiosk intake', configured: kiosk.status === 'fulfilled' && typeof kiosk.value?.enabled === 'boolean' ? kiosk.value.enabled : null },
             ]);
         } catch (reason) {
             if (operation.current()) setError(reason instanceof ApiError && reason.problem.errorCode === 'MFA_STEP_UP_REQUIRED'
