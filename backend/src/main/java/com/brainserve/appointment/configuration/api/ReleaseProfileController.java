@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -29,6 +33,8 @@ public class ReleaseProfileController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.read());
     }
     @PutMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, "application/*+json"})
+    @Operation(requestBody = @RequestBody(required = true, content = @Content(
+            mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ReleaseProfileModels.Write.class))))
     ResponseEntity<ReleaseProfileModels.View> update(HttpServletRequest servletRequest) {
         if (servletRequest.getContentLengthLong() > MAX_BODY_BYTES) throw tooLarge();
         JsonNode request;

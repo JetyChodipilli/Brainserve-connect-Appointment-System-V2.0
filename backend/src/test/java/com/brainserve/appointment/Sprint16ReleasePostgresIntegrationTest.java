@@ -184,9 +184,10 @@ class Sprint16ReleasePostgresIntegrationTest {
         SecurityContextHolder.clearContext();
         mvc.perform(get("/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.required").value(true))
-                .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.content['application/json'].schema['$ref']").value("#/components/schemas/Write"))
-                .andExpect(jsonPath("$.components.schemas.Write.properties.expectedVersion.type").value("integer"))
-                .andExpect(jsonPath("$.components.schemas.Write.properties.profile['$ref']").value("#/components/schemas/Profile"));
+                .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.content['application/json'].schema['$ref']").value("#/components/schemas/ReleaseProfileWrite"))
+                .andExpect(jsonPath("$.components.schemas.ReleaseProfileWrite.properties.expectedVersion.type").value("integer"))
+                .andExpect(jsonPath("$.components.schemas.ReleaseProfileWrite.properties.profile['$ref']").value("#/components/schemas/ReleaseAgreementProfile"))
+                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties.supportEmail.type").value("string"));
     }
 
     @ParameterizedTest

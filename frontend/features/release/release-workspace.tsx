@@ -78,19 +78,24 @@ export function ReleaseWorkspace() {
     };
     const change = (key: keyof ReleaseProfile, value: string | null) => setDraft(previous => previous ? { ...previous, [key]: value } : previous);
     const term = draft?.status === 'ACTIVE' || draft?.status === 'PILOT';
-    return <section className={styles.workspace} aria-labelledby='release-title' aria-busy={busy}>
+    const announcement = !isBackendConfigured ? 'Sign in to the connected service to manage the release record.'
+        : sessionEnded ? 'The account changed. Open Release and support from the current workspace.'
+            : busy ? 'Waiting for the service response…' : message || (snapshot?.renewalDue ? 'The recorded renewal date is due. Contact the support owner to review the agreement.' : '');
+    return <>
+        <p className='sr-only' role='status' aria-label='Release status' aria-atomic='true'>{announcement}</p>
+        <section className={styles.workspace} aria-labelledby='release-title' aria-busy={busy}>
         <header className={styles.heading}><div><h1 id='release-title'>Release and support</h1><p>Keep the agreed subscription dates and support responsibilities current.</p></div>
             <button type='button' className='button button-secondary' disabled={busy || sessionEnded || !isBackendConfigured} onClick={() => void load()}>Reload saved record</button></header>
         <p className={styles.notice}>The agreement record does not change staff access or visitor operations. Release approval comes from the separate pilot and operational signoffs.</p>
-        {!isBackendConfigured && <p role='status'>Sign in to the connected service to manage the release record.</p>}
-        {sessionEnded && <p role='status'>The account changed. Open Release and support from the current workspace.</p>}
-        {busy && <p role='status'>Waiting for the service response…</p>}
+        {!isBackendConfigured && <p>Sign in to the connected service to manage the release record.</p>}
+        {sessionEnded && <p>The account changed. Open Release and support from the current workspace.</p>}
+        {busy && <p>Waiting for the service response…</p>}
         {error && <div className={`login-error ${styles.alert}`} role='alert' tabIndex={-1} ref={errorRef}>{error}</div>}
-        {message && <p className={styles.notice} role='status'>{message}</p>}
+        {message && <p className={styles.notice}>{message}</p>}
         {snapshot && draft && !sessionEnded && <>
             <section className={styles.panel} aria-labelledby='agreement-title'><h2 id='agreement-title'>Agreement and renewal</h2>
                 <p>Recorded status: <strong>{statusName(snapshot.profile.status)}</strong>. Dates use {snapshot.officeZone}; today is {snapshot.officeDate}.</p>
-                {snapshot.renewalDue && <p className={styles.notice} role='status'>The recorded renewal date is due. Contact the support owner to review the agreement.</p>}
+                {snapshot.renewalDue && <p className={styles.notice}>The recorded renewal date is due. Contact the support owner to review the agreement.</p>}
                 <form onSubmit={event => void save(event)}><fieldset className={styles.fields} disabled={busy || blocked}>
                     <label className={styles.field}>Agreement status<select value={draft.status} onChange={event => change('status', event.target.value)}>{agreementStatuses.map(value => <option key={value} value={value}>{statusName(value)}</option>)}</select></label>
                     <label className={styles.field}>Agreement reference<input value={draft.reference} onChange={event => change('reference', event.target.value)} maxLength={80} required={term} /></label>
@@ -107,5 +112,6 @@ export function ReleaseWorkspace() {
                 <p>Manage calendar and Slack connections in Integrations. Manage visitor codes in Visitor devices. Use Support diagnostics to preview a redacted incident package.</p>
             </section>
         </>}
-    </section>;
+        </section>
+    </>;
 }

@@ -58,6 +58,15 @@ jobs:
       - name: Run browser tests
         run: npm run test:e2e
 
+      - name: Upload synthetic Sprint 16 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sprint16-release-screenshots
+          path: frontend/test-results/**/sprint16-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v7

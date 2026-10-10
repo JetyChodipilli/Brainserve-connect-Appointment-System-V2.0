@@ -72,9 +72,16 @@ for (const width of [375, 768, 1440]) test(`release record fits ${width}px with 
 });
 test('versioned agreement saves cannot duplicate pending requests or change configured features', async ({ page }) => {
     const state = await fixture(page); state.delay = 350; const panel = await navigate(page); await complete(panel);
+    const live = page.getByRole('status', { name: 'Release status' });
+    await expect(live).toHaveText('');
+    await expect(live).toHaveAttribute('aria-atomic', 'true');
+    expect(await live.evaluate(element => element.closest('[aria-busy]'))).toBeNull();
+    const originalLive = await live.elementHandle();
     await panel.getByRole('button', { name: 'Save agreement and support' }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
     await expect(panel.getByRole('button', { name: 'Save agreement and support' })).toBeDisabled();
     await expect(panel).toContainText('Agreement and support record saved'); expect(state.writes).toHaveLength(1);
+    await expect(live).toHaveText('Agreement and support record saved.');
+    expect(await originalLive?.evaluate(element => element.isConnected)).toBe(true);
     expect(state.writes[0].expectedVersion).toBe(0); expect(Object.keys(state.writes[0]).sort()).toEqual(['expectedVersion', 'profile']);
     await expect(panel).toContainText('Configured on this service'); await expect(panel).toContainText('Recorded status: Active');
     expect(await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))).not.toContain('support@sprint16.invalid');
