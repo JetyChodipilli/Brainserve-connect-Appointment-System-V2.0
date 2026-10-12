@@ -86,6 +86,17 @@ test('versioned agreement saves cannot duplicate pending requests or change conf
     await expect(panel).toContainText('Configured on this service'); await expect(panel).toContainText('Recorded status: Active');
     expect(await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))).not.toContain('support@sprint16.invalid');
 });
+test('overdue renewal notice and live status clear after reloading an updated record', async ({ page }) => {
+    const state = await fixture(page);
+    state.record = { ...state.record, renewalDue: true, profile: { ...state.record.profile, status: 'ACTIVE', reference: 'Synthetic renewal', startsOn: '2025-10-09', renewsOn: '2026-10-09', supportOwner: 'Synthetic support owner', supportEmail: 'support@sprint16.invalid', supportHours: 'Weekdays UTC' } };
+    const panel = await navigate(page), live = page.getByRole('status', { name: 'Release status' });
+    const notice = 'The recorded renewal date is due. Contact the support owner to review the agreement.';
+    await expect(panel.getByText(notice, { exact: true })).toBeVisible(); await expect(live).toHaveText(notice);
+    state.record = { ...state.record, version: 1, renewalDue: false, profile: { ...state.record.profile, renewsOn: '2027-10-09' } };
+    await panel.getByRole('button', { name: 'Reload saved record' }).click(); await expect(panel.getByLabel('Agreement status')).toBeEnabled();
+    await expect(panel.getByLabel('Renewal date')).toHaveValue('2027-10-09');
+    await expect(panel.getByText(notice, { exact: true })).toHaveCount(0); await expect(live).toHaveText(''); expect(state.writes).toHaveLength(0);
+});
 test('native required fields and inverted dates prevent a write', async ({ page }) => {
     const state = await fixture(page); const panel = await navigate(page); await expect(panel.getByLabel('Agreement status')).toBeEnabled();
     await panel.getByLabel('Agreement status').selectOption('ACTIVE'); await panel.getByRole('button', { name: 'Save agreement and support' }).click();
