@@ -59,6 +59,23 @@ test('profile menu supports arrows, Home, End, Escape and normal Tab exit', asyn
     await page.keyboard.press('Escape'); await expect(opener).toBeFocused();
     await page.keyboard.press('Enter'); await page.keyboard.press('Tab'); await expect(page.getByRole('menu')).toHaveCount(0);
 });
+for (const key of ['Tab', 'Shift+Tab']) {
+    test(`profile menu closes on ${key} before animation frames advance`, async ({ page }) => {
+        await page.clock.install({ time: new Date('2026-10-12T09:00:00Z') });
+        await fixture(page);
+        await page.clock.pauseAt(new Date('2026-10-12T10:00:00Z'));
+        const opener = page.locator('[aria-haspopup="menu"]');
+        await opener.focus(); await page.keyboard.press('Enter');
+        await expect(page.getByRole('menu')).toBeVisible();
+        await page.keyboard.press(key); await expect(page.getByRole('menu')).toHaveCount(0);
+        await expect(opener).not.toBeFocused();
+        const focus = await page.evaluateHandle(() => document.activeElement);
+        await page.clock.runFor(50);
+        await expect(page.getByRole('menu')).toHaveCount(0);
+        expect(await focus.evaluate(node => node === document.activeElement)).toBe(true);
+        await focus.dispose();
+    });
+}
 test('legacy employee form edits preserve focus and dialog closure releases background controls', async ({ page }) => {
     await fixture(page, 'ROLE_HR_ADMIN');
     await page.getByRole('navigation', { name: 'Role workspace' }).getByRole('button', { name: 'Employees', exact: true }).click();
