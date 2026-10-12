@@ -1,6 +1,6 @@
 # Gates: V2.0 engineering review and acceptance preparation
 
-Scope: finish the engineering review, repair proven OpenAPI defects, generate a candidate-bound acceptance packet, and publish/merge only after CI succeeds. The user selected release-candidate preparation with operations/support owners not yet appointed. Real customer/operator approvals remain pending inputs; they are not software completion claims.
+Scope: finish the engineering review, repair proven API and keyboard timing defects, generate a candidate-bound acceptance packet, and publish/merge fixes only after CI succeeds. PR #40 was merged externally; final closing receipts belong to PR #41 and its merged-main revision. The user selected release-candidate preparation with operations/support owners not yet appointed. Real customer/operator approvals remain pending inputs; they are not software completion claims.
 
 Verification uses the existing GitHub Actions workflow and its candidate-bound artifacts. Prior local runtime/gate attempts were rejected by automatic approval review for unexplained Cloudflare connections, including narrowed static checks. Local reruns are not credited or retried. All gates below are manual assessment of retrieved CI/reviewer evidence; no runnable oracle was replaced with a handwritten automatic receipt. Closing receipts are recorded on the acceptance-closure PR with the exact tested head and merged-main revision.
 
@@ -17,7 +17,7 @@ Verification uses the existing GitHub Actions workflow and its candidate-bound a
   EVIDENCE: pending; all eight applicable specialists, the red team, the parent critical pass and the native adversarial pass must finish on the final source candidate. Record actual coverage, fixed findings and unavailable logger/outside-model tooling without fabricated certification.
 
 - [ ] G5: The published follow-up and merged main pass the complete CI workflow
-  EVIDENCE: pending; Backend, Frontend, Staging & recovery and Release acceptance packet jobs must succeed, including required real PostgreSQL/Redis coverage and the deterministic office/database date regression. Reconfirm immutable main SHA after merge.
+  EVIDENCE: pending; Backend, Frontend, Staging & recovery and Release acceptance packet jobs must succeed, including required real PostgreSQL/Redis coverage, the office/database date regression, and forward/reverse Tab with animation frames paused. Reconfirm immutable main SHA after merge.
 
 - [ ] G6: Pilot, operations and support handoff is actionable and honestly incomplete
   EVIDENCE: pending; the generated candidate packet must cover all fifteen existing customer gates, two distinct pilots, measurements, operations/support/approval ownership, private evidence and final acceptance commands. No sign-off, named owner, provider/hardware success or customer capacity/recovery approval is invented.

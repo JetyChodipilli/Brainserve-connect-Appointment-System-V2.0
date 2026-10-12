@@ -55,6 +55,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
 
+      - name: Verify profile menu keyboard behavior first
+        run: npx playwright test -c playwright.backend.config.ts --grep "profile menu"
+
       - name: Run browser tests
         run: npm run test:e2e
 

@@ -1,17 +1,17 @@
 "use client";
 
 import { type WorkspaceState } from "./use-workspace-state";
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 export function useProfileMenu(workspace: Pick<WorkspaceState, "profileMenuOpen" | "profileMenuRef" | "setProfileMenuOpen">) {
     const { profileMenuOpen, profileMenuRef, setProfileMenuOpen } = workspace;
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!profileMenuOpen) return;
         const menu = profileMenuRef.current?.querySelector<HTMLElement>("[role='menu']");
         const trigger = profileMenuRef.current?.querySelector<HTMLButtonElement>("[aria-haspopup='menu']");
         const items = () => Array.from(menu?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled), [role='menuitemcheckbox']:not(:disabled)") ?? []);
-        const frame = requestAnimationFrame(() => { items().forEach((item, index) => { item.tabIndex = index === 0 ? 0 : -1; }); items()[0]?.focus(); });
+        items().forEach((item, index) => { item.tabIndex = index === 0 ? 0 : -1; }); items()[0]?.focus();
         const closeWhenOutside = (event: PointerEvent) => {
             if (!profileMenuRef.current?.contains(event.target as Node)) setProfileMenuOpen(false);
         };
@@ -29,7 +29,6 @@ export function useProfileMenu(workspace: Pick<WorkspaceState, "profileMenuOpen"
         document.addEventListener("pointerdown", closeWhenOutside);
         document.addEventListener("keydown", closeOnEscape, true);
         return () => {
-            cancelAnimationFrame(frame);
             document.removeEventListener("pointerdown", closeWhenOutside);
             document.removeEventListener("keydown", closeOnEscape, true);
             if (menu?.contains(document.activeElement) || document.activeElement === document.body) trigger?.focus({ preventScroll: true });
