@@ -17,7 +17,7 @@ Verification uses the existing GitHub Actions workflow and its candidate-bound a
   EVIDENCE: pending; all eight applicable specialists, the red team, the parent critical pass and the native adversarial pass must finish on the final source candidate. Record actual coverage, fixed findings and unavailable logger/outside-model tooling without fabricated certification.
 
 - [ ] G5: The published follow-up and merged main pass the complete CI workflow
-  EVIDENCE: pending; Backend, Frontend, Staging & recovery and Release acceptance packet jobs must succeed, including required real PostgreSQL/Redis coverage. Reconfirm immutable main SHA after merge.
+  EVIDENCE: pending; Backend, Frontend, Staging & recovery and Release acceptance packet jobs must succeed, including required real PostgreSQL/Redis coverage and the deterministic office/database date regression. Reconfirm immutable main SHA after merge.
 
 - [ ] G6: Pilot, operations and support handoff is actionable and honestly incomplete
   EVIDENCE: pending; the generated candidate packet must cover all fifteen existing customer gates, two distinct pilots, measurements, operations/support/approval ownership, private evidence and final acceptance commands. No sign-off, named owner, provider/hardware success or customer capacity/recovery approval is invented.
