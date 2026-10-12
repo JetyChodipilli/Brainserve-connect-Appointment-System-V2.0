@@ -198,16 +198,32 @@ class Sprint10NotificationPostgresIntegrationTest {
    case "permission" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'WORK_TASK_REVIEW')",SECOND_LEAD);
    case "role" -> jdbc.update("update iam_user_role set role_name='ROLE_EMPLOYEE' where user_id=?",SECOND_LEAD);
    case "department" -> jdbc.update("update employee set department_id=? where id=?",OTHER_DEPT,SECOND_LEAD_EMP);
-   case "leave" -> jdbc.update("insert into employee_leave_request(id,employee_id,requester_user_id,start_date,end_date,reason,status,decided_by_user_id,decided_at,version,created_at,created_by,updated_at,updated_by) values(?,?,?,current_date,current_date,'Approved reviewer leave','APPROVED',?,now(),0,now(),'s10',now(),'s10')",UUID.randomUUID(),SECOND_LEAD_EMP,SECOND_LEAD,HR);
+   case "leave" -> approvedLeave(SECOND_LEAD_EMP,SECOND_LEAD);
    case "owner" -> jdbc.update("update iam_user_account set enabled=false where id=?",LEAD);
   }
   assertThat(reviews.allows(SECOND_LEAD,"WORK",task,"TEAM_LEAD")).isFalse();
   assertThatThrownBy(()->as(SECOND_LEAD,()->{insights.decideQueued(SECOND_LEAD,stage.id(),stage.resourceVersion(),true,"Forbidden stale delegation");return null;})).isInstanceOf(BusinessException.class);
   assertThat(jdbc.queryForObject("select status from department_work_task where id=?",String.class,task)).isEqualTo("COMPLETED");
  }
+ @Test void delegatedLeaveStillBlocksWhenDatabaseAndOfficeDatesDiffer() {
+  UUID task=submitted("Office-date leave coverage");var stage=stage(LEAD,task);
+  policies.delegate(LEAD,stage.id(),SECOND_LEAD,Instant.now().plusSeconds(3600),"Cover assigned lead absence");
+  transactions.execute(tx->{
+   LocalDate officeDate=today();
+   LocalDate eastDate=jdbc.queryForObject("select (now() at time zone 'Pacific/Kiritimati')::date",LocalDate.class);
+   String databaseZone=officeDate.equals(eastDate)?"Etc/GMT+12":"Pacific/Kiritimati";
+   jdbc.queryForObject("select set_config('TimeZone',?,true)",String.class,databaseZone);
+   LocalDate databaseDate=jdbc.queryForObject("select current_date",LocalDate.class);
+   assertThat(databaseDate).isNotEqualTo(officeDate);
+   approvedLeave(SECOND_LEAD_EMP,SECOND_LEAD);
+   assertThat(reviews.allows(SECOND_LEAD,"WORK",task,"TEAM_LEAD"))
+    .as("office date=%s, database date=%s",officeDate,databaseDate).isFalse();
+   return null;
+  });
+ }
  @Test void ownerLeaveDoesNotRemoveTheirAbilityToDelegateAndForeignRolesCannotReceiveAuthority() {
   UUID task=submitted("Reviewer leave coverage");var stage=stage(LEAD,task);
-  jdbc.update("insert into employee_leave_request(id,employee_id,requester_user_id,start_date,end_date,reason,status,decided_by_user_id,decided_at,version,created_at,created_by,updated_at,updated_by) values(?,?,?,current_date,current_date,'Approved lead leave','APPROVED',?,now(),0,now(),'s10',now(),'s10')",UUID.randomUUID(),LEAD_EMP,LEAD,HR);
+  approvedLeave(LEAD_EMP,LEAD);
   for(UUID target:List.of(USER,OTHER,HR,CEO)) assertThatThrownBy(()->policies.delegate(LEAD,stage.id(),target,Instant.now().plusSeconds(3600),"Invalid review authority")).isInstanceOf(BusinessException.class);
   policies.delegate(LEAD,stage.id(),SECOND_LEAD,Instant.now().plusSeconds(3600),"Cover approved lead leave");
   assertThat(reviews.allows(SECOND_LEAD,"WORK",task,"TEAM_LEAD")).isTrue();
@@ -252,6 +268,7 @@ class Sprint10NotificationPostgresIntegrationTest {
   as(SECOND_LEAD,()->visits.reviewQueued(SECOND_LEAD,visit,lead.id(),lead.resourceVersion(),true,"Lead visitor reviewed"));
   assertThat(jdbc.queryForObject("select status from appointment where id=?",String.class,visit)).isEqualTo("APPROVED");
  }
+ private void approvedLeave(UUID employee,UUID requester){LocalDate officeDate=today();jdbc.update("insert into employee_leave_request(id,employee_id,requester_user_id,start_date,end_date,reason,status,decided_by_user_id,decided_at,version,created_at,created_by,updated_at,updated_by) values(?,?,?,?,?,'Approved reviewer leave','APPROVED',?,now(),0,now(),'s10',now(),'s10')",UUID.randomUUID(),employee,requester,officeDate,officeDate,HR);}
  private UUID submitted(String title){var task=as(LEAD,()->tasks.create(LEAD,new DepartmentWorkTaskService.CreateCommand(EMP,title,"Private retained instructions",today())));as(USER,()->tasks.complete(USER,EMP,task.getId(),"Authored delivery update"));return task.getId();}
  private ApprovalPolicyService.QueueItem stage(UUID actor,UUID resource){return policies.queue(actor,false,0).items().stream().filter(i->i.resourceId().equals(resource)).findFirst().orElseThrow();}
  private void decide(UUID actor,ApprovalPolicyService.QueueItem stage){as(actor,()->{insights.decideQueued(actor,stage.id(),stage.resourceVersion(),true,"Reviewed retained evidence");return null;});}

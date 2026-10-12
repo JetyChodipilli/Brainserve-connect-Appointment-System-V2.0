@@ -33,8 +33,9 @@ public class ReleaseProfileController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.read());
     }
     @PutMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, "application/*+json"})
-    @Operation(requestBody = @RequestBody(required = true, content = @Content(
-            mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ReleaseProfileModels.Write.class))))
+    @Operation(requestBody = @RequestBody(required = true, content = {
+            @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ReleaseProfileModels.Write.class)),
+            @Content(mediaType = "application/*+json", schema = @Schema(implementation = ReleaseProfileModels.Write.class))}))
     ResponseEntity<ReleaseProfileModels.View> update(HttpServletRequest servletRequest) {
         if (servletRequest.getContentLengthLong() > MAX_BODY_BYTES) throw tooLarge();
         JsonNode request;

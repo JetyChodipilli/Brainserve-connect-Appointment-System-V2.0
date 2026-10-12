@@ -14,6 +14,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -116,6 +117,47 @@ class Sprint16ReleasePostgresIntegrationTest {
                 .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo("RELEASE_PROFILE_CHANGED");
         assertThat(audits()).isEqualTo(1); assertThat(service.read().profile().reference()).isEqualTo("AGREEMENT-1");
     }
+    @ParameterizedTest
+    @CsvSource({"ACTIVE,-1,true", "ACTIVE,0,true", "ACTIVE,1,false",
+            "PILOT,-1,true", "PILOT,0,true", "PILOT,1,false",
+            "PAUSED,-1,false", "PAUSED,0,false", "PAUSED,1,false",
+            "CANCELLED,-1,false", "CANCELLED,0,false", "CANCELLED,1,false",
+            "UNCONFIGURED,-1,false", "UNCONFIGURED,0,false", "UNCONFIGURED,1,false"})
+    void renewalNoticeMatchesAgreementStatusAndOfficeDate(ReleaseProfileModels.Status agreementStatus, int offset, boolean due) {
+        LocalDate officeDate = service.read().officeDate();
+        var base = profile("RENEWAL-MATRIX", agreementStatus);
+        var term = new ReleaseProfileModels.Profile(base.status(), base.reference(), officeDate.minusDays(30), officeDate.plusDays(offset),
+                base.supportOwner(), base.supportEmail(), base.supportHours());
+        var saved = service.update(new ReleaseProfileModels.Write(0L, term));
+        assertThat(saved.officeDate()).isEqualTo(officeDate); assertThat(saved.renewalDue()).isEqualTo(due);
+        assertThat(service.read().renewalDue()).isEqualTo(due);
+    }
+    @Test void missingSingletonRejectsHttpReadsAndWritesWithoutRecreatingData() throws Exception {
+        SecurityContextHolder.clearContext();
+        String token = bearer(ADMIN, Instant.now());
+        jdbc.update("delete from release_profile where id=?", ReleaseProfileService.ID);
+        try {
+            mvc.perform(get("/api/v1/release-profile").header("Authorization", token)).andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.errorCode").value("RELEASE_PROFILE_UNAVAILABLE"));
+            mvc.perform(put("/api/v1/release-profile").header("Authorization", token).contentType(MediaType.APPLICATION_JSON).content(body(0)))
+                    .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.errorCode").value("RELEASE_PROFILE_UNAVAILABLE"));
+            assertThat(jdbc.queryForObject("select count(*) from release_profile", Long.class)).isZero(); assertThat(audits()).isZero();
+        } finally {
+            jdbc.update("insert into release_profile(id,profile_json,version,created_at,created_by,updated_at,updated_by) values(?,?,0,now(),'sprint16',now(),'sprint16')",
+                    ReleaseProfileService.ID, EMPTY);
+        }
+    }
+    @Test void invalidStoredProfileReturnsUnavailableWithoutRewritingPrivateData() throws Exception {
+        SecurityContextHolder.clearContext();
+        String invalid = "{\"status\":\"UNCONFIGURED\"}";
+        jdbc.update("update release_profile set profile_json=? where id=?", invalid, ReleaseProfileService.ID);
+        try {
+            mvc.perform(get("/api/v1/release-profile").header("Authorization", bearer(ADMIN, Instant.now())))
+                    .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.errorCode").value("RELEASE_PROFILE_UNAVAILABLE"));
+            assertThat(jdbc.queryForObject("select profile_json from release_profile where id=?", String.class, ReleaseProfileService.ID)).isEqualTo(invalid);
+            assertThat(jdbc.queryForObject("select version from release_profile where id=?", Long.class, ReleaseProfileService.ID)).isZero(); assertThat(audits()).isZero();
+        } finally { jdbc.update("update release_profile set profile_json=? where id=?", EMPTY, ReleaseProfileService.ID); }
+    }
     @Test void simultaneousAdministratorsCannotOverwriteTheSameObservedVersion() throws Exception {
         var gate = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
@@ -185,9 +227,29 @@ class Sprint16ReleasePostgresIntegrationTest {
         mvc.perform(get("/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.required").value(true))
                 .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.content['application/json'].schema['$ref']").value("#/components/schemas/ReleaseProfileWrite"))
+                .andExpect(jsonPath("$.paths['/api/v1/release-profile'].put.requestBody.content['application/*+json'].schema['$ref']").value("#/components/schemas/ReleaseProfileWrite"))
                 .andExpect(jsonPath("$.components.schemas.ReleaseProfileWrite.properties.expectedVersion.type").value("integer"))
                 .andExpect(jsonPath("$.components.schemas.ReleaseProfileWrite.properties.profile['$ref']").value("#/components/schemas/ReleaseAgreementProfile"))
                 .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties.supportEmail.type").value("string"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"startsOn", "renewsOn"})
+    void apiDocumentationDeclaresRequiredNullableDates(String field) throws Exception {
+        SecurityContextHolder.clearContext();
+        mvc.perform(get("/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.openapi").value("3.1.0"))
+                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.required", org.hamcrest.Matchers.hasItem(field)))
+                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".type", org.hamcrest.Matchers.containsInAnyOrder("string", "null")))
+                .andExpect(jsonPath("$.components.schemas.ReleaseAgreementProfile.properties." + field + ".format").value("date"));
+    }
+
+    @Test void apiDocumentationDeclaresTheKioskConfigurationResponse() throws Exception {
+        SecurityContextHolder.clearContext();
+        mvc.perform(get("/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/admin/kiosks/config'].get.responses['200'].content['*/*'].schema['$ref']").value("#/components/schemas/KioskConfig"))
+                .andExpect(jsonPath("$.components.schemas.KioskConfig.required", org.hamcrest.Matchers.hasItem("enabled")))
+                .andExpect(jsonPath("$.components.schemas.KioskConfig.properties.enabled.type").value("boolean"));
     }
 
     @ParameterizedTest
