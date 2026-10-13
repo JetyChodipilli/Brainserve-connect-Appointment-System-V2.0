@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -70,12 +71,82 @@ class DepartmentScopedAdministrationServiceTest {
         when(departmentHrs.requireForUser(actorId)).thenReturn(new DepartmentHrDirectory.Assignment(
                 UUID.randomUUID(), departmentId, actorId, UUID.randomUUID(), "HR", "hr@brainserve.in"));
         when(employees.departmentIdForEmployee(targetEmployeeId)).thenReturn(departmentId);
-        var service = new PermissionAdministrationService(users, audit, departmentHrs, employees);
+        var service = new PermissionAdministrationService(users, audit, departmentHrs, employees,
+                mock(com.brainserve.appointment.iam.api.CurrentAccountAuthority.class));
 
         service.replaceOverrides(actorId, targetId, Set.of(Permission.WORK_TASK_READ), Set.of());
 
         verify(audit).record("USER_PERMISSION_OVERRIDE", "USER_ACCOUNT", targetId.toString(),
                 "{\"grants\":1,\"denies\":0}");
+    }
+
+    // Regression: AUD-01 — replacement must respect existing privileged overrides.
+    // Found by /qa on 2026-10-13
+    // Report: docs/SECURITY_FUNCTIONAL_CAPACITY_AUDIT.md
+    @Test
+    void hrCannotRemoveAnAdministratorOwnedOverride() {
+        UUID actorId = UUID.randomUUID(), targetId = UUID.randomUUID(), departmentId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        UserAccount actor = account(actorId, null, Set.of(SystemRole.ROLE_HR_ADMIN));
+        UserAccount target = account(targetId, employeeId, Set.of(SystemRole.ROLE_TEAM_LEAD));
+        target.replacePermissionOverrides(Set.of(Permission.SALARY_READ), Set.of());
+        when(users.findById(actorId)).thenReturn(Optional.of(actor));
+        when(users.findById(targetId)).thenReturn(Optional.of(target));
+        when(departmentHrs.requireForUser(actorId)).thenReturn(new DepartmentHrDirectory.Assignment(
+                UUID.randomUUID(), departmentId, actorId, UUID.randomUUID(), "HR", "hr@brainserve.in"));
+        when(employees.departmentIdForEmployee(employeeId)).thenReturn(departmentId);
+        var service = new PermissionAdministrationService(users, audit, departmentHrs, employees,
+                mock(com.brainserve.appointment.iam.api.CurrentAccountAuthority.class));
+
+        assertThatThrownBy(() -> service.replaceOverrides(actorId, targetId, Set.of(), Set.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo("PERMISSION_GRANT_EXCEEDS_AUTHORITY");
+        assertThat(target.getGrantedPermissions()).containsExactly(Permission.SALARY_READ);
+    }
+
+    @Test
+    void hrCanPreserveAnAdministratorOwnedOverrideWhileEditingAnAllowedPermission() {
+        UUID actorId = UUID.randomUUID(), targetId = UUID.randomUUID(), departmentId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        UserAccount actor = account(actorId, null, Set.of(SystemRole.ROLE_HR_ADMIN));
+        UserAccount target = account(targetId, employeeId, Set.of(SystemRole.ROLE_TEAM_LEAD));
+        target.replacePermissionOverrides(Set.of(Permission.SALARY_READ), Set.of());
+        when(users.findById(actorId)).thenReturn(Optional.of(actor));
+        when(users.findById(targetId)).thenReturn(Optional.of(target));
+        when(departmentHrs.requireForUser(actorId)).thenReturn(new DepartmentHrDirectory.Assignment(
+                UUID.randomUUID(), departmentId, actorId, UUID.randomUUID(), "HR", "hr@brainserve.in"));
+        when(employees.departmentIdForEmployee(employeeId)).thenReturn(departmentId);
+        var service = new PermissionAdministrationService(users, audit, departmentHrs, employees,
+                mock(com.brainserve.appointment.iam.api.CurrentAccountAuthority.class));
+
+        service.replaceOverrides(actorId, targetId, Set.of(Permission.SALARY_READ, Permission.WORK_TASK_READ), Set.of());
+        assertThat(target.getGrantedPermissions()).containsExactlyInAnyOrder(Permission.SALARY_READ, Permission.WORK_TASK_READ);
+    }
+
+    @Test
+    void aDisabledAdministratorCannotReplacePermissionOverrides() {
+        UUID actorId = UUID.randomUUID(), targetId = UUID.randomUUID();
+        UserAccount actor = account(actorId, null, Set.of(SystemRole.ROLE_SYSTEM_ADMIN));
+        actor.disable();
+        when(users.findById(actorId)).thenReturn(Optional.of(actor));
+        when(users.findById(targetId)).thenReturn(Optional.of(account(targetId, null, Set.of(SystemRole.ROLE_EMPLOYEE))));
+        var service = new PermissionAdministrationService(users, audit, departmentHrs, employees,
+                mock(com.brainserve.appointment.iam.api.CurrentAccountAuthority.class));
+        assertThatThrownBy(() -> service.replaceOverrides(actorId, targetId, Set.of(Permission.WORK_TASK_READ), Set.of()))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void anAdministratorWithDeniedManagementPermissionCannotReplaceOverrides() {
+        UUID actorId = UUID.randomUUID(), targetId = UUID.randomUUID();
+        UserAccount actor = account(actorId, null, Set.of(SystemRole.ROLE_SYSTEM_ADMIN));
+        actor.replacePermissionOverrides(Set.of(), Set.of(Permission.ROLE_MANAGE));
+        when(users.findById(actorId)).thenReturn(Optional.of(actor));
+        when(users.findById(targetId)).thenReturn(Optional.of(account(targetId, null, Set.of(SystemRole.ROLE_EMPLOYEE))));
+        var service = new PermissionAdministrationService(users, audit, departmentHrs, employees,
+                mock(com.brainserve.appointment.iam.api.CurrentAccountAuthority.class));
+        assertThatThrownBy(() -> service.replaceOverrides(actorId, targetId, Set.of(Permission.WORK_TASK_READ), Set.of()))
+                .isInstanceOf(BusinessException.class);
     }
 
     private UserAccount account(UUID id, UUID employeeId, Set<SystemRole> roles) {
