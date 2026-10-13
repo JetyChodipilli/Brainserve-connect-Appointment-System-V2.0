@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 // prove they ran, rather than returning green with no database coverage.
 for (const name of [
   "com.brainserve.appointment.DatabaseMigrationIntegrationTest",
+  "com.brainserve.appointment.reporting.LargeDataHistoryPerformanceTest",
   "com.brainserve.appointment.reporting.application.KpiReconciliationIntegrationTest",
   "com.brainserve.appointment.reporting.application.AdministrationDashboardIntegrationTest",
   "com.brainserve.appointment.bulkimport.application.Sprint4PostgresIntegrationTest",
