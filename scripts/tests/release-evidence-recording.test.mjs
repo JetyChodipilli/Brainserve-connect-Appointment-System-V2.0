@@ -89,4 +89,13 @@ test('bounded regular inputs reject malformed JSON, directories and oversized fi
   }
   writeFileSync(gate, good);
   assert.equal(run(args.map(v => v === gate ? folder : v)).status, 1); assert.equal(existsSync(output), false);
+  const large = template();
+  large.pilotFeedback = Array.from({ length: 100 }, (_, i) => ({ id: `SIZE-${i}`, priority: 'LOW', summary: '測'.repeat(500), status: 'OPEN', owner: 'o'.repeat(180), followUpBy: null,
+    evidence: { ...proof(), reference: 'r'.repeat(500), reviewedBy: 'v'.repeat(120) } }));
+  evaluateRelease(large, { expectedReleaseSha: releaseSha });
+  const compact = JSON.stringify(large); assert.ok(Buffer.byteLength(compact) <= 256 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(large, null, 2) + '\n') > 256 * 1024);
+  writeFileSync(record, compact); const result = run(); assert.equal(result.status, 1);
+  assert.match(result.stderr, /Updated record exceeds the acceptance byte limit/);
+  assert.equal(existsSync(output), false); assert.equal(readFileSync(record, 'utf8'), compact);
 }));

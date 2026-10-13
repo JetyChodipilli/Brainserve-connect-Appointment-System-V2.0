@@ -2,6 +2,8 @@
 
 The authoritative final candidate SHA, CI links, reviewer outcomes and closing gate receipts are recorded on [final main-fix PR #41](https://github.com/JetyChodipilli/Brainserve-connect-Appointment-System-V2.0/pull/41), with acceptance preparation history on [PR #40](https://github.com/JetyChodipilli/Brainserve-connect-Appointment-System-V2.0/pull/40). Until PR #41 records successful final verification, treat the final follow-up receipt as pending. Do not reuse this record to approve an unrelated later candidate.
 
+Subsequent acceptance evidence-recording tooling and its candidate/main CI, scoped native review and execution-gate receipts are recorded on [PR #42](https://github.com/JetyChodipilli/Brainserve-connect-Appointment-System-V2.0/pull/42). For packets from that change, consult both receipts and verify the installed candidate. The Sprint 16 application review below remains bound to its recorded source; it does not silently certify later changes.
+
 ## Initial merged Sprint 16 review
 
 Baseline: Sprint 15 `3d51d65af1b7a026c1fd7fa9f55aa52063d6234e`. Reviewed main: `17d8ac70bb810beb7bc7144f5f76884036962ee3`, tree `c5ef3fd237d0b9ce5fa4d73030bc861de1f44e00`, identical to final Sprint 16 branch `5b6fb76443f036d00413e874f918dcc332935f72`. The full 44-file Sprint 16 delta was reviewed, including private profile persistence, current authorization, session/browser fences, staging privacy/compatibility and acceptance attestations.
