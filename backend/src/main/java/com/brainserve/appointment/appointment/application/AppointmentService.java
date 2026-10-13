@@ -695,7 +695,8 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     @Transactional(readOnly = true)
     public java.util.List<VisitRecord> receptionVisitsBetween(Instant fromInclusive, Instant toExclusive) {
         return appointments.findAllByReceptionVerifiedAtGreaterThanEqualAndReceptionVerifiedAtLessThanOrderByReceptionVerifiedAtAsc(
-                        fromInclusive, toExclusive)
+                        fromInclusive, toExclusive, org.springframework.data.domain.PageRequest.of(0,
+                                com.brainserve.appointment.employee.api.EmployeeRecords.LEGACY_REGISTER_LIMIT + 1))
                 .stream().map(value -> new VisitRecord(value.getId(), value.getReferenceNumber(), value.getType().name(),
                         value.getStatus().name(), value.getVisitorName(), value.getVisitorEmail(), value.getVisitorPhone(),
                         value.getVisitorCompany(), value.getHostEmployeeId(), value.getRoutingDepartmentId(),

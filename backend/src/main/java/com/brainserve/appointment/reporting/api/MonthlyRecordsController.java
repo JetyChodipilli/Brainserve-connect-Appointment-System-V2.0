@@ -3,6 +3,8 @@ package com.brainserve.appointment.reporting.api;
 import com.brainserve.appointment.appointment.api.AppointmentRecords;
 import com.brainserve.appointment.employee.api.EmployeeRecords;
 import com.brainserve.appointment.reception.api.ReceptionRecords;
+import com.brainserve.appointment.shared.application.BusinessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -25,12 +27,17 @@ public class MonthlyRecordsController {
     @Deprecated(forRemoval = true)
     @PreAuthorize("hasAuthority('WORKFORCE_RECORD_VIEW')")
     MonthlyRecords monthly(@RequestParam int year, @RequestParam int month) {
+        if (year < 1 || year > 9998 || month < 1 || month > 12) {
+            throw new BusinessException("INVALID_RECORD_PERIOD", "Use a valid year and month", HttpStatus.BAD_REQUEST);
+        }
         YearMonth period = YearMonth.of(year, month);
         LocalDate fromDate = period.atDay(1), toDate = period.plusMonths(1).atDay(1);
         Instant from = fromDate.atStartOfDay(officeZone).toInstant(), to = toDate.atStartOfDay(officeZone).toInstant();
         var staff = employees.allEmployees();
+        requireBounded(staff);
         Map<UUID, String> names = new HashMap<>(); staff.forEach(value -> names.put(value.id(), value.displayName()));
         var arrivedVisits = appointments.receptionVisitsBetween(from, to);
+        requireBounded(arrivedVisits);
         Map<UUID, ReceptionRecords.AccessRecord> accessByAppointment = new HashMap<>();
         reception.forAppointments(arrivedVisits.stream().map(AppointmentRecords.VisitRecord::id).toList())
                 .forEach(value -> accessByAppointment.put(value.appointmentId(), value));
@@ -55,11 +62,18 @@ public class MonthlyRecordsController {
                     access == null ? null : access.checkedOutAt(), access == null ? null : access.processedBy());
         }).toList();
         var leaves = employees.leavesOverlapping(fromDate, toDate.minusDays(1));
+        requireBounded(leaves);
         long joined = staff.stream().filter(value -> !value.joiningDate().isBefore(fromDate) && value.joiningDate().isBefore(toDate)).count();
         long relieved = staff.stream().filter(value -> value.relievingDate() != null && !value.relievingDate().isBefore(fromDate)
                 && value.relievingDate().isBefore(toDate)).count();
         return new MonthlyRecords(period.toString(), Instant.now(), visits.size(), staff.size(), joined, relieved,
                 leaves.stream().filter(value -> "PENDING".equals(value.status())).count(), visits, staff, leaves);
+    }
+    private static void requireBounded(List<?> records) {
+        if (records.size() > EmployeeRecords.LEGACY_REGISTER_LIMIT) {
+            throw new BusinessException("LEGACY_REGISTER_TOO_LARGE",
+                    "Use paged History or request a report export for this dataset", HttpStatus.PAYLOAD_TOO_LARGE);
+        }
     }
     public record MonthlyRecords(String period, Instant generatedAt, int visitorCount, int employeeCount,
                                  long joinedEmployees, long relievedEmployees, long pendingLeaveRequests,

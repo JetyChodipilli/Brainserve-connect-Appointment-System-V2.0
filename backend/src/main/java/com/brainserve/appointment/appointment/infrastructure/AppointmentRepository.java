@@ -37,5 +37,5 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     long countByStatusIn(Collection<AppointmentStatus> statuses);
     List<Appointment> findAllBySlotStartGreaterThanEqualAndSlotStartLessThanOrderBySlotStartAsc(Instant from, Instant to);
     List<Appointment> findAllByReceptionVerifiedAtGreaterThanEqualAndReceptionVerifiedAtLessThanOrderByReceptionVerifiedAtAsc(
-            Instant from, Instant to);
+            Instant from, Instant to, Pageable pageable);
 }

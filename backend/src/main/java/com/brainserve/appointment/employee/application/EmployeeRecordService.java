@@ -18,13 +18,13 @@ public class EmployeeRecordService implements EmployeeRecords {
     }
     @Override @Transactional(readOnly = true)
     public List<EmployeeRecord> allEmployees() {
-        return employees.findAll().stream().map(value -> new EmployeeRecord(value.getId(), value.getEmployeeNumber(),
+        return employees.findForLegacyRegister(org.springframework.data.domain.PageRequest.of(0, LEGACY_REGISTER_LIMIT + 1)).stream().map(value -> new EmployeeRecord(value.getId(), value.getEmployeeNumber(),
                 value.getDisplayName(), value.getOfficialEmail(), value.getDesignation(), value.getStatus().name(),
                 value.getJoiningDate(), value.getRelievingDate())).toList();
     }
     @Override @Transactional(readOnly = true)
     public List<LeaveRecord> leavesOverlapping(LocalDate from, LocalDate to) {
-        return leaves.findAllByStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByStartDateAsc(to, from).stream()
+        return leaves.findAllByStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByStartDateAsc(to, from, org.springframework.data.domain.PageRequest.of(0, LEGACY_REGISTER_LIMIT + 1)).stream()
                 .map(value -> new LeaveRecord(value.getId(), value.getEmployeeId(), value.getRequesterUserId(),
                         value.getStartDate(), value.getEndDate(), value.getReason(), value.getStatus().name(),
                         value.getDecidedByUserId(), value.getDecidedAt(), value.getDecisionReason())).toList();

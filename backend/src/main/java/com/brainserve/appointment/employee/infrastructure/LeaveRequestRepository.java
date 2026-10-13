@@ -23,5 +23,5 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, UUID
             """)
     List<LeaveRequest> findPendingForDepartment(@Param("status") LeaveRequestStatus status,
                                                 @Param("departmentId") UUID departmentId);
-    List<LeaveRequest> findAllByStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByStartDateAsc(LocalDate to, LocalDate from);
+    List<LeaveRequest> findAllByStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByStartDateAsc(LocalDate to, LocalDate from, org.springframework.data.domain.Pageable pageable);
 }

@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.UUID;
 
 public interface EmployeeRecords {
+    /** A legacy register reads one extra row to reject excess data without truncating a successful response. */
+    int LEGACY_REGISTER_LIMIT = 1000;
     List<EmployeeRecord> allEmployees();
     List<LeaveRecord> leavesOverlapping(LocalDate from, LocalDate to);
 
