@@ -1,0 +1,13 @@
+{
+  "engine": "Redis 7.0.15, isolated loopback TCP process",
+  "parallelPresentations": 16,
+  "admitted": 5,
+  "rejected": 11,
+  "counter": 5,
+  "remainingTtlMs": 59964,
+  "missingChallengeRejected": true,
+  "corruptCounterFailsClosed": true,
+  "limits": "Actual compiled production Lua exercised; full Spring/PostgreSQL/Redis HTTP integration and customer traffic remain untested.",
+  "productionSource": "backend/src/main/java/com/brainserve/appointment/appointment/application/AppointmentService.java",
+  "sourceSha256": "40409428c5e6c8d350cf27d918eb90be3b50069c53e6a02708eac591b5529f22"
+}

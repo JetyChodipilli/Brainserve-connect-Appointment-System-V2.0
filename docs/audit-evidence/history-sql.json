@@ -1,0 +1,32 @@
+{
+  "engine": "PostgreSQL 18.6 (PGlite 0.5.9) on wasm32-unknown-emscripten, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit",
+  "original": {
+    "code": "22025",
+    "message": "invalid escape string"
+  },
+  "repaired": [
+    {
+      "query": "100%_!\\",
+      "matches": 1
+    },
+    {
+      "query": "%",
+      "matches": 1
+    },
+    {
+      "query": "_",
+      "matches": 1
+    },
+    {
+      "query": "!",
+      "matches": 1
+    },
+    {
+      "query": "\\",
+      "matches": 1
+    }
+  ],
+  "limits": "SQL predicates and the compiled Java escaping function executed on PGlite PostgreSQL/WASM; this does not establish Spring/JPA/Docker deployment coverage.",
+  "productionSource": "backend/src/main/java/com/brainserve/appointment/reporting/application/RoleAwareHistoryQueryService.java",
+  "sourceSha256": "832ef327cf8687ea98f14f8bf3046766e7094c887f6638559d24779be8b38fe4"
+}
