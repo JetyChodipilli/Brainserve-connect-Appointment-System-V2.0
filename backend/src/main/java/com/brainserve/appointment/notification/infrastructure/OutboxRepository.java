@@ -14,6 +14,10 @@ import java.util.UUID;
 
 public interface OutboxRepository extends JpaRepository<OutboxMessage, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select m from OutboxMessage m where m.id = :id")
+    java.util.Optional<OutboxMessage> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from OutboxMessage m where m.status in :statuses and m.nextAttemptAt <= :now order by m.nextAttemptAt")
     List<OutboxMessage> lockReady(Set<OutboxMessage.Status> statuses, Instant now, Pageable pageable);
 }
