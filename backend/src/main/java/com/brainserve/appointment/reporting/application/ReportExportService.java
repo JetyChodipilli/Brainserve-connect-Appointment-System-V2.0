@@ -165,6 +165,13 @@ public class ReportExportService {
             throw new BusinessException("REPORT_EXPORT_ACCESS_DENIED", "This export belongs to another account",
                     HttpStatus.FORBIDDEN);
         }
+        scopes.requireDataset(scope, job.getDataset());
+        if (!scope.role().equals("ROLE_SYSTEM_ADMIN")
+                && (!scope.role().equals(job.getRequestedRole())
+                    || !scope.organizationWide() && !java.util.Objects.equals(scope.departmentId(), job.getDepartmentId()))) {
+            throw new BusinessException("REPORT_EXPORT_SCOPE_CHANGED", "Request a new export in your current workspace",
+                    HttpStatus.FORBIDDEN);
+        }
         if (job.getStatus() != ReportExportJob.Status.COMPLETED || job.getObjectKey() == null
                 || job.getExpiresAt() == null || !job.getExpiresAt().isAfter(Instant.now())) {
             throw new BusinessException("REPORT_EXPORT_NOT_READY", "The export is not ready or has expired",

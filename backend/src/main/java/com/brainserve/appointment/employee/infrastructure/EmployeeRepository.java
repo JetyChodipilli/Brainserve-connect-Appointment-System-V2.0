@@ -15,6 +15,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
+    @Query("select employee from Employee employee order by employee.id")
+    List<Employee> findForLegacyRegister(Pageable pageable);
+
 
     boolean existsByOfficialEmailIgnoreCase(String officialEmail);
 

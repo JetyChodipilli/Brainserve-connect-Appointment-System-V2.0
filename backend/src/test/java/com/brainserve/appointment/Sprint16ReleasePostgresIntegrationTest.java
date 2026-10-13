@@ -292,6 +292,53 @@ class Sprint16ReleasePostgresIntegrationTest {
         assertThat(service.read().version()).isZero(); assertThat(audits()).isZero();
     }
 
+    // Regression: AUD-02 — permission writers must recheck security after waiting for account locks.
+    // Found by /qa on 2026-10-13
+    // Report: docs/SECURITY_FUNCTIONAL_CAPACITY_AUDIT.md
+    @ParameterizedTest
+    @ValueSource(strings = {"disabled", "permissionDenied", "revoked", "proofCleared"})
+    void permissionAuthorizationChangedWhileWaitingCannotCommit(String change) throws Exception {
+        SecurityContextHolder.clearContext();
+        // Actor sorts after target, so its owner lock has not been acquired while target is blocked.
+        UUID writer = UUID.fromString("16000000-0000-4000-a000-000000000004");
+        account(writer, "ROLE_SYSTEM_ADMIN");
+        String token = bearer(writer, Instant.now());
+        try (var connection = jdbc.getDataSource().getConnection(); var pool = Executors.newSingleThreadExecutor()) {
+            connection.setAutoCommit(false);
+            try (var lock = connection.prepareStatement("select id from iam_user_account where id=? for update")) {
+                lock.setObject(1, EMPLOYEE); lock.executeQuery().close();
+            }
+            var response = pool.submit(() -> {
+                try {
+                    return mvc.perform(put("/api/v1/admin/users/" + EMPLOYEE + "/permissions")
+                            .header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"grants\":[\"WORK_TASK_READ\"],\"denies\":[]}"))
+                            .andReturn().getResponse().getStatus();
+                } finally { SecurityContextHolder.clearContext(); }
+            });
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                boolean waiting = false;
+                while (System.nanoTime() < deadline && !response.isDone()) {
+                    waiting = Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%iam_user_account%')", Boolean.class));
+                    if (waiting) break;
+                    Thread.sleep(25);
+                }
+                assertThat(waiting).as("permission write waits on its target account lock").isTrue();
+                switch (change) {
+                    case "disabled" -> jdbc.update("update iam_user_account set enabled=false where id=?", writer);
+                    case "permissionDenied" -> jdbc.update("insert into iam_user_permission_deny(user_id,permission_name) values(?,'ROLE_MANAGE')", writer);
+                    case "revoked" -> jdbc.update("update iam_refresh_token_session set revoked_at=now() where user_id=?", writer);
+                    case "proofCleared" -> jdbc.update("update iam_refresh_token_session set mfa_verified_at=null where user_id=?", writer);
+                    default -> throw new IllegalArgumentException(change);
+                }
+            } finally { connection.rollback(); }
+            assertThat(response.get(15, TimeUnit.SECONDS)).isIn(401, 403);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from iam_user_permission_grant where user_id=?", Long.class, EMPLOYEE)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from audit_event where event_type='USER_PERMISSION_OVERRIDE'", Long.class)).isZero();
+    }
+
     @Test void oversizedJsonIsRejectedForDeclaredAndUnknownBodyLengths() throws Exception {
         SecurityContextHolder.clearContext();
         String token = bearer(ADMIN, Instant.now()), oversized = body(0) + " ".repeat(8193);

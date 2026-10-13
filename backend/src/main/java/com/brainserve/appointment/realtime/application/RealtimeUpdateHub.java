@@ -49,6 +49,7 @@ public class RealtimeUpdateHub {
     private final int maxStreams;
     private final long leaseMillis;
     private final Map<UUID, Connection> emitters = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicBoolean refreshPending = new java.util.concurrent.atomic.AtomicBoolean();
 
     public RealtimeUpdateHub(StringRedisTemplate redis, SessionAccess sessions,
             @Value("${brainserve.realtime.max-streams-per-account:3}") int maxStreams,
@@ -102,7 +103,15 @@ public class RealtimeUpdateHub {
     }
 
     public void broadcastRefresh() {
-        emitters.forEach((id, connection) -> send(id, connection, "workspace-refresh", "refresh", true));
+        // A committed mutation only marks one bit; a burst cannot queue one network fan-out per row.
+        refreshPending.set(true);
+    }
+
+    @Scheduled(fixedDelay = 250L)
+    public void flushRefresh() {
+        if (refreshPending.compareAndSet(true, false)) {
+            emitters.forEach((id, connection) -> send(id, connection, "workspace-refresh", "refresh", true));
+        }
     }
 
     @Scheduled(fixedDelay = 25_000L)

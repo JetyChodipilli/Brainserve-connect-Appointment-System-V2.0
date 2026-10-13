@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -34,6 +36,30 @@ class MonthlyRecordsControllerTest {
                     reception,
                     "Asia/Kolkata"
             );
+
+    // Regression: AUD-07 — a legacy register must fail before loading more datasets when it exceeds its bound.
+    // Found by /qa on 2026-10-13
+    // Report: docs/SECURITY_FUNCTIONAL_CAPACITY_AUDIT.md
+    @Test
+    @SuppressWarnings("removal")
+    void anOversizedLegacyRegisterRejectsWithoutLoadingVisitsOrLeaves() {
+        var employee = new EmployeeRecords.EmployeeRecord(UUID.randomUUID(), "SYNTHETIC", "Synthetic",
+                "synthetic@audit.invalid", "Employee", "ACTIVE", LocalDate.of(2020, 1, 1), null);
+        when(employees.allEmployees()).thenReturn(java.util.Collections.nCopies(1001, employee));
+        assertThatThrownBy(() -> controller.monthly(2026, 10))
+                .isInstanceOf(com.brainserve.appointment.shared.application.BusinessException.class)
+                .extracting("errorCode").isEqualTo("LEGACY_REGISTER_TOO_LARGE");
+        verifyNoInteractions(appointments, reception);
+    }
+
+    @Test
+    @SuppressWarnings("removal")
+    void anInvalidMonthIsABadRequest() {
+        assertThatThrownBy(() -> controller.monthly(2026, 13))
+                .isInstanceOf(com.brainserve.appointment.shared.application.BusinessException.class)
+                .extracting("errorCode").isEqualTo("INVALID_RECORD_PERIOD");
+        verifyNoInteractions(appointments, employees, reception);
+    }
 
     @Test
     @SuppressWarnings("removal")

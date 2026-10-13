@@ -49,6 +49,22 @@ class RealtimeUpdateHubTest {
         doReturn(emitter).when(hub).createEmitter(anyLong());
     }
 
+    // Regression: AUD-09 — burst writes must not perform network fan-out on each committing request.
+    // Found by /qa on 2026-10-13
+    // Report: docs/SECURITY_FUNCTIONAL_CAPACITY_AUDIT.md
+    @Test
+    void burstInvalidationsDoNotPerformNetworkIoOnTheMutationThread() throws Exception {
+        hub.connect(jwt());
+        clearInvocations(redis, emitter);
+        for (int n = 0; n < 1000; n++) hub.broadcastRefresh();
+        verifyNoInteractions(redis, emitter);
+        hub.flushRefresh();
+        verify(emitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+        verify(redis, times(1)).execute(any(RedisScript.class), anyList(), anyString(), anyString());
+        hub.flushRefresh();
+        verify(emitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
     @Test
     void connectsUnderTheAccountLeaseAndChecksTheStableSessionProof() throws Exception {
         Instant proof = Instant.now().minusSeconds(30).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);

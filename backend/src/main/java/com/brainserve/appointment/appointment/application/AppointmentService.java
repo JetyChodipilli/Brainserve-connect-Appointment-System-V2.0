@@ -45,6 +45,12 @@ import java.util.UUID;
 
 @Service
 public class AppointmentService implements AppointmentAvailability, AppointmentAccess, AppointmentStatistics, AppointmentRecords, com.brainserve.appointment.appointment.api.VisitorImport {
+    private static final org.springframework.data.redis.core.script.DefaultRedisScript<Long> OTP_ATTEMPTS =
+            new org.springframework.data.redis.core.script.DefaultRedisScript<>(
+                    "local ttl=redis.call('PTTL',KEYS[1]); if ttl<=0 then return 0; end; "
+                    + "local n=tonumber(redis.call('GET',KEYS[2]) or '0'); if not n or n<0 then return -1; end; "
+                    + "if n>=5 then return 0; end; redis.call('INCR',KEYS[2]); "
+                    + "redis.call('PEXPIRE',KEYS[2],ttl); return 1;", Long.class);
     private final AppointmentRepository appointments;
     private final EmployeeDirectory employees;
     private final StringRedisTemplate redis;
@@ -281,12 +287,21 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
 
     @Transactional
     public Appointment verify(String reference, String otp) {
-        Appointment appointment = byReference(reference);
-        String expected = redis.opsForValue().get(otpKey(reference));
+        Appointment appointment = appointments.findPassForUpdate(reference.toUpperCase(Locale.ROOT))
+                .orElseThrow(() -> new BusinessException("APPOINTMENT_NOT_FOUND", "Appointment was not found", HttpStatus.NOT_FOUND));
+        String key = otpKey(appointment.getReferenceNumber());
+        Long admitted;
+        try { admitted = redis.execute(OTP_ATTEMPTS, List.of(key, key + ":attempts")); }
+        catch (org.springframework.dao.DataAccessException unavailable) { throw otpSecurityUnavailable(); }
+        if (admitted == null || admitted < 0 || admitted > 1) throw otpSecurityUnavailable();
+        if (admitted == 0) throw new BusinessException("INVALID_OTP", "OTP is invalid or expired", HttpStatus.UNAUTHORIZED);
+        String expected;
+        try { expected = redis.opsForValue().get(key); }
+        catch (org.springframework.dao.DataAccessException unavailable) { throw otpSecurityUnavailable(); }
         if (expected == null || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), hash(otp).getBytes(StandardCharsets.UTF_8)))
             throw new BusinessException("INVALID_OTP", "OTP is invalid or expired", HttpStatus.UNAUTHORIZED);
         appointment.verify();
-        redis.delete(otpKey(reference));
+        redis.delete(List.of(key, key + ":attempts"));
         audit.record("APPOINTMENT_CONTACT_VERIFIED", "APPOINTMENT", appointment.getId().toString(),
                 "{\"reference\":\"" + appointment.getReferenceNumber() + "\"}");
         events.publishEvent(new AppointmentEvents.AppointmentStatusChanged(appointment.getId(), reference, appointment.getStatus().name(), Instant.now()));
@@ -695,7 +710,8 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
     @Transactional(readOnly = true)
     public java.util.List<VisitRecord> receptionVisitsBetween(Instant fromInclusive, Instant toExclusive) {
         return appointments.findAllByReceptionVerifiedAtGreaterThanEqualAndReceptionVerifiedAtLessThanOrderByReceptionVerifiedAtAsc(
-                        fromInclusive, toExclusive)
+                        fromInclusive, toExclusive, org.springframework.data.domain.PageRequest.of(0,
+                                com.brainserve.appointment.employee.api.EmployeeRecords.LEGACY_REGISTER_LIMIT + 1))
                 .stream().map(value -> new VisitRecord(value.getId(), value.getReferenceNumber(), value.getType().name(),
                         value.getStatus().name(), value.getVisitorName(), value.getVisitorEmail(), value.getVisitorPhone(),
                         value.getVisitorCompany(), value.getHostEmployeeId(), value.getRoutingDepartmentId(),
@@ -836,6 +852,10 @@ public class AppointmentService implements AppointmentAvailability, AppointmentA
                     "Appointments can be booked up to " + effectiveMaxAdvanceDays + " days ahead",
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
+    }
+    private BusinessException otpSecurityUnavailable() {
+        return new BusinessException("SECURITY_STATE_UNAVAILABLE", "OTP security could not be checked. Try again shortly.",
+                HttpStatus.SERVICE_UNAVAILABLE);
     }
     private String otpKey(String reference) { return "appointment:otp:" + reference; }
     private String cancellationOtpKey(String reference) {

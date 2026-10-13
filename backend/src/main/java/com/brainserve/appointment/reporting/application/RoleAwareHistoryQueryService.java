@@ -294,13 +294,13 @@ public class RoleAwareHistoryQueryService {
 
     private String searchExpression(HistoryDataset dataset) {
         return switch (dataset) {
-            case VISITS -> "appointment.reference_number ILIKE :query ESCAPE '\\\\' OR appointment.visitor_name ILIKE :query ESCAPE '\\\\' OR host.display_name ILIKE :query ESCAPE '\\\\'";
-            case EMPLOYEES -> "employee.employee_number ILIKE :query ESCAPE '\\\\' OR employee.display_name ILIKE :query ESCAPE '\\\\' OR employee.official_email ILIKE :query ESCAPE '\\\\'";
-            case TERMINATIONS -> "employee.employee_number ILIKE :query ESCAPE '\\\\' OR employee.display_name ILIKE :query ESCAPE '\\\\' OR termination.reason ILIKE :query ESCAPE '\\\\'";
-            case WORKBOARD -> "activity.work_task_id::text ILIKE :query ESCAPE '\\\\' OR activity.event_type ILIKE :query ESCAPE '\\\\' OR activity.details_json::text ILIKE :query ESCAPE '\\\\'";
-            case AUDIT -> "audit.event_type ILIKE :query ESCAPE '\\\\' OR audit.actor_id ILIKE :query ESCAPE '\\\\' OR audit.target_id ILIKE :query ESCAPE '\\\\'";
-            case CHECKPOINTS -> "checkpoint.visitor_name ILIKE :query ESCAPE '\\\\' OR checkpoint.badge_number ILIKE :query ESCAPE '\\\\'";
-            case ESSENTIAL_LOGS -> "log.event_type ILIKE :query ESCAPE '\\\\' OR log.title ILIKE :query ESCAPE '\\\\' OR log.detail ILIKE :query ESCAPE '\\\\'";
+            case VISITS -> "appointment.reference_number ILIKE :query ESCAPE '!' OR appointment.visitor_name ILIKE :query ESCAPE '!' OR host.display_name ILIKE :query ESCAPE '!'";
+            case EMPLOYEES -> "employee.employee_number ILIKE :query ESCAPE '!' OR employee.display_name ILIKE :query ESCAPE '!' OR employee.official_email ILIKE :query ESCAPE '!'";
+            case TERMINATIONS -> "employee.employee_number ILIKE :query ESCAPE '!' OR employee.display_name ILIKE :query ESCAPE '!' OR termination.reason ILIKE :query ESCAPE '!'";
+            case WORKBOARD -> "activity.work_task_id::text ILIKE :query ESCAPE '!' OR activity.event_type ILIKE :query ESCAPE '!' OR activity.details_json::text ILIKE :query ESCAPE '!'";
+            case AUDIT -> "audit.event_type ILIKE :query ESCAPE '!' OR audit.actor_id ILIKE :query ESCAPE '!' OR audit.target_id ILIKE :query ESCAPE '!'";
+            case CHECKPOINTS -> "checkpoint.visitor_name ILIKE :query ESCAPE '!' OR checkpoint.badge_number ILIKE :query ESCAPE '!'";
+            case ESSENTIAL_LOGS -> "log.event_type ILIKE :query ESCAPE '!' OR log.title ILIKE :query ESCAPE '!' OR log.detail ILIKE :query ESCAPE '!'";
         };
     }
 
@@ -334,7 +334,7 @@ public class RoleAwareHistoryQueryService {
     }
 
     private String escapeLike(String value) {
-        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        return value.replace("!", "!!").replace("%", "!%").replace("_", "!_");
     }
 
     private record Cursor(Instant occurredAt, UUID id) {}

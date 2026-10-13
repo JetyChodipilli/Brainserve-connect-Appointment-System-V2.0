@@ -51,7 +51,9 @@ test("notification sections fail independently and background polling cannot ove
 test("notification delivery does not hold database transactions during network calls", () => {
   assert.match(emailDispatcher, /TransactionOperations transactions/);
   assert.match(emailDispatcher, /private List<ClaimedEmail> claimReady\(\)/);
-  assert.match(emailDispatcher, /private void complete\(UUID messageId, String failure\)/);
+  assert.match(emailDispatcher, /private void complete\(UUID messageId, int attempt, String failure\)/);
+  assert.match(emailDispatcher, /findByIdForUpdate\(messageId\)/);
+  assert.match(emailDispatcher, /completeAttempt\(attempt, failure\)/);
   assert.doesNotMatch(emailDispatcher, /@Transactional\s+public void dispatch\(\)/);
   assert.match(service, /private List<ClaimedInternalCall> claimReadyForDelivery\(\)/);
   assert.match(service, /private\s+void\s+publishClaimed\s*\(\s*ClaimedInternalCall\s+notification\s*\)/,);assert.doesNotMatch(service, /@Transactional\s+public void dispatchPending\(\)/);

@@ -50,7 +50,7 @@ public class NotificationDispatcher {
             } catch (MailException | com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException ex) {
                 failure = ex.getClass().getSimpleName();
             }
-            complete(message.id(), failure);
+            complete(message.id(), message.attempt(), failure);
         }
     }
 
@@ -63,19 +63,17 @@ public class NotificationDispatcher {
             eligible.forEach(OutboxMessage::markProcessing);
             outbox.flush();
             return eligible.stream().map(message -> new ClaimedEmail(message.getId(), message.getDestination(),
-                    message.getTemplate(), message.getPayloadJson())).toList();
+                    message.getTemplate(), message.getPayloadJson(), message.getAttemptCount())).toList();
         });
         return claimed == null ? List.of() : claimed;
     }
 
-    private void complete(UUID messageId, String failure) {
-        transactions.executeWithoutResult(status -> outbox.findById(messageId).ifPresent(message -> {
-            if (failure == null) message.markSent();
-            else message.retry(failure);
-        }));
+    private void complete(UUID messageId, int attempt, String failure) {
+        transactions.executeWithoutResult(status -> outbox.findByIdForUpdate(messageId)
+                .ifPresent(message -> message.completeAttempt(attempt, failure)));
     }
 
-    private record ClaimedEmail(UUID id, String destination, String template, String payloadJson) {}
+    private record ClaimedEmail(UUID id, String destination, String template, String payloadJson, int attempt) {}
 
     private void applyTemplate(SimpleMailMessage email, String template, Map<String, String> payload) {
         String reference = payload.getOrDefault("reference", "your request");

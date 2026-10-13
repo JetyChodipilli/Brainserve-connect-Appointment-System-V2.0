@@ -40,7 +40,7 @@ public class PermissionAdministrationController {
     @PutMapping("/users/{userId}/permissions")
     UserPermissionResponse replace(@PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt,
                                    @Valid @RequestBody PermissionOverrideRequest request) {
-        UserAccount user = service.replaceOverrides(UUID.fromString(jwt.getSubject()), userId, request.grants(), request.denies());
+        UserAccount user = service.replaceFromSession(jwt, userId, request.grants(), request.denies());
         return UserPermissionResponse.from(user);
     }
 

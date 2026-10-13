@@ -3,7 +3,6 @@ package com.brainserve.appointment.reporting;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -17,8 +16,8 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@Testcontainers
-@EnabledIfEnvironmentVariable(named = "RUN_LARGE_DATA_TESTS", matches = "true")
+// Large-data verification is required on Docker-backed CI, alongside ordinary workflow coverage.
+@Testcontainers(disabledWithoutDocker = true)
 class LargeDataHistoryPerformanceTest {
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17.2-alpine")

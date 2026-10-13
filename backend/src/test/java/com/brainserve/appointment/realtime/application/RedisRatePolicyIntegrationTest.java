@@ -62,6 +62,39 @@ class RedisRatePolicyIntegrationTest {
         if (connection != null) connection.destroy();
     }
 
+    // Regression: AUD-10 — the real Redis challenge budget admits at most five presentations across concurrent clients.
+    // Found by /qa on 2026-10-13
+    // Report: docs/SECURITY_FUNCTIONAL_CAPACITY_AUDIT.md
+    @Test
+    @SuppressWarnings("unchecked")
+    void appointmentOtpBudgetIsAtomicExpiringAndFailsClosed() throws Exception {
+        var field = com.brainserve.appointment.appointment.application.AppointmentService.class.getDeclaredField("OTP_ATTEMPTS");
+        field.setAccessible(true);
+        var script = (org.springframework.data.redis.core.script.RedisScript<Long>) field.get(null);
+        String key = "appointment:otp:synthetic-" + UUID.randomUUID(), attempts = key + ":attempts";
+        redis.opsForValue().set(key, "synthetic-hash", Duration.ofSeconds(60));
+        var gate = new java.util.concurrent.CountDownLatch(1);
+        List<Future<Long>> futures = new ArrayList<>();
+        try (var pool = Executors.newFixedThreadPool(16)) {
+            for (int n = 0; n < 16; n++) futures.add(pool.submit(() -> {
+                assertTrue(gate.await(5, TimeUnit.SECONDS));
+                return redis.execute(script, List.of(key, attempts));
+            }));
+            gate.countDown();
+            List<Long> results = new ArrayList<>();
+            for (var future : futures) results.add(future.get(10, TimeUnit.SECONDS));
+            assertEquals(5, results.stream().filter(Long.valueOf(1)::equals).count());
+            assertEquals(11, results.stream().filter(Long.valueOf(0)::equals).count());
+        }
+        assertEquals("5", redis.opsForValue().get(attempts));
+        Long ttl = redis.getExpire(attempts, TimeUnit.MILLISECONDS);
+        assertNotNull(ttl); assertTrue(ttl > 0 && ttl <= 60000);
+        redis.opsForValue().set(attempts, "corrupt");
+        assertEquals(-1L, redis.execute(script, List.of(key, attempts)));
+        redis.delete(key);
+        assertEquals(0L, redis.execute(script, List.of(key, attempts)));
+    }
+
     @Test
     void concurrentInstancesShareOneAtomicAccountQuotaAndReleaseOnShutdown() throws Exception {
         List<Future<Boolean>> attempts = new ArrayList<>();

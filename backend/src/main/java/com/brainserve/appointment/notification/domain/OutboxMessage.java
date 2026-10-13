@@ -59,6 +59,12 @@ public class OutboxMessage extends AuditableEntity {
         // The ready query may reclaim it after this short delivery lease expires.
         nextAttemptAt = Instant.now().plusSeconds(300);
     }
+    public boolean completeAttempt(int claimedAttempt, String failure) {
+        if (status != Status.PROCESSING || attemptCount != claimedAttempt) return false;
+        if (failure == null) markSent();
+        else retry(failure);
+        return true;
+    }
     public void markSent() { if(status==Status.SUPPRESSED) return; status = Status.SENT; sentAt = Instant.now(); lastErrorCode = null; }
     public void retry(String errorCode) {
         if(status==Status.SUPPRESSED) return;

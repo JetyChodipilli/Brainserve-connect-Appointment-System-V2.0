@@ -41,6 +41,33 @@ public class CurrentAccountAuthority {
         Authority authority = requireActive(userId);
         if (!authority.role().equals(SystemRole.ROLE_SYSTEM_ADMIN.name())
                 || !authority.permissions().contains(Permission.SYSTEM_CONFIGURE.name())) throw denied();
+        requireFreshProof(jwt, userId, familyId);
+    }
+
+    /** Deterministic owner locks keep reciprocal permission writes from acquiring accounts in opposite orders. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireFreshPermissionWriter(Jwt jwt, UUID targetId) {
+        UUID userId, familyId;
+        try {
+            userId = UUID.fromString(jwt.getSubject());
+            familyId = UUID.fromString(jwt.getClaimAsString("sid"));
+        } catch (RuntimeException invalid) { throw denied(); }
+        if (userId.equals(targetId)) throw new BusinessException("SELF_PRIVILEGE_CHANGE",
+                "Users cannot change their own privileged access", HttpStatus.FORBIDDEN);
+        var locked = jdbc.queryForList("select id from iam_user_account where id in (?,?) order by id for update",
+                UUID.class, userId, targetId);
+        if (locked.size() != 2) throw denied();
+        Authority authority = requireActive(userId);
+        if (!Set.of("ROLE_SYSTEM_ADMIN", "ROLE_HR_ADMIN").contains(authority.role())
+                || java.util.Collections.disjoint(authority.permissions(), Set.of("ROLE_MANAGE", "STAFF_ACCOUNT_MANAGE"))) throw denied();
+        Set<String> tokenAuthorities = new HashSet<>(jwt.getClaimAsStringList("authorities"));
+        Set<String> currentAuthorities = new HashSet<>(authority.permissions());
+        currentAuthorities.add(authority.role());
+        if (!currentAuthorities.equals(tokenAuthorities)) throw denied();
+        requireFreshProof(jwt, userId, familyId);
+    }
+
+    private void requireFreshProof(Jwt jwt, UUID userId, UUID familyId) {
         Instant now = Instant.now();
         if (jwt.getExpiresAt() == null || !jwt.getExpiresAt().isAfter(now)
                 || !Boolean.TRUE.equals(jdbc.queryForObject("select not force_password_change and (locked_until is null or locked_until<=?) from iam_user_account where id=?", Boolean.class, Timestamp.from(now), userId))) throw denied();

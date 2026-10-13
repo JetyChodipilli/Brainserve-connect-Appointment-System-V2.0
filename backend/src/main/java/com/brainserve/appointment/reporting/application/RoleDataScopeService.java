@@ -39,12 +39,15 @@ public class RoleDataScopeService {
                 || role.equals(RECEPTIONIST) || role.equals(SECURITY);
         UUID departmentId = member.employeeId() == null || organizationWide
                 ? null : employees.departmentIdForEmployee(member.employeeId());
+        if (!organizationWide && (member.employeeId() == null || departmentId == null)) {
+            throw denied("A current employee and department assignment is required for reporting");
+        }
         return new RoleDataScope(userId, member.employeeId(), departmentId, role, organizationWide);
     }
 
     public UUID effectiveDepartment(RoleDataScope scope, UUID requestedDepartment) {
         if (scope.organizationWide()) return requestedDepartment;
-        if (scope.departmentId() == null) return null;
+        if (scope.employeeId() == null || scope.departmentId() == null) throw denied("A current department assignment is required");
         if (requestedDepartment != null && !requestedDepartment.equals(scope.departmentId())) {
             throw denied("You cannot view another department's history");
         }
