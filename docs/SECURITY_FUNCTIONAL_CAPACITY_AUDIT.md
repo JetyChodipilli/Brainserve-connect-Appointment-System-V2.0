@@ -1,6 +1,6 @@
 # BrainServe V2.0 security, functional and capacity audit
 
-**Status: PARTIAL assessment; ten repairs prepared locally. Publication and candidate CI are blocked.**
+**Status: PARTIAL assessment; ten repairs prepared for the authorized audit PR. Candidate CI and merge verification are pending.**
 
 Date: 13 October 2026. Repository: `JetyChodipilli/Brainserve-connect-Appointment-System-V2.0`.
 Initial main: `93e1cc9adf4e2fce28859a6a4627aaa3344ab475`. Current incorporated main: `6e1da5878844f0f437797d987aa0c9426aaa7100` (PR #42 acceptance-evidence recording). The audit branch includes that work without modifying its release approvals. Branch: `audit/security-functional-capacity`.
@@ -42,7 +42,7 @@ The selected QA surfaces were repository-native functional tests and source revi
 
 ## Verification receipt
 
-- Final full local backend `mvn clean verify`: 695 tests discovered, **369 executed/passed**, zero failures/errors, **326 skipped** for Docker/environment-dependent coverage. A subsequently added real-Redis regression is compiled separately and remains a Docker skip; the applicable successful local checks do not increase from that skipped test.
+- Fresh full local backend `mvn clean verify` before publication: 696 tests discovered, **369 executed/passed**, zero failures/errors, **327 skipped** for Docker/environment-dependent coverage. This includes the compiled real-Redis regression; its Docker skip is not counted as a pass.
 - Frontend `npm run build`: passed, including TypeScript. Final `npm run typecheck`: passed. Lint: zero errors, two existing image warnings.
 - Final frontend regressions: **400 passed**, zero failures/skips.
 - Operational tests after incorporating PR #42: **33 passed**, zero failures/skips.
@@ -51,7 +51,8 @@ The selected QA surfaces were repository-native functional tests and source revi
 - OTP Lua: on an owned Redis 7.0.15 loopback process, sixteen concurrent calls produced five admissions and eleven rejections; counter TTL remained bounded by the challenge. Missing challenge returned 0; corrupt counter returned -1. This is component evidence, not whole-application or production Redis coverage.
 - Existing `LargeDataHistoryPerformanceTest` is now enabled on Docker-backed backend verification and added to the required database-coverage guard. It seeds **3.5 million** rows across four history datasets. It has **not run in this session** because Docker/candidate CI remain unavailable. Enabling a test is not performance evidence.
 - Sequential skeptical review checked permission removals versus preserved overrides, stale authority after locks, lock ordering, actual role/department changes, outbox completion ownership, canonical OTP references, unchanged visitor trails and SSE lease behavior. No independent agent/model certification is claimed.
-- Final code is committed on the isolated audit branch. Automatic approval review rejected its public Git push; no PR, candidate CI, merge or deployment was completed.
+- Fresh frontend build, lint, 400 regressions and 33 operational tests passed before publication. A signature-only credential screen covered 1,049 tracked text files with zero candidates. The gstack shipping helper is also unavailable; repository-native verification is not a completed formal gstack shipping run.
+- Code is committed on the isolated audit branch. The initial public Git push was rejected by automatic approval review; the user subsequently explicitly authorized publication of the PR and merge into main. The PR and its exact-head GitHub Actions receipt will record publication, CI and merge results. Customer/operator acceptance remains pending.
 
 QA fix-loop review: no reverted repair, no unrelated production edit, and a 15% complexity heuristic from the three repairs that necessarily span more than three production/test paths. This remained below the skill's 20% stop threshold. Lower-impact speculative cleanup was reported separately.
 
