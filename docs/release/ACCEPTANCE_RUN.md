@@ -30,6 +30,20 @@ This packet prepares a single-company V2.0 release. It records no customer appro
 
 These targets come from `docs/V2_REQUIREMENTS.md` and `docs/SPRINT_15.md`. Keep the full customer measurements private. A short CI fixture load or quiesced logical restore cannot replace soak/full recovery evidence. Only the three optional-feature gates can use `NOT_APPLICABLE`, with verified disabled configuration, reason and reviewer evidence.
 
+## Record a supplied gate result
+
+After the responsible reviewer has performed a gate and authenticated its original evidence, save a private JSON file with that gate's existing `id`, actual `status`, `evidence` and `reason`. Use the evidence format in `acceptance.json`; do not put credentials or temporary download links in it. `FAILED` requires a reason. An optional `NOT_APPLICABLE` result requires the corresponding feature to be explicitly verified disabled in the input record, a reason and reviewer evidence.
+
+Record the supplied declaration into a new private file:
+
+```bash
+node scripts/record-release-evidence.mjs --record /secure/v2-release/acceptance.json --gate-file /secure/v2-release/reviewed-gate.json --output /secure/v2-release/acceptance-next.json --release-sha "$RELEASE_ID"
+```
+
+The command validates the existing and updated records against the installed SHA, changes only the selected gate and refuses existing output files. Inputs must be regular bounded JSON files: record ≤256 KiB, gate declaration ≤8 KiB. Output is mode 0600 on POSIX; use a private parent directory and appropriate Windows ACLs. Preserve prior versions and original signed evidence privately. A write failure may leave a private partial new file; inspect it before using or retrying.
+
+This command records supplied attestations; it does not perform the check or authenticate a signature. It never appoints owners or changes release approval, and refuses approved records. Keep absent evidence pending. No customer/operator gate is closed merely by installing or merging this tool.
+
 ## Review and release decision
 
 Use `ENGINEERING_REVIEW.md` and its linked PR receipt to check source review scope, final candidate, fixes and tooling limitations. Revalidate applicability whenever the candidate changes. The preparation command can record declared CI job results; it cannot authenticate original evidence, appoint owners or obtain customer consent.
