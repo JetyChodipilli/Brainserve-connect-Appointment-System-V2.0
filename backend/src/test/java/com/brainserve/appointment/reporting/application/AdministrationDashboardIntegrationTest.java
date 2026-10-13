@@ -80,6 +80,26 @@ class AdministrationDashboardIntegrationTest {
 
     @AfterEach void rollback() { if (!transaction.isCompleted()) transactions.rollback(transaction); }
 
+    // Regression: AUD-06 — history search must execute on standard PostgreSQL string settings.
+    // Found by /qa on 2026-10-13
+    // Report: docs/SECURITY_FUNCTIONAL_CAPACITY_AUDIT.md
+    @Test void historySearchExecutesAndMatchesWildcardsLiterally() {
+        jdbc.execute("set standard_conforming_strings=on");
+        jdbc.update("update employee set display_name=? where id=?", "Literal 100%_!\\ example", EMPLOYEE_A);
+        var scopes = mock(RoleDataScopeService.class);
+        when(scopes.resolve(ADMIN)).thenReturn(new RoleDataScopeService.RoleDataScope(
+                ADMIN, null, null, "ROLE_SYSTEM_ADMIN", true));
+        var history = new RoleAwareHistoryQueryService(new NamedParameterJdbcTemplate(dataSource), scopes,
+                new com.fasterxml.jackson.databind.ObjectMapper(), "Asia/Kolkata");
+        for (String query : List.of("100%_!\\", "%", "_", "!", "\\")) {
+            var filter = new com.brainserve.appointment.reporting.api.HistoryFilter(
+                    Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2027-01-01T00:00:00Z"),
+                    null, null, query, null, 50);
+            assertThat(history.search(ADMIN, com.brainserve.appointment.reporting.api.HistoryDataset.EMPLOYEES, filter).items())
+                    .extracting(com.brainserve.appointment.reporting.api.HistoryRow::id).containsExactly(EMPLOYEE_A);
+        }
+    }
+
     @Test void additiveUpgradePreservesChecksumsAndRejectsSyntheticOriginalDeadlines() {
         for (var migration : Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()).load().info().applied()) {
             if (migration.getVersion().getMajor().intValue() <= 52) assertThat(migration.getChecksum()).isEqualTo(originalChecksums.get(migration.getVersion().toString()));
