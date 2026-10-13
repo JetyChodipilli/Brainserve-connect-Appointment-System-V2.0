@@ -99,9 +99,9 @@ net: approximately **-98 source lines, -2 direct dependencies possible**. Public
 
 - [PostgreSQL string constants](https://www.postgresql.org/docs/current/sql-syntax-lexical.html) and [pattern matching](https://www.postgresql.org/docs/current/functions-matching.html) support the single-character/literal escaping analysis.
 - [Spring Boot email configuration](https://docs.spring.io/spring-boot/reference/io/email.html) documents finite SMTP timeout configuration.
-- gstack CSO prerequisite: trusted installed `bin/gstack-cso-launcher`; exact skill read: [gstack CSO SKILL.md](sandbox:/root/.codex/skills/remote-skills/skill-6abccfa438108191956b5b65edd7398b/cso/SKILL.md). Its mandatory launcher condition is quoted in the coverage table above.
-- Candidate CI prerequisite: explicit authorization to push the prepared audit branch to the public GitHub repository and open a PR. Automatic approval review specifically rejected that source disclosure; it was not bypassed through another tool.
-- Deployment verification prerequisite: Docker-backed CI/staging and an agreed representative workload/topology. Optional live-provider/hardware and human acceptance gates need real customer/operator inputs.
+- gstack CSO prerequisite remains: trusted installed `bin/gstack-cso-launcher`. The installed CSO SKILL.md was read during the audit; its mandatory launcher condition is quoted in the coverage table above. Formal CSO and gstack shipping assessment remain unavailable.
+- Publication authorization is resolved: the user explicitly authorized the public audit PR and merge after the initial approval-review rejection. No rejected publication action was bypassed before that authorization.
+- Docker-backed candidate CI and disposable staging are now passed. An agreed representative customer workload/topology, optional live-provider/hardware checks and human acceptance still need real customer/operator inputs.
 
 No durable security finding, source, secret or harness was exported to gstack telemetry, gbrain or a shared learning ledger. Operational toolchain prerequisites and verification limits are preserved in this project report instead.
 
